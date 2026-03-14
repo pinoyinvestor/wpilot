@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/ai-builder
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:      1.0.0
+ * Version:      1.1.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -29,7 +29,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( 'CA_VERSION',    '1.0.0' );
+define( 'CA_VERSION',    '1.1.0' );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
@@ -78,6 +78,7 @@ $_wpilot_modules = [
     'includes/brain_ajax.php',
     'includes/menu.php',
     'includes/bubble.php',
+    'includes/tracking.php',
 ];
 foreach ( $_wpilot_modules as $f ) {
     require_once CA_PATH . $f;
@@ -92,6 +93,13 @@ register_activation_hook( __FILE__, function () {
     add_option( 'ca_onboarded',           'no' );
     wpilot_backup_create_table();
     wpilot_brain_install();
+    // Track activation on weblease.se
+    if ( function_exists('wpilot_track_activation') ) wpilot_track_activation();
+} );
+
+register_deactivation_hook( __FILE__, function () {
+    if ( function_exists('wpilot_track_deactivation') ) wpilot_track_deactivation();
+    if ( function_exists('wpilot_tracking_cleanup') ) wpilot_tracking_cleanup();
 } );
 
 // ── Shared enqueue helper ─────────────────────────────────────
