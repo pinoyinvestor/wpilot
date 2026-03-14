@@ -240,9 +240,8 @@ add_action('admin_footer', function() {
 
         // Call the same analyze AJAX as the Analyze page
         $.post(ajaxurl, {
-          action : 'ca_run_analysis',
-          nonce  : nonce,
-          scope  : 'full'
+          action : 'wpi_smart_scan',
+          nonce  : nonce
         }, function(r){
           clearInterval(interval);
           clearInterval(scanTimer);
@@ -251,7 +250,7 @@ add_action('admin_footer', function() {
           $('#aibProgressFill').css('width','100%');
 
           setTimeout(function(){
-            var text = r.success ? (r.data.text || r.data.result || r.data || 'Analysis complete!') : 'Could not connect to Claude. Check your API key and credits, then try again from the Analyze page.';
+            var text = r.success ? (r.data.scan || r.data.text || r.data.result || r.data || 'Analysis complete!') : 'Could not connect to Claude. Check your API key and credits, then try again from the Analyze page.';
             if(typeof text === 'object') text = JSON.stringify(text);
 
             $('#aibAnalysisIcon').text('✅');

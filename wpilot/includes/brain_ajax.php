@@ -45,8 +45,8 @@ add_action( 'wp_ajax_wpi_brain_chat', function() {
     $memory_id = wpilot_brain_learn_from_exchange( $message, $reply, $mode, false );
 
     // Save to chat history
-    $history[] = ['role'=>'user',      'content'=>$message, 'time'=>date('H:i')];
-    $history[] = ['role'=>'assistant', 'content'=>$reply,   'time'=>date('H:i'), 'memory_id'=>$memory_id];
+    $history[] = ['role'=>'user',      'content'=>$message, 'time'=>current_time('H:i')];
+    $history[] = ['role'=>'assistant', 'content'=>$reply,   'time'=>current_time('H:i'), 'memory_id'=>$memory_id];
     update_option('ca_chat_history', array_slice($history,-40));
 
     // Increment prompt counter

@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // ═══════════════════════════════════════════════════════════════
 //  LICENSE + TIER SYSTEM
 //
-//  Tier 1 — LIFETIME (first 50 API connections)
+//  Tier 1 — LIFETIME (first 20 API connections)
 //    • Connect your Claude API key
 //    • Server checks: are slots remaining?
 //    • If yes → mark as Lifetime, no monthly fee ever
@@ -140,7 +140,7 @@ add_action('wp_ajax_ca_activate_license', function() {
         update_option('ca_license_email',  $data['email'] ?? '');
 
         $msg = $type === 'lifetime'
-            ? '🎉 Lifetime access activated! You\'re one of the first 50. No monthly fees ever.'
+            ? '🎉 Lifetime access activated! You\'re one of the first ' . CA_LIFETIME_SLOTS . '. No monthly fees ever.'
             : '✅ Pro license activated! Unlimited access unlocked.';
 
         wp_send_json_success(['message' => $msg, 'type' => $type]);

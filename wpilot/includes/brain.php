@@ -96,7 +96,7 @@ function wpilot_brain_approve( $memory_id ) {
     $wpdb->update( $t, [
         'approved'   => 1,
         'confidence' => 1.0,
-        'use_count'  => $wpdb->get_var("SELECT use_count+1 FROM {$t} WHERE id={$memory_id}"),
+        'use_count'  => $wpdb->get_var($wpdb->prepare("SELECT use_count+1 FROM {$t} WHERE id=%d", $memory_id)),
     ], [ 'id' => $memory_id ] );
 }
 
@@ -264,10 +264,16 @@ function wpilot_brain_stats() {
 function wpilot_brain_get_all( $limit = 100, $offset = 0, $type = null ) {
     global $wpdb;
     $t    = $wpdb->prefix . WPI_BRAIN_TABLE;
-    $where = $type ? $wpdb->prepare("WHERE memory_type=%s", $type) : '';
-    return $wpdb->get_results(
-        "SELECT * FROM {$t} {$where} ORDER BY approved DESC, use_count DESC, updated_at DESC LIMIT {$limit} OFFSET {$offset}"
-    );
+    if ( $type ) {
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$t} WHERE memory_type=%s ORDER BY approved DESC, use_count DESC, updated_at DESC LIMIT %d OFFSET %d",
+            $type, (int)$limit, (int)$offset
+        ) );
+    }
+    return $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$t} ORDER BY approved DESC, use_count DESC, updated_at DESC LIMIT %d OFFSET %d",
+        (int)$limit, (int)$offset
+    ) );
 }
 
 // ── Delete a memory ────────────────────────────────────────────

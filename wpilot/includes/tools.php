@@ -3,9 +3,6 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ── Dispatch tool calls ────────────────────────────────────────
 function wpilot_run_tool( $tool, $params = [] ) {
-    // Always log + backup before write
-    wpilot_backup_log( $tool, $params );
-
     switch ( $tool ) {
 
         /* ── Pages & Posts ──────────────────────────────────── */

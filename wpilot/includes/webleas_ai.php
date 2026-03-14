@@ -66,7 +66,6 @@ function wpilot_smart_answer( $message, $mode = 'chat', $context = [], $history 
     if ( is_wp_error($reply) ) return $reply;
 
     wpilot_log_route( 'claude', 1.0 );
-    wpilot_increment_prompts();
 
     // Classify topic for shadow testing
     $topic = wpilot_classify_topic( $message . ' ' . $reply );
@@ -75,7 +74,7 @@ function wpilot_smart_answer( $message, $mode = 'chat', $context = [], $history 
     $memory_id = wpilot_brain_learn_from_exchange( $message, $reply, $mode, false );
 
     // Queue for WPilot AI training
-    wpilot_collect_exchange( $message, $reply, $mode, false );
+    wpilot_collect_exchange( $message, $reply, $mode, 3 );
 
     // Fire shadow test — WPilot AI silently tries the same question
     // to measure if it could have answered this without Claude

@@ -77,7 +77,7 @@ function wpilot_remote_validate_license() {
         'timeout' => 8,
         'body'    => ['license_key'=>$key,'site_url'=>get_site_url(),'plugin_version'=>CA_VERSION],
     ]);
-    if ( is_wp_error($resp) ) return true;
+    if ( is_wp_error($resp) ) return false;
     $data = json_decode(wp_remote_retrieve_body($resp), true);
     if ( !empty($data['warning']) ) {
         update_option('wpi_license_warning', sanitize_text_field($data['warning']));

@@ -35,8 +35,8 @@ define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
 define( 'CA_LIFETIME_SLOTS',   20   );  // First 20 buyers get lifetime access
 define( 'CA_PRICE_PRO',        19   );  // USD/month — Pro
-define( 'CA_PRICE_AGENCY',     49   );  // USD/month — Agency (up to 5 sites)
-define( 'CA_PRICE_LIFETIME',   149  );  // USD one-time — Lifetime
+define( 'CA_PRICE_AGENCY',     49   );  // USD/month — Team (3 licenses)
+define( 'CA_PRICE_LIFETIME',   299  );  // USD one-time — Lifetime
 define( 'CA_LIFETIME_CLAIMED_KEY', 'wpi_lifetime_claimed_count' );
 
 // Stripe Product/Price IDs (set these after creating products in Stripe Dashboard)
@@ -52,7 +52,7 @@ define( 'WPI_LICENSE_SERVER',    'https://weblease.se/ai-license' );
 define( 'CA_SLUG',       'wpilot' );
 define( 'CA_MONTHLY_PRICE',          19   );   // Alias for bubble.php
 define( 'WPI_WEBLEAS_ENDPOINT',      'https://weblease.se/ai-query' );  // WPilot AI server (moved from webleas_ai.php)
-define( 'CA_MODEL',      'claude-3-5-sonnet-20241022' );
+define( 'CA_MODEL',      'claude-sonnet-4-6' );
 
 // ── Load modules ──────────────────────────────────────────────
 $_wpilot_modules = [
@@ -91,6 +91,7 @@ register_activation_hook( __FILE__, function () {
     add_option( 'ca_custom_instructions', '' );
     add_option( 'ca_onboarded',           'no' );
     wpilot_backup_create_table();
+    wpilot_brain_install();
 } );
 
 // ── Shared enqueue helper ─────────────────────────────────────

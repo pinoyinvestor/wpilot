@@ -74,7 +74,7 @@
     });
     $('#capAutoApprove').on('change', function(){
       var val = $(this).is(':checked') ? 'yes' : 'no';
-      $.post(CA.ajax_url, { action:'ca_save_setting', nonce:CA.nonce, key:'ca_auto_approve', value:val });
+      $.post(CA.ajax_url, { action:'ca_save_setting', nonce:CA.nonce, key:'wpilot_auto_approve', value:val });
     });
 
     /* ── Badge ─────────────────────────────────────────────── */

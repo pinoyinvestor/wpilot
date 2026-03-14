@@ -118,7 +118,7 @@ add_action( 'wp_ajax_ca_save_setting', function () {
     if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.', 403 );
     if ( ! wpilot_user_can_admin() ) wp_send_json_error( 'Unauthorized.' );
 
-    $allowed = ['wpilot_theme', 'wpilot_auto_approve', 'ca_custom_instructions', 'ca_license_server'];
+    $allowed = ['wpilot_theme', 'wpilot_auto_approve', 'ca_custom_instructions'];
     $key     = sanitize_key( wp_unslash( $_POST['key']   ?? '' ) );
     $value   = sanitize_textarea_field( wp_unslash( $_POST['value'] ?? '' ) );
 
@@ -206,42 +206,7 @@ add_action( 'wp_ajax_ca_woo_data', function () {
     wp_send_json_success( wpilot_ctx_woo() );
 } );
 
-// ── Test connection (admin only) ───────────────────────────────
-add_action( 'wp_ajax_ca_test_connection', function () {
-    check_ajax_referer( 'ca_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.', 403 );
-    if ( ! wpilot_user_can_admin() ) wp_send_json_error( 'Unauthorized.' );
-
-    $key = sanitize_text_field( wp_unslash( $_POST['key'] ?? get_option( 'ca_api_key', '' ) ) );
-    if ( empty( $key ) ) wp_send_json_error( 'No API key provided.' );
-
-    $res = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
-        'timeout' => 20,
-        'headers' => [
-            'Content-Type'      => 'application/json',
-            'x-api-key'         => $key,
-            'anthropic-version' => '2023-06-01',
-        ],
-        'body' => wp_json_encode( [
-            'model'      => CA_MODEL,
-            'max_tokens' => 10,
-            'messages'   => [['role' => 'user', 'content' => 'Reply: OK']],
-        ] ),
-    ] );
-
-    if ( is_wp_error( $res ) ) wp_send_json_error( 'Connection failed: ' . $res->get_error_message() );
-
-    $code = wp_remote_retrieve_response_code( $res );
-    $body = json_decode( wp_remote_retrieve_body( $res ), true );
-
-    if ( $code === 200 ) {
-        update_option( 'ca_api_key',   $key );
-        update_option( 'ca_onboarded', 'yes' );
-        wp_send_json_success( ['message' => '✅ AI connected successfully!'] );
-    }
-
-    wp_send_json_error( $body['error']['message'] ?? "API error (HTTP {$code})" );
-} );
+// ca_test_connection is handled in api.php — no duplicate here
 
 // ── Restore backup (called from bubble Undo button) ────────────
 add_action( 'wp_ajax_ca_restore_backup', function () {
@@ -263,6 +228,7 @@ add_action('wp_ajax_wpi_smart_scan', function() {
     if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized.', 403);
     check_ajax_referer('ca_nonce','nonce');
     if (!wpilot_is_connected()) wp_send_json_error('Not connected');
+    if (wpilot_is_locked()) wp_send_json_error('Free limit reached. Please activate your license.');
 
     $ctx = wpilot_build_context('plugins');
 
@@ -284,8 +250,10 @@ Svara strukturerat:
 Var alltid ärlig om vad som är gratis och vad som kostar. Håll det kort och konkret — max 200 ord.
 PROMPT;
 
-    $result = wpilot_call_claude($prompt, 'plugins', $ctx, []);
+    $result = wpilot_smart_answer($prompt, 'plugins', $ctx, []);
     if (is_wp_error($result)) wp_send_json_error($result->get_error_message());
-    wpilot_increment_prompts();
-    wp_send_json_success(['scan' => $result]);
+    $response = is_array($result) ? $result['text'] : $result;
+    $source   = is_array($result) ? $result['source'] : 'claude';
+    if ($source === 'claude') wpilot_bump_prompts();
+    wp_send_json_success(['scan' => $response]);
 });
