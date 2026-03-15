@@ -89,7 +89,7 @@
 /* ── Panel ───────────────────────────────────────────────────── */
 #caPanel {
   position: absolute; bottom: 62px; right: 0;
-  width: 348px;
+  width: 420px;
   max-width: calc(100vw - 60px); /* Never wider than viewport minus sidebar */
   background: var(--ca-bg2);
   border: 1px solid var(--ca-border2);
@@ -97,13 +97,13 @@
   overflow: hidden;
   box-shadow: var(--ca-shadow);
   display: flex; flex-direction: column;
-  max-height: min(580px, calc(100vh - 120px)); /* Never taller than viewport */
+  max-height: min(650px, calc(100vh - 100px)); /* Never taller than viewport */
 }
 @media screen and (max-width: 600px) {
   #caPanel {
-    width: calc(100vw - 20px);
+    width: calc(100vw - 16px);
     right: -14px;
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 80px);
     border-radius: 14px;
   }
 }
@@ -127,12 +127,12 @@
 .cap-hdr-r   { display: flex; gap: 3px; }
 
 .cap-av {
-  width: 28px; height: 28px;
+  width: 26px; height: 26px;
   background: var(--ca-grad);
-  border-radius: 8px;
+  border-radius: 7px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(91,127,255,.3);
+  font-size: 12px; flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(91,127,255,.2);
 }
 .cap-name    { font-size: 12.5px; font-weight: 700; color: var(--ca-text); line-height: 1.1; letter-spacing: -.01em; }
 .cap-powered { font-size: 9.5px; color: var(--ca-text3); margin-top: 1px; }
@@ -187,8 +187,8 @@
 
 /* ── Messages ────────────────────────────────────────────────── */
 .cap-msgs {
-  flex: 1; overflow-y: auto; padding: 13px 12px;
-  display: flex; flex-direction: column; gap: 11px;
+  flex: 1; overflow-y: auto; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
   min-height: 200px;
   scrollbar-width: thin;
   scrollbar-color: var(--ca-bg5) transparent;
@@ -282,15 +282,17 @@
 .cap-m-user .cap-mt {
   background: var(--ca-grad);
   color: #fff;
-  border-radius: 13px 13px 3px 13px;
-  box-shadow: 0 2px 10px rgba(91,127,255,.3);
-  max-width: 80%;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(91,127,255,.2);
+  max-width: 85%;
+  padding: 8px 14px;
 }
 .cap-m-ai .cap-mt {
   background: var(--ca-bg3);
   border: 1px solid var(--ca-border2);
-  border-radius: 13px 13px 13px 3px;
-  max-width: calc(100% - 36px);
+  border-radius: 12px;
+  max-width: calc(100% - 40px);
+  padding: 10px 14px;
 }
 .cap-m-ai .cap-av { flex-shrink: 0; }
 .cap-mt code {
@@ -323,14 +325,16 @@
 
 /* ── Action cards ────────────────────────────────────────────── */
 .cap-ac {
-  display: flex; align-items: flex-start; gap: 9px;
-  padding: 10px 12px;
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 14px;
   background: var(--ca-bg3);
   border: 1px solid var(--ca-border2);
   border-left: 3px solid var(--ca-accent);
   border-radius: 10px;
-  transition: border-color .12s;
+  transition: all .15s ease;
+  margin: 2px 0;
 }
+.cap-ac:hover { border-color: var(--ca-accent); background: var(--ca-bg4); }
 .cap-ac:hover { border-color: var(--ca-accent); }
 .cap-ac-ico   { font-size: 14px; flex-shrink: 0; margin-top: 2px; }
 .cap-ac-title { font-size: 12.5px; font-weight: 700; color: var(--ca-text); letter-spacing: -.01em; }
