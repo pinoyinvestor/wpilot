@@ -133,15 +133,25 @@ function wpilot_elementor_build_section( $def ) {
 
     // Build widget based on type
     switch ($type) {
-        case 'heading':  $widget = wpilot_el_widget_heading($widget_id, $content, $def); break;
-        case 'text':     $widget = wpilot_el_widget_text($widget_id, $content, $def); break;
-        case 'button':   $widget = wpilot_el_widget_button($widget_id, $content, $def); break;
-        case 'image':    $widget = wpilot_el_widget_image($widget_id, $content, $def); break;
-        case 'video':    $widget = wpilot_el_widget_video($widget_id, $content, $def); break;
-        case 'spacer':   $widget = wpilot_el_widget_spacer($widget_id, $def); break;
-        case 'divider':  $widget = wpilot_el_widget_divider($widget_id, $def); break;
-        case 'icon-box': $widget = wpilot_el_widget_icon_box($widget_id, $content, $def); break;
-        default:         $widget = null; break;
+        case 'heading': case 'hero': case 'title':
+            $widget = wpilot_el_widget_heading($widget_id, $content, $def); break;
+        case 'text': case 'paragraph': case 'description': case 'subtitle': case 'subheading':
+            $widget = wpilot_el_widget_text($widget_id, $content, $def); break;
+        case 'button': case 'cta': case 'link':
+            $widget = wpilot_el_widget_button($widget_id, $content, $def); break;
+        case 'image': case 'photo': case 'img':
+            $widget = wpilot_el_widget_image($widget_id, $content, $def); break;
+        case 'video': case 'youtube':
+            $widget = wpilot_el_widget_video($widget_id, $content, $def); break;
+        case 'spacer': case 'space':
+            $widget = wpilot_el_widget_spacer($widget_id, $def); break;
+        case 'divider': case 'separator': case 'hr':
+            $widget = wpilot_el_widget_divider($widget_id, $def); break;
+        case 'icon-box': case 'icon_box': case 'service': case 'card': case 'feature':
+            $widget = wpilot_el_widget_icon_box($widget_id, $content, $def); break;
+        default:
+            // Never return null - fallback to text widget
+            $widget = wpilot_el_widget_text($widget_id, $content ?: $type, $def); break;
     }
 
     return [
