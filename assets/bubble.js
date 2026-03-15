@@ -588,6 +588,7 @@
       $in.val('').css('height','auto');
       if($send.length) $send.prop('disabled', true);
       $('#capTyping').show();
+      scrollBottom();
       thinkStart = Date.now();
       $('#capThinkText').text('Thinking...');
       $('#capThinkTimer').text('0s');
