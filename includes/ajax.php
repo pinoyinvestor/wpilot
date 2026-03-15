@@ -311,7 +311,7 @@ add_action( 'wp_ajax_ca_save_setting', function () {
     if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.', 403 );
     if ( ! wpilot_user_can_admin() ) wp_send_json_error( 'Unauthorized.' );
 
-    $allowed = ['wpilot_theme', 'wpilot_auto_approve', 'ca_custom_instructions'];
+    $allowed = ['wpilot_theme', 'wpilot_auto_approve', 'ca_custom_instructions', 'wpi_google_api_key'];
     $key     = sanitize_key( wp_unslash( $_POST['key']   ?? '' ) );
     $value   = sanitize_textarea_field( wp_unslash( $_POST['value'] ?? '' ) );
 

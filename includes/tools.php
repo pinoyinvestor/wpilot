@@ -2143,10 +2143,12 @@ function wpilot_pagespeed_test($p) {
     $strategy = sanitize_text_field($p['strategy'] ?? 'mobile'); // mobile or desktop
 
     // Google PageSpeed Insights API (free, no key required for basic use)
+    $api_key = get_option('wpi_google_api_key', '');
     $api_url = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url='
         . urlencode($url)
         . '&strategy=' . $strategy
-        . '&category=performance&category=seo&category=best-practices&category=accessibility';
+        . '&category=performance&category=seo&category=best-practices&category=accessibility'
+        . ($api_key ? '&key=' . $api_key : '');
 
     // Check cache first (results valid for 10 min)
     $cache_key = 'wpi_pagespeed_' . md5($url . $strategy);
