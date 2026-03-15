@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // Shared render function used by both admin and frontend
 function wpilot_render_bubble() {
-    if ( ! wpilot_user_has_access() || ! wpilot_can_use() ) return;
+    if ( ! wpilot_user_has_access() ) return;
 
     $connected = wpilot_is_connected();
     $is_admin  = current_user_can( 'manage_options' );
@@ -112,22 +112,27 @@ function wpilot_render_bubble() {
             <div class="cap-msgs" id="capMsgs">
                 <?php if ( ! $connected ): ?>
 
-                <div class="cap-nc">
+                <div class="cap-nc" style="padding:20px 14px">
                     <div class="cap-nc-logo">⚡</div>
-                    <h3 class="cap-nc-h"><?php wpilot_te('bubble_connect_title') ?></h3>
+                    <h3 class="cap-nc-h">Connect Claude AI</h3>
                     <?php if ( $is_admin ): ?>
-                    <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;margin:8px 0 12px;text-align:left;font-size:11.5px;line-height:1.6;color:#fde68a">
-                        <strong style="display:block;margin-bottom:3px;font-size:12px"><?php wpilot_te('bubble_subscription_warning') ?></strong>
-                        <?php wpilot_te('bubble_subscription_body') ?>
+                    <p class="cap-nc-sub" style="margin-bottom:12px">Paste your Claude API key to start. Get one free at <a href="https://console.anthropic.com" target="_blank" rel="noopener" style="color:#4F7EFF">console.anthropic.com</a></p>
+                    
+                    <div style="width:100%;margin-bottom:12px">
+                        <input type="password" id="capApiKeyInput" placeholder="sk-ant-api03-..." 
+                            style="width:100%;padding:10px 14px;background:var(--ca-bg3);border:1px solid var(--ca-border2);border-radius:10px;color:var(--ca-text);font-family:var(--ca-mono);font-size:12px;outline:none" />
                     </div>
-                    <div class="cap-nc-steps">
-                        <div class="cap-nc-step"><span class="cap-nc-n">1</span><div><?php wpilot_te('bubble_step1') ?> — <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a></div></div>
-                        <div class="cap-nc-step"><span class="cap-nc-n">2</span><div><?php wpilot_te('bubble_step2') ?></div></div>
-                        <div class="cap-nc-step"><span class="cap-nc-n">3</span><div><?php wpilot_te('bubble_step3') ?> — <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-settings') ) ?>"><?php wpilot_te('settings_link') ?></a></div></div>
-                    </div>
-                    <div class="cap-nc-btns">
-                        <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener" class="cap-nc-btn cap-nc-btn-primary"><?php wpilot_te('add_credits_btn') ?></a>
-                        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-guide') ) ?>" class="cap-nc-btn cap-nc-btn-ghost"><?php wpilot_te('step_by_step_guide') ?></a>
+                    
+                    <button id="capConnectBtn" style="width:100%;padding:10px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--ca-font)">
+                        Connect & Start
+                    </button>
+                    
+                    <p id="capConnectStatus" style="display:none;margin-top:8px;font-size:12px;text-align:center"></p>
+                    
+                    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--ca-border)">
+                        <p style="font-size:11px;color:var(--ca-text3);text-align:center;line-height:1.6">
+                            Your key stays on your server only.<br/>Never shared with Weblease.
+                        </p>
                     </div>
                     <?php else: ?>
                     <p class="cap-nc-sub"><?php wpilot_te('bubble_ask_admin') ?></p>
@@ -196,11 +201,11 @@ function wpilot_render_bubble() {
                     </button>
                     </div>
                 <?php elseif ( ! $connected ): ?>
-                    <div class="cap-inp-cta">
+                    <div class="cap-inp-cta" style="text-align:center;padding:8px 12px">
                         <?php if ( $is_admin ): ?>
-                            <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-settings') ) ?>">⚡ Connect Claude API to start →</a>
+                            <p style="font-size:11px;color:var(--ca-text3);margin:0">Paste your API key above or type it here to connect</p>
                         <?php else: ?>
-                            <span>Claude not connected — ask admin</span>
+                            <span style="font-size:11px;color:var(--ca-text3)">Claude not connected — ask admin</span>
                         <?php endif; ?>
                     </div>
                 <?php else: ?>

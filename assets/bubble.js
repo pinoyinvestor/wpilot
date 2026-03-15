@@ -126,6 +126,48 @@
     });
     $root.on('click', function(e){ e.stopPropagation(); });
 
+    /* ── Connect API key directly from bubble ──────────── */
+    $(document).on('click', '#capConnectBtn', function() {
+        var $btn = $(this);
+        var $input = $('#capApiKeyInput');
+        var $status = $('#capConnectStatus');
+        var key = $.trim($input.val());
+        
+        if (!key || !key.startsWith('sk-')) {
+            $status.text('Enter a valid Claude API key (starts with sk-)').css('color', 'var(--ca-red)').show();
+            return;
+        }
+        
+        $btn.text('Connecting...').prop('disabled', true);
+        $status.text('Testing connection...').css('color', 'var(--ca-text2)').show();
+        
+        $.post(CA.ajax_url, {
+            action: 'ca_test_connection',
+            nonce: CA.nonce,
+            key: key
+        })
+        .done(function(res) {
+            if (res && res.success) {
+                $status.text('Connected! Reloading...').css('color', 'var(--ca-green)');
+                CA.connected = 'yes';
+                setTimeout(function() { location.reload(); }, 1000);
+            } else {
+                var msg = (res && res.data) ? (typeof res.data === 'string' ? res.data : res.data.message || 'Connection failed') : 'Connection failed';
+                $status.text(msg).css('color', 'var(--ca-red)');
+                $btn.text('Connect & Start').prop('disabled', false);
+            }
+        })
+        .fail(function() {
+            $status.text('Network error. Try again.').css('color', 'var(--ca-red)');
+            $btn.text('Connect & Start').prop('disabled', false);
+        });
+    });
+    
+    // Enter key on API input
+    $(document).on('keydown', '#capApiKeyInput', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); $('#capConnectBtn').click(); }
+    });
+
     /* ── Config panel ──────────────────────────────────────── */
     $('#capCfgBtn').on('click', function(e){
       e.stopPropagation();
@@ -177,6 +219,8 @@
       {cmd:'/plugins',  label:'Plugin audit',       mode:'plugins', msg:'Audit all installed plugins. Identify conflicts, overlap, outdated plugins, security risks, and performance impact.'},
       {cmd:'/scan',     label:'Scan my plugins', mode:'plugins', msg:'Scan all installed plugins. What works? What\'s missing? What can be optimized? Be clear about what\'s free and what costs money.'},
       {cmd:'/gratis',    label:'Free optimizations', mode:'chat',    msg:'Show me everything I can improve on my WordPress site using only free plugins and settings. No paid solutions.'},
+      {cmd:'/settings', label:'Show settings',  mode:'chat', msg:'Show my current WPilot settings: theme, auto-approve, API key status, license type, prompts used.'},
+      {cmd:'/connect',  label:'Connect API key', mode:'chat', msg:'I need to connect my Claude API key.'},
       {cmd:'/help',     label:'Show all commands',  mode:'chat',    msg:'List all available slash commands and what each one does.'},
     ];
 
@@ -362,6 +406,71 @@
       // Handle slash command typed in full
       var slash = slashCmds.find(function(c){ return c.cmd === msg.toLowerCase().trim(); });
       if(slash){ aibFireSlash(slash); return; }
+      // Handle settings commands directly in chat
+        var lmsg = msg.toLowerCase().trim();
+        
+        // API key change
+        if (lmsg.startsWith('api key:') || lmsg.startsWith('api-key:') || lmsg.startsWith('sk-ant-')) {
+            var newKey = msg.replace(/^(api[- ]?key:\s*)/i, '').trim();
+            if (!newKey.startsWith('sk-')) newKey = msg.trim();
+            appendMsg('user', 'Connecting API key...');
+            $.post(CA.ajax_url, { action: 'ca_test_connection', nonce: CA.nonce, key: newKey })
+            .done(function(r) {
+                if (r && r.success) {
+                    appendMsg('ai', '✅ Claude API key connected! Reloading...');
+                    setTimeout(function() { location.reload(); }, 1500);
+                } else {
+                    appendMsg('ai', '❌ Invalid API key. Get one at console.anthropic.com');
+                }
+            });
+            $in.val('');
+            return;
+        }
+        
+        // Theme change
+        if (lmsg === 'dark mode' || lmsg === 'dark theme') {
+            $.post(CA.ajax_url, { action: 'ca_save_setting', nonce: CA.nonce, key: 'wpilot_theme', value: 'dark' });
+            $root.attr('data-theme', 'dark');
+            appendMsg('user', msg);
+            appendMsg('ai', '🌙 Dark mode activated.');
+            $in.val('');
+            return;
+        }
+        if (lmsg === 'light mode' || lmsg === 'light theme') {
+            $.post(CA.ajax_url, { action: 'ca_save_setting', nonce: CA.nonce, key: 'wpilot_theme', value: 'light' });
+            $root.attr('data-theme', 'light');
+            appendMsg('user', msg);
+            appendMsg('ai', '☀️ Light mode activated.');
+            $in.val('');
+            return;
+        }
+        
+        // Auto-approve toggle
+        if (lmsg === 'auto approve on' || lmsg === 'auto-approve on') {
+            $.post(CA.ajax_url, { action: 'ca_save_setting', nonce: CA.nonce, key: 'wpilot_auto_approve', value: 'yes' });
+            appendMsg('user', msg);
+            appendMsg('ai', '✅ Auto-approve enabled. Changes will apply automatically without clicking Apply.');
+            $in.val('');
+            return;
+        }
+        if (lmsg === 'auto approve off' || lmsg === 'auto-approve off') {
+            $.post(CA.ajax_url, { action: 'ca_save_setting', nonce: CA.nonce, key: 'wpilot_auto_approve', value: 'no' });
+            appendMsg('user', msg);
+            appendMsg('ai', '✅ Auto-approve disabled. You\'ll need to click Apply on each change.');
+            $in.val('');
+            return;
+        }
+        
+        // Clear chat
+        if (lmsg === 'clear chat' || lmsg === 'clear history' || lmsg === '/clear') {
+            $.post(CA.ajax_url, { action: 'ca_clear_history', nonce: CA.nonce });
+            history = [];
+            $msgs.empty();
+            appendMsg('ai', '🗑️ Chat cleared.');
+            $in.val('');
+            return;
+        }
+
       sendMsgWithContent(msg, 'chat');
     }
 

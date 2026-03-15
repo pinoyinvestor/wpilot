@@ -136,7 +136,8 @@ function wpilot_asset_suffix() {
 
 // ── Shared enqueue helper ─────────────────────────────────────
 function wpilot_enqueue_bubble() {
-    if ( ! wpilot_can_use() ) return;
+    // Always load bubble for users with access — the bubble handles connected/locked states itself
+    if ( ! wpilot_user_has_access() ) return;
     $sfx = wpilot_asset_suffix();
     wp_enqueue_style(  'aib-bubble', CA_URL . "assets/bubble{$sfx}.css", [], CA_VERSION );
     wp_enqueue_script( 'aib-bubble', CA_URL . "assets/bubble{$sfx}.js",  ['jquery'], CA_VERSION, true );

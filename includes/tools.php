@@ -756,7 +756,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
 /* Page #{$id} */
 " . wp_strip_all_tags($params['css']));
             }
-            return wpilot_ok("Page "{$post->post_title}" (#{$id}) updated.", ['id'=>$id, 'url'=>get_permalink($id)]);
+            return wpilot_ok("Page #" . $id . " updated.", ["id"=>$id, "url"=>get_permalink($id)]);
 
         case 'builder_create_page':
         case 'builder_update_section':
@@ -1995,7 +1995,7 @@ function wpilot_generate_full_site($p) {
     }
     if ($description) update_option('blogdescription',$description);
     $count = count(array_filter($created,fn($p)=>$p['status']==='created'));
-    return wpilot_ok(Site created: {$count} pages + menu. Navigate to any page and tell me what to change.,['pages'=>$created]);
+    return wpilot_ok("Site created: " . $count . " pages + menu. Navigate to any page and tell me what to change.", ["pages"=>$created]);
 }
 
 function wpilot_default_pages_for_type($type,$biz) {
