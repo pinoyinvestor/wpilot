@@ -190,7 +190,11 @@ function wpilot_render_bubble() {
                 <div id="capTyping" style="display:none">
                     <div class="cap-m cap-m-ai">
                         <div class="cap-av">⚡</div>
-                        <div class="cap-dots"><span></span><span></span><span></span></div>
+                        <div class="cap-mt" style="display:flex;align-items:center;gap:8px">
+                            <div class="cap-dots"><span></span><span></span><span></span></div>
+                            <span id="capThinkText" style="font-size:12px;color:var(--ca-text2)">Thinking...</span>
+                            <span id="capThinkTimer" style="font-size:11px;color:var(--ca-text3);font-family:var(--ca-mono)">0s</span>
+                        </div>
                     </div>
                 </div>
             </div>

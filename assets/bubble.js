@@ -15,6 +15,8 @@
     var history  = [];
     var lastPairId = null;
     var lastBackupStack = [];
+    var thinkTimer = null;
+    var thinkStart = 0;
 
     if ( !$root.length || !$trigger.length ) return;
     if ( CA && CA.theme ) $root.attr('data-theme', CA.theme);
@@ -526,6 +528,17 @@
       $in.val('').css('height','auto');
       if($send.length) $send.prop('disabled', true);
       $('#capTyping').show();
+      thinkStart = Date.now();
+      $('#capThinkText').text('Thinking...');
+      $('#capThinkTimer').text('0s');
+      if (thinkTimer) clearInterval(thinkTimer);
+      thinkTimer = setInterval(function() {
+        var secs = Math.floor((Date.now() - thinkStart) / 1000);
+        $('#capThinkTimer').text(secs + 's');
+        if (secs > 5) $('#capThinkText').text('Still working...');
+        if (secs > 15) $('#capThinkText').text('Almost there...');
+        if (secs > 30) $('#capThinkText').text('Complex request...');
+      }, 1000);
       scrollBottom();
       history.push({role:'user', content:msg});
 
@@ -548,6 +561,7 @@
       .done(function(res){
         sending = false;
         $('#capTyping').hide();
+        if(thinkTimer){clearInterval(thinkTimer);thinkTimer=null;}
         if($send.length) $send.prop('disabled', false);
 
         if(!res || !res.success){
@@ -577,6 +591,7 @@
       .fail(function(xhr){
         sending = false;
         $('#capTyping').hide();
+        if(thinkTimer){clearInterval(thinkTimer);thinkTimer=null;}
         if($send.length) $send.prop('disabled', false);
         var msg = '⚠️ Request failed.';
         if(xhr.status===0) msg = '⚠️ No connection. Check your internet.';
@@ -637,7 +652,7 @@
     $(document).on('click', '.cap-ac-apply', function(){
       var $btn    = $(this);
       var $card   = $btn.closest('.cap-ac');
-      $btn.text('…').prop('disabled', true);
+      $btn.html('⏳ Working...').prop('disabled', true).css('opacity','0.7');
       var tool   = $btn.data('tool');
       var params = {};
       try { params = JSON.parse($btn.data('params') || '{}'); } catch(e) {}
@@ -648,7 +663,7 @@
       })
       .done(function(res) {
         if (res && res.success) {
-          $btn.text('✅ Done').css({'background':'var(--ca-green)','cursor':'default'});
+          $btn.html('✅ Done!').css({'background':'var(--ca-green)','cursor':'default','opacity':'1','color':'#fff'});
           if(lastPairId) sendRating(lastPairId, 5);
 
           var backupId = res.data && res.data.backup_id ? res.data.backup_id : null;

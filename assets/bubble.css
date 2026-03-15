@@ -470,6 +470,43 @@
 .cap-spin { display: inline-block; animation: capSpin 1s linear infinite; }
 @keyframes capSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .cap-ac-apply[disabled] { pointer-events: none; }
+
+/* Thinking indicator with timer */
+#capThinkText { letter-spacing: .02em; }
+#capThinkTimer { min-width: 24px; text-align: right; }
+
+/* Apply button states */
+.cap-ac-apply[disabled] { pointer-events: none; cursor: not-allowed; }
+.cap-ac-apply.cap-done { background: var(--ca-green) !important; color: #fff !important; cursor: default !important; }
+.cap-ac-apply.cap-failed { background: var(--ca-red) !important; color: #fff !important; }
+
+/* Tool result cards - better styling */
+.cap-tool-result {
+    animation: capFadeIn .3s ease;
+    margin-top: 8px;
+}
+.cap-tool-result .cap-tr-msg {
+    line-height: 1.5;
+}
+
+/* Refresh button pulse */
+.cap-refresh-btn {
+    animation: capPulse 2s ease infinite;
+}
+.cap-refresh-btn:hover {
+    animation: none;
+}
+
+/* Undo button after action */
+.cap-restore-btn {
+    transition: all .15s ease;
+}
+
+/* Sticky undo at bottom */
+.cap-sticky-undo {
+    backdrop-filter: blur(8px);
+}
+
 .cap-slash-menu {
   position: absolute; bottom: calc(100% + 6px);
   left: 11px; right: 11px;
