@@ -230,7 +230,7 @@
       {cmd:'/plugins',  label:'Plugin audit',       mode:'plugins', msg:'Audit all installed plugins. Identify conflicts, overlap, outdated plugins, security risks, and performance impact.'},
       {cmd:'/scan',     label:'Scan my plugins', mode:'plugins', msg:'Scan all installed plugins. What works? What\'s missing? What can be optimized? Be clear about what\'s free and what costs money.'},
       {cmd:'/gratis',    label:'Free optimizations', mode:'chat',    msg:'Show me everything I can improve on my WordPress site using only free plugins and settings. No paid solutions.'},
-      {cmd:'/settings', label:'Show settings',  mode:'chat', msg:'Show my current WPilot settings: theme, auto-approve, API key status, license type, prompts used.'},
+      {cmd:'/settings', label:'Show settings',  mode:'chat', msg:'Show my current WPilot settings: theme, auto-approve status, and API connection status.'},
       {cmd:'/connect',  label:'Connect API key', mode:'chat', msg:'I need to connect my Claude API key.'},
       {cmd:'/help',     label:'Show all commands',  mode:'chat',    msg:'List all available slash commands and what each one does.'},
     ];
@@ -557,7 +557,7 @@
         if(!res || !res.success){
           var errMsg = (res && res.data) ? res.data : 'Something went wrong. Please try again.';
           if(errMsg && (errMsg.toLowerCase().indexOf('credit') !== -1 || errMsg.toLowerCase().indexOf('balance') !== -1 || errMsg.toLowerCase().indexOf('billing') !== -1)){
-            errMsg = (CA.i18n && CA.i18n.error_no_credits) ? CA.i18n.error_no_credits : errMsg;
+            errMsg = 'Your Claude API account needs credits. Add them at console.anthropic.com/settings/billing';
           }
           appendMsg('ai', '⚠️ ' + errMsg);
           scrollBottom();

@@ -103,7 +103,7 @@ function wpilot_render_bubble() {
                     if ( $connected && ! $locked ): ?>
                         <span class="cap-pill-ok">● <?= esc_html($tier_label) ?></span>
                     <?php elseif ( $locked ): ?>
-                        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-license') ) ?>" class="cap-pill-warn">🔒 Upgrade</a>
+                        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-license') ) ?>" class="cap-pill-warn">🔑 Activate</a>
                     <?php elseif ( $is_admin ): ?>
                         <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-settings') ) ?>" class="cap-pill-warn">⚡ Connect →</a>
                     <?php else: ?>
@@ -150,7 +150,7 @@ function wpilot_render_bubble() {
                 ?>
                 <div class="cap-nc">
                     <div class="cap-nc-logo">🔒</div>
-                    <h3 class="cap-nc-h">Free limit reached</h3>
+                    <h3 class="cap-nc-h">Activate License</h3>
                     <?php if($has_lifetime_slots): ?>
                     <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 14px;margin:10px 0;text-align:left">
                         <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:4px">🏆 <?= (int)$slots_remaining ?> Lifetime slots left</div>
@@ -160,11 +160,11 @@ function wpilot_render_bubble() {
                     <a href="<?= esc_url(admin_url('admin.php?page='.CA_SLUG.'-license')) ?>" class="cap-nc-btn cap-nc-btn-primary" style="margin-top:8px;background:linear-gradient(135deg,#f59e0b,#d97706)">🏆 Claim Lifetime Access →</a>
                     <?php endif; ?>
                     <?php else: ?>
-                    <p class="cap-nc-sub">You've used all <?= CA_FREE_LIMIT ?> free prompts.</p>
+                    <p class="cap-nc-sub">Activate your WPilot license to continue using the AI assistant.</p>
                     <div style="font-size:13px;font-weight:700;color:#93c5fd;margin:8px 0 4px">Pro — $<?= CA_MONTHLY_PRICE ?>/month</div>
-                    <p style="font-size:12px;color:var(--cap-text2,#94a3b8);margin:0 0 10px">Unlimited prompts, all features, your own Claude API key.</p>
+                    
                     <?php if($is_admin): ?>
-                    <a href="<?= esc_url(admin_url('admin.php?page='.CA_SLUG.'-license')) ?>" class="cap-nc-btn cap-nc-btn-primary" style="margin-top:4px">⚡ Upgrade to Pro — $<?= CA_MONTHLY_PRICE ?>/mo →</a>
+                    <a href="<?= esc_url(admin_url('admin.php?page='.CA_SLUG.'-license')) ?>" class="cap-nc-btn cap-nc-btn-primary" style="margin-top:4px">⚡ Activate License →</a>
                     <?php endif; ?>
                     <?php endif; ?>
                 </div>
@@ -213,7 +213,7 @@ function wpilot_render_bubble() {
                     </div>
                 <?php else: ?>
                     <div class="cap-inp-cta">
-                        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-license') ) ?>">🔒 Upgrade for unlimited prompts →</a>
+                        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-license') ) ?>">🔑 Activate License →</a>
                     </div>
                 <?php endif; ?>
             </div>
@@ -233,14 +233,6 @@ function wpilot_render_bubble() {
                 }
                 echo $slots_msg;
                 ?>
-                <?php if ( $connected ): ?>
-                <span class="cap-footer-dot">·</span>
-                <?php if ( wpilot_is_licensed() ): ?>
-                <span class="cap-footer-prompts" style="color:var(--ca-green,#10b981)"><?= esc_html($tier_label) ?> · ∞</span>
-                <?php else: ?>
-                <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-license') ) ?>" class="cap-footer-prompts"><?= wpilot_prompts_remaining() ?> prompts left</a>
-                <?php endif; ?>
-                <?php endif; ?>
             </div>
 
         </div>
