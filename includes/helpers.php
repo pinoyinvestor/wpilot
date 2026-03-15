@@ -73,21 +73,53 @@ function wpilot_get_usage_summary() {
         if ($date >= $month_ago) { $month_prompts += $p; $month_tokens += $t; }
     }
 
-    // Estimate cost: ~$3/MTok input + ~$15/MTok output, rough average ~$0.01/prompt
-    $est_cost_month = round($month_prompts * 0.01, 2);
-    $est_cost_total = round($total_prompts * 0.01, 2);
+    // Use real cost data if available, fall back to estimate
+    $real_cost_month = 0; $real_cost_total = 0;
+    $real_input_month = 0; $real_output_month = 0;
+    $real_input_total = 0; $real_output_total = 0;
+    foreach ($usage as $date => $data) {
+        $c = $data['cost'] ?? 0;
+        $it = $data['input_tokens'] ?? 0;
+        $ot = $data['output_tokens'] ?? 0;
+        $real_cost_total += $c;
+        $real_input_total += $it;
+        $real_output_total += $ot;
+        if ($date >= $month_ago) {
+            $real_cost_month += $c;
+            $real_input_month += $it;
+            $real_output_month += $ot;
+        }
+    }
+    $est_cost_month = $real_cost_month > 0 ? round($real_cost_month, 2) : round($month_prompts * 0.01, 2);
+    $est_cost_total = $real_cost_total > 0 ? round($real_cost_total, 2) : round($total_prompts * 0.01, 2);
 
     return [
         'today' => $today_prompts,
         'week' => $week_prompts,
         'month' => $month_prompts,
         'total' => $total_prompts,
-        'tokens_month' => $month_tokens,
-        'tokens_total' => $total_tokens,
-        'est_cost_month' => $est_cost_month,
-        'est_cost_total' => $est_cost_total,
+        'tokens_month' => $real_input_month + $real_output_month,
+        'tokens_total' => $real_input_total + $real_output_total,
+        'input_tokens_month' => $real_input_month,
+        'output_tokens_month' => $real_output_month,
+        'cost_month' => $est_cost_month,
+        'cost_total' => $est_cost_total,
         'daily' => $usage,
     ];
+}
+
+
+// ── Real Token Tracking from Claude API ────────────────────
+function wpilot_track_tokens($input_tokens, $output_tokens) {
+    $today = date('Y-m-d');
+    $usage = get_option('wpi_usage_stats', []);
+    if (!isset($usage[$today])) $usage[$today] = ['prompts'=>0, 'tokens_est'=>0, 'input_tokens'=>0, 'output_tokens'=>0, 'cost'=>0];
+    $usage[$today]['input_tokens'] = ($usage[$today]['input_tokens'] ?? 0) + $input_tokens;
+    $usage[$today]['output_tokens'] = ($usage[$today]['output_tokens'] ?? 0) + $output_tokens;
+    // Real cost: Sonnet input=$3/MTok, output=$15/MTok
+    $cost = ($input_tokens / 1000000 * 3) + ($output_tokens / 1000000 * 15);
+    $usage[$today]['cost'] = round(($usage[$today]['cost'] ?? 0) + $cost, 4);
+    update_option('wpi_usage_stats', $usage, false);
 }
 
 // Admin notice when not connected

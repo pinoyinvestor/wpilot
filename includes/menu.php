@@ -147,9 +147,18 @@ function wpilot_page_dashboard() {
                 <div class="ca-sc-sub">~$<?= esc_html($usage['est_cost_total']) ?> est.</div>
             </div>
         </div>
+        <div style="display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap">
+            <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener"
+               style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none">
+                💳 Add Claude Credits
+            </a>
+            <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener"
+               style="font-size:12px;color:var(--ca-accent,#4F7EFF);text-decoration:none">
+                View usage on Anthropic →
+            </a>
+        </div>
         <p style="font-size:11px;color:var(--ca-text3);margin-top:8px">
-            Cost estimates are approximate (~$0.01/prompt). Actual costs depend on message length.
-            <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener" style="color:var(--ca-accent)">View exact usage on Anthropic →</a>
+            Costs tracked from actual API responses. Claude Sonnet: $3/M input tokens, $15/M output tokens.
         </p>
     </div>
     <?php

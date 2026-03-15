@@ -33,7 +33,17 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
         return new WP_Error( 'api_err', $err );
     }
 
-    return $body['content'][0]['text'] ?? 'No response received.';
+    $text = $body['content'][0]['text'] ?? 'No response received.';
+
+    // Track real token usage from Claude API response
+    if (isset($body['usage']) && function_exists('wpilot_track_tokens')) {
+        wpilot_track_tokens(
+            $body['usage']['input_tokens'] ?? 0,
+            $body['usage']['output_tokens'] ?? 0
+        );
+    }
+
+    return $text;
 }
 
 // ── Build messages array with history and context ──────────────
