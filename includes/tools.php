@@ -250,9 +250,24 @@ function wpilot_run_tool( $tool, $params = [] ) {
             }
             if (!$file) return wpilot_err('Could not find the plugin.');
             if (!function_exists('delete_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
-            deactivate_plugins($file);
-            delete_plugins([$file]);
-            return wpilot_ok("Plugin deleted.");
+            // Deactivate first
+            if (is_plugin_active($file)) deactivate_plugins($file);
+            // Delete with error handling (complex plugins like Jetpack can crash)
+            try {
+                $del_result = delete_plugins([$file]);
+                if (is_wp_error($del_result)) {
+                    return wpilot_err('Could not delete: ' . $del_result->get_error_message());
+                }
+            } catch (\Throwable $e) {
+                // Fallback: try to delete the folder directly
+                $plugin_dir = WP_PLUGIN_DIR . '/' . dirname($file);
+                if (is_dir($plugin_dir)) {
+                    $deleted = wpilot_delete_directory($plugin_dir);
+                    if ($deleted) return wpilot_ok('Plugin deleted (force removed).');
+                }
+                return wpilot_err('Plugin deactivated but could not delete files: ' . $e->getMessage());
+            }
+            return wpilot_ok('Plugin deleted.');
 
         /* ── Site settings ───────────────────────────────────── */
         case 'update_blogname':
@@ -2065,4 +2080,15 @@ function wpilot_default_pages_for_type($type,$biz) {
     }
     $p[] = ['title'=>'Privacy Policy','slug'=>'privacy-policy','order'=>90,'content'=>'<h2>Privacy Policy</h2>'];
     return $p;
+}
+
+
+function wpilot_delete_directory($dir) {
+    if (!is_dir($dir)) return false;
+    $files = array_diff(scandir($dir), ['.', '..']);
+    foreach ($files as $file) {
+        $path = $dir . '/' . $file;
+        is_dir($path) ? wpilot_delete_directory($path) : @unlink($path);
+    }
+    return @rmdir($dir);
 }
