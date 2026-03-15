@@ -158,6 +158,15 @@ function wpilot_infer_params( $tool, $description ) {
         if (empty($params['site_type'])) $params['site_type'] = 'general';
     }
 
+    // Security fix
+    if ($tool === 'fix_security_issue') {
+        $desc_lower = strtolower($description);
+        if (strpos($desc_lower, 'header') !== false) $params['issue'] = 'add_security_headers';
+        elseif (strpos($desc_lower, 'xml') !== false) $params['issue'] = 'disable_xmlrpc';
+        elseif (strpos($desc_lower, 'readme') !== false) $params['issue'] = 'delete_readme';
+        elseif (strpos($desc_lower, 'registr') !== false) $params['issue'] = 'disable_registration';
+    }
+
     // Redirect
     if ($tool === 'create_redirect') {
         if (preg_match('/from\s+([^\s]+)\s+to\s+([^\s]+)/i', $description, $m)) {

@@ -482,11 +482,27 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_ok("Permalink structure set to: {$structure}");
 
         /* ── Security Scanner ───────────────────────────────── */
+        case 'add_security_headers':
+            return wpilot_fix_security('add_security_headers', $params);
+
+        case 'disable_xmlrpc':
+            return wpilot_fix_security('disable_xmlrpc', $params);
+
         case 'security_scan':
             return wpilot_security_scan();
 
         case 'fix_security_issue':
             $issue = sanitize_text_field($params['issue'] ?? '');
+            // Auto-detect issue from description if not set
+            if (empty($issue)) {
+                $desc = sanitize_text_field($params['description'] ?? '');
+                $desc_lower = strtolower($desc);
+                if (strpos($desc_lower, 'header') !== false) $issue = 'add_security_headers';
+                elseif (strpos($desc_lower, 'xml') !== false || strpos($desc_lower, 'xmlrpc') !== false) $issue = 'disable_xmlrpc';
+                elseif (strpos($desc_lower, 'readme') !== false) $issue = 'delete_readme';
+                elseif (strpos($desc_lower, 'registr') !== false) $issue = 'disable_registration';
+                else $issue = 'add_security_headers'; // default
+            }
             return wpilot_fix_security($issue, $params);
 
         /* ── 404 Page ───────────────────────────────────────── */
