@@ -792,3 +792,24 @@
   }); // end document.ready
 
 })(jQuery);
+
+
+
+/* Global Connect Handler - works even if bubble HTML loads late */
+jQuery(function(jq){
+    jq(document).on('click', '#capConnectBtn', function() {
+        var btn = jq(this), inp = jq('#capApiKeyInput'), st = jq('#capConnectStatus');
+        var key = jq.trim(inp.val());
+        if (!key || !key.startsWith('sk-')) { st.text('Enter a valid Claude API key (starts with sk-)').css('color','#EF4444').show(); return; }
+        btn.text('Connecting...').prop('disabled', true);
+        st.text('Testing connection...').css('color','#5E6E91').show();
+        var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
+        var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
+        jq.post(url, {action:'ca_test_connection', nonce:nc, key:key})
+        .done(function(r) {
+            if (r && r.success) { st.text('Connected! Reloading...').css('color','#10B981'); setTimeout(function(){location.reload()},1000); }
+            else { var m = r && r.data ? (typeof r.data === 'string' ? r.data : r.data.message || 'Failed') : 'Failed'; st.text(m).css('color','#EF4444'); btn.text('Connect & Start').prop('disabled',false); }
+        }).fail(function() { st.text('Network error').css('color','#EF4444'); btn.text('Connect & Start').prop('disabled',false); });
+    });
+    jq(document).on('keydown', '#capApiKeyInput', function(e) { if(e.key==='Enter'){e.preventDefault();jq('#capConnectBtn').click();} });
+});
