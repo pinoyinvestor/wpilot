@@ -994,7 +994,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_generate_full_site($params);
 
         case 'edit_current_page':
-            $id = intval($params['post_id'] ?? 0);
+            $id = intval($params['post_id'] ?? $params['page_id'] ?? $params['id'] ?? 0);
             if (!$id) return wpilot_err('post_id required.');
             $post = get_post($id);
             if (!$post) return wpilot_err("Page #{$id} not found.");

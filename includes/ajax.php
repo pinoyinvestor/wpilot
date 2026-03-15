@@ -12,31 +12,61 @@ function wpilot_user_can_admin() {
 // ── Parse [ACTION:...] cards from AI text ──────────────────────
 function wpilot_parse_actions( $text ) {
     $actions = [];
-    // Format 1: [ACTION: tool | label | description | emoji]
-    // Format 2: [ACTION: tool | label | description | emoji | {"param":"value"}]
-    if ( preg_match_all( '/\[ACTION:\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|\]]+)(?:\|\s*([^\]]+))?\]/', $text, $m, PREG_SET_ORDER ) ) {
-        foreach ( $m as $match ) {
+    $pos = 0;
+    while (($start = strpos($text, '[ACTION:', $pos)) !== false) {
+        $i = $start + 8;
+        $depth = 1;
+        $in_string = false;
+        $len = strlen($text);
+        while ($i < $len && $depth > 0) {
+            $ch = $text[$i];
+            if ($ch === chr(34) && ($i === 0 || $text[$i-1] !== chr(92))) $in_string = !$in_string;
+            if (!$in_string) {
+                if ($ch === chr(91) || $ch === chr(123)) $depth++;
+                if ($ch === chr(93) || $ch === chr(125)) $depth--;
+            }
+            $i++;
+        }
+        $content = substr($text, $start + 8, $i - $start - 9);
+        $parts = [];
+        $current = '';
+        $jd = 0;
+        $is = false;
+        for ($j = 0; $j < strlen($content); $j++) {
+            $c = $content[$j];
+            if ($c === chr(34) && ($j === 0 || $content[$j-1] !== chr(92))) $is = !$is;
+            if (!$is && ($c === chr(123) || $c === chr(91))) $jd++;
+            if (!$is && ($c === chr(125) || $c === chr(93))) $jd--;
+            if ($c === chr(124) && $jd === 0 && !$is) {
+                $parts[] = trim($current);
+                $current = '';
+            } else {
+                $current .= $c;
+            }
+        }
+        $parts[] = trim($current);
+        if (count($parts) >= 4) {
             $params = [];
-            if ( !empty($match[5]) ) {
-                $json = trim($match[5]);
-                $decoded = json_decode($json, true);
+            if (count($parts) >= 5) {
+                $decoded = json_decode(trim($parts[4]), true);
                 if (is_array($decoded)) $params = $decoded;
             }
-            // Auto-detect params from tool name + description
-            if (empty($params)) {
-                $params = wpilot_infer_params(trim($match[1]), trim($match[3]));
+            if (empty($params) && function_exists('wpilot_infer_params')) {
+                $params = wpilot_infer_params(trim($parts[0]), trim($parts[2]));
             }
             $actions[] = [
-                'tool'        => trim( $match[1] ),
-                'label'       => trim( $match[2] ),
-                'description' => trim( $match[3] ),
-                'icon'        => trim( $match[4] ),
+                'tool'        => trim($parts[0]),
+                'label'       => trim($parts[1]),
+                'description' => trim($parts[2]),
+                'icon'        => trim($parts[3]),
                 'params'      => $params,
             ];
         }
+        $pos = $i;
     }
     return $actions;
 }
+
 
 // Auto-infer params from tool name and description when AI doesn't provide explicit JSON
 function wpilot_infer_params( $tool, $description ) {
