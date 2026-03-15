@@ -378,3 +378,28 @@ add_action( 'wp_ajax_ca_test_connection', function () {
 
     wp_send_json_error( $body['error']['message'] ?? 'API error (HTTP ' . $code . ')' );
 } );
+
+// ── Debug endpoint for troubleshooting ────────────────────
+add_action('wp_ajax_wpi_debug', function() {
+    check_ajax_referer('ca_nonce', 'nonce');
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized.');
+    
+    wp_send_json_success([
+        'php_version'     => PHP_VERSION,
+        'wp_version'      => get_bloginfo('version'),
+        'plugin_version'  => defined('CA_VERSION') ? CA_VERSION : 'unknown',
+        'connected'       => wpilot_is_connected(),
+        'api_key_set'     => !empty(get_option('ca_api_key', '')),
+        'has_access'      => wpilot_user_has_access(),
+        'can_use'         => wpilot_can_use(),
+        'is_locked'       => wpilot_is_locked(),
+        'allowed_roles'   => wpilot_allowed_roles(),
+        'user_roles'      => wp_get_current_user()->roles,
+        'prompts_used'    => wpilot_prompts_used(),
+        'license_type'    => wpilot_license_type(),
+        'ca_model'        => defined('CA_MODEL') ? CA_MODEL : 'undefined',
+        'heavy_loaded'    => function_exists('wpilot_call_claude'),
+        'bubble_exists'   => function_exists('wpilot_render_bubble'),
+        'jquery_version'  => wp_scripts()->registered['jquery-core']->ver ?? 'unknown',
+    ]);
+});

@@ -218,6 +218,7 @@ function wpilot_render_bubble() {
 
             <div class="cap-footer">
                 <span>WPilot by <a href="https://weblease.se" target="_blank" rel="noopener">Weblease</a></span>
+                <?php if ($is_admin): ?><span class="cap-footer-dot">&middot;</span><span><a href="#" onclick="wpiDebug();return false" style="color:var(--ca-text3)">debug</a></span><?php endif; ?>
                 <span class="cap-footer-dot">·</span>
                 <span>Powered by <a href="https://anthropic.com" target="_blank" rel="noopener">Claude AI</a></span>
                 <?php
@@ -302,6 +303,62 @@ function wpilot_render_bubble() {
                 btn.textContent='Connect & Start';btn.disabled=false;
             };
             xhr.send('action=ca_test_connection&nonce=' + encodeURIComponent(nonce) + '&key=' + encodeURIComponent(key));
+        };
+
+        // Debug function
+        window.wpiDebug = function() {
+            var st = document.getElementById('capConnectStatus');
+            var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
+            var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
+            var info = 'WPilot Debug:
+';
+            info += 'CA object: ' + (typeof CA !== 'undefined' ? 'exists' : 'MISSING') + '
+';
+            info += 'ajax_url: ' + url + '
+';
+            info += 'nonce: ' + (nc ? nc.substring(0,4) + '...' : 'MISSING') + '
+';
+            info += 'connected: ' + (typeof CA !== 'undefined' ? CA.connected : 'N/A') + '
+';
+            info += 'jQuery: ' + (typeof jQuery !== 'undefined' ? jQuery.fn.jquery : 'MISSING') + '
+';
+            info += 'ajaxurl: ' + (typeof ajaxurl !== 'undefined' ? 'yes' : 'MISSING') + '
+';
+            info += 'capConnectBtn: ' + (document.getElementById('capConnectBtn') ? 'found' : 'MISSING') + '
+';
+            info += 'capApiKeyInput: ' + (document.getElementById('capApiKeyInput') ? 'found' : 'MISSING') + '
+';
+            info += 'bubble.js loaded: ' + (typeof jQuery !== 'undefined' && jQuery('#caRoot').length > 0 ? 'yes' : 'no') + '
+';
+            
+            // Try AJAX debug call
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', url, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onload = function() {
+                try {
+                    var r = JSON.parse(xhr.responseText);
+                    if (r.success) {
+                        info += '
+Server debug:
+';
+                        for (var k in r.data) { info += k + ': ' + JSON.stringify(r.data[k]) + '
+'; }
+                    } else {
+                        info += '
+Server error: ' + JSON.stringify(r.data) + '
+';
+                    }
+                } catch(e) { info += '
+Server response parse error
+'; }
+                alert(info);
+                if (st) { st.textContent = 'Debug info shown in alert'; st.style.display = 'block'; st.style.color = '#5E6E91'; }
+            };
+            xhr.onerror = function() { info += '
+AJAX FAILED - network error
+'; alert(info); };
+            xhr.send('action=wpi_debug&nonce=' + encodeURIComponent(nc));
         };
 
         var lastBackupId = null;
