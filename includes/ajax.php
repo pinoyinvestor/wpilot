@@ -260,6 +260,16 @@ add_action( 'wp_ajax_ca_tool', function () {
     $tool   = sanitize_text_field( wp_unslash( $_POST['tool']   ?? '' ) );
     $params = json_decode( wp_unslash( $_POST['params'] ?? '{}' ), true ) ?: [];
 
+    // If params empty, infer from tool name + description sent by JS
+    if ( empty($params) || (count($params) === 0) ) {
+        $desc = sanitize_text_field( wp_unslash( $_POST["description"] ?? "" ) );
+        $label = sanitize_text_field( wp_unslash( $_POST["label"] ?? "" ) );
+        if ( function_exists("wpilot_infer_params") ) {
+            $inferred = wpilot_infer_params( $tool, $desc ?: $label ?: $tool );
+            if ( !empty($inferred) ) $params = $inferred;
+        }
+    }
+
     // Log backup BEFORE running the tool — so we always have backup_id
     $backup_id = wpilot_backup_log( $tool, $params );
 
