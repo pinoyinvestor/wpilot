@@ -638,3 +638,214 @@ function wpilot_free_site_scan($ctx) {
 What would you like me to help with first?";
     return $r;
 }
+
+
+// ── File upload in chat (Pro/Team/Lifetime only) ───────────
+add_action('wp_ajax_wpi_upload_file', function() {
+    check_ajax_referer('ca_nonce', 'nonce');
+    if ( ! wpilot_user_has_access() && ! current_user_can('manage_options') ) {
+        wp_send_json_error('Unauthorized.', 403);
+    }
+
+    // Pro/Team/Lifetime only
+    if ( ! wpilot_is_licensed() ) {
+        wp_send_json_error('File upload requires a Pro, Team, or Lifetime license.');
+    }
+
+    if ( empty($_FILES['file']) ) {
+        wp_send_json_error('No file uploaded.');
+    }
+
+    $file = $_FILES['file'];
+    $max_size = 10 * 1024 * 1024; // 10MB
+    if ($file['size'] > $max_size) {
+        wp_send_json_error('File too large. Max 10MB.');
+    }
+
+    $allowed_types = [
+        // Images
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        // Documents
+        'text/csv', 'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/pdf',
+        'text/plain',
+        'application/json',
+    ];
+
+    $mime = wp_check_filetype($file['name']);
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+    // Process based on file type
+    $result = [];
+
+    // IMAGES — upload to media library
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+
+        $attachment_id = media_handle_upload('file', 0);
+        if (is_wp_error($attachment_id)) {
+            wp_send_json_error('Upload failed: ' . $attachment_id->get_error_message());
+        }
+
+        $url = wp_get_attachment_url($attachment_id);
+        $meta = wp_get_attachment_metadata($attachment_id);
+
+        $result = [
+            'type' => 'image',
+            'id' => $attachment_id,
+            'url' => $url,
+            'filename' => $file['name'],
+            'width' => $meta['width'] ?? 0,
+            'height' => $meta['height'] ?? 0,
+            'size_kb' => round($file['size'] / 1024),
+            'message' => 'Image uploaded: ' . $file['name'] . ' (' . round($file['size']/1024) . 'KB)',
+        ];
+    }
+
+    // CSV/EXCEL — parse for product import
+    elseif (in_array($ext, ['csv', 'xls', 'xlsx'])) {
+        $csv_data = [];
+        if ($ext === 'csv') {
+            $handle = fopen($file['tmp_name'], 'r');
+            $headers = fgetcsv($handle);
+            $row_count = 0;
+            while (($row = fgetcsv($handle)) !== false && $row_count < 500) {
+                $item = [];
+                foreach ($headers as $i => $h) {
+                    $item[trim(strtolower($h))] = $row[$i] ?? '';
+                }
+                $csv_data[] = $item;
+                $row_count++;
+            }
+            fclose($handle);
+        }
+
+        $result = [
+            'type' => 'csv',
+            'filename' => $file['name'],
+            'rows' => count($csv_data),
+            'columns' => !empty($csv_data) ? array_keys($csv_data[0]) : [],
+            'preview' => array_slice($csv_data, 0, 5),
+            'all_data' => $csv_data,
+            'message' => 'CSV parsed: ' . count($csv_data) . ' rows, columns: ' . implode(', ', !empty($csv_data) ? array_keys($csv_data[0]) : []),
+        ];
+    }
+
+    // PDF/TXT — extract text
+    elseif (in_array($ext, ['pdf', 'txt'])) {
+        $text = '';
+        if ($ext === 'txt') {
+            $text = file_get_contents($file['tmp_name']);
+        } elseif ($ext === 'pdf') {
+            $text = '[PDF file: ' . $file['name'] . ' (' . round($file['size']/1024) . 'KB). PDF text extraction not available — upload as CSV or TXT for data import.]';
+        }
+
+        $result = [
+            'type' => 'text',
+            'filename' => $file['name'],
+            'content' => substr($text, 0, 10000),
+            'size_kb' => round($file['size'] / 1024),
+            'message' => 'File uploaded: ' . $file['name'],
+        ];
+    }
+
+    // JSON
+    elseif ($ext === 'json') {
+        $json = json_decode(file_get_contents($file['tmp_name']), true);
+        $result = [
+            'type' => 'json',
+            'filename' => $file['name'],
+            'data' => $json,
+            'message' => 'JSON parsed: ' . (is_array($json) ? count($json) . ' items' : 'object'),
+        ];
+    }
+
+    else {
+        wp_send_json_error('Unsupported file type: ' . $ext);
+    }
+
+    // Save to chat history
+    $hist = get_option('ca_chat_history', []);
+    $hist[] = ['role' => 'user', 'content' => '[FILE UPLOADED] ' . $result['message'], 'time' => current_time('H:i')];
+    update_option('ca_chat_history', $hist, false);
+
+    wp_send_json_success($result);
+});
+
+// ── Bulk create WooCommerce products from uploaded data ────
+add_action('wp_ajax_wpi_bulk_create_products', function() {
+    check_ajax_referer('ca_nonce', 'nonce');
+    if ( ! wpilot_user_can_modify() ) wp_send_json_error('Unauthorized.', 403);
+    if ( ! wpilot_is_licensed() ) wp_send_json_error('Bulk import requires a license.');
+    if ( ! class_exists('WooCommerce') ) wp_send_json_error('WooCommerce not installed.');
+
+    $products = json_decode(wp_unslash($_POST['products'] ?? '[]'), true);
+    if (empty($products)) wp_send_json_error('No products to create.');
+
+    wpilot_load_heavy();
+
+    $created = 0;
+    $failed = 0;
+    $errors = [];
+
+    foreach (array_slice($products, 0, 100) as $p) {
+        $name = sanitize_text_field($p['name'] ?? $p['title'] ?? $p['product'] ?? '');
+        if (empty($name)) { $failed++; continue; }
+
+        $price = sanitize_text_field($p['price'] ?? $p['pris'] ?? '0');
+        $desc = wp_kses_post($p['description'] ?? $p['beskrivning'] ?? '');
+        $sku = sanitize_text_field($p['sku'] ?? $p['artikelnummer'] ?? '');
+        $stock = isset($p['stock']) || isset($p['lager']) ? intval($p['stock'] ?? $p['lager'] ?? 0) : null;
+        $category = sanitize_text_field($p['category'] ?? $p['kategori'] ?? '');
+        $image_url = esc_url_raw($p['image'] ?? $p['bild'] ?? '');
+
+        $id = wp_insert_post([
+            'post_title' => $name,
+            'post_content' => $desc,
+            'post_status' => 'publish',
+            'post_type' => 'product',
+        ]);
+
+        if (is_wp_error($id)) { $failed++; $errors[] = $name; continue; }
+
+        wp_set_object_terms($id, 'simple', 'product_type');
+        update_post_meta($id, '_regular_price', $price);
+        update_post_meta($id, '_price', $price);
+        update_post_meta($id, '_stock_status', 'instock');
+        if ($sku) update_post_meta($id, '_sku', $sku);
+        if ($stock !== null) {
+            update_post_meta($id, '_manage_stock', 'yes');
+            update_post_meta($id, '_stock', $stock);
+        }
+
+        // Category
+        if ($category) {
+            $term = term_exists($category, 'product_cat');
+            if (!$term) $term = wp_insert_term($category, 'product_cat');
+            if (!is_wp_error($term)) {
+                wp_set_object_terms($id, intval($term['term_id'] ?? $term), 'product_cat');
+            }
+        }
+
+        // Image from URL
+        if ($image_url) {
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+            $img_id = media_sideload_image($image_url, $id, $name, 'id');
+            if (!is_wp_error($img_id)) set_post_thumbnail($id, $img_id);
+        }
+
+        $created++;
+    }
+
+    wp_send_json_success([
+        'created' => $created,
+        'failed' => $failed,
+        'errors' => array_slice($errors, 0, 10),
+        'message' => "Created {$created} products." . ($failed > 0 ? " {$failed} failed." : ''),
+    ]);
+});

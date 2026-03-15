@@ -345,6 +345,61 @@
     }
 
     /* ── Export chat ──────────────────────────────────────────── */
+        /* ── File upload handler (Pro/Team/Lifetime) ──── */
+    $(document).on('change', '#capFileUpload', function() {
+        var file = this.files[0];
+        if (!file) return;
+        this.value = ''; // reset
+
+        appendMsg('user', '📎 Uploading: ' + file.name + ' (' + Math.round(file.size/1024) + 'KB)');
+        scrollBottom();
+
+        var formData = new FormData();
+        formData.append('file', file);
+        formData.append('action', 'wpi_upload_file');
+        formData.append('nonce', CA.nonce);
+
+        $.ajax({
+            url: CA.ajax_url,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(res) {
+                if (res.success) {
+                    var d = res.data;
+                    var msg = '✅ ' + d.message;
+                    if (d.type === 'image') {
+                        msg += '\nImage ready to use (ID: ' + d.id + ')';
+                    }
+                    if (d.type === 'csv' && d.rows > 0) {
+                        msg += '\n\nColumns: ' + d.columns.join(', ');
+                        msg += '\nRows: ' + d.rows;
+                        msg += '\n\nSay "create products from this file" to import them all.';
+                    }
+                    appendMsg('ai', msg);
+                    history.push({role: 'user', content: '[FILE: ' + d.filename + '] ' + d.message});
+                    history.push({role: 'assistant', content: msg});
+
+                    // Store uploaded data for product creation
+                    if (d.type === 'csv' && d.all_data) {
+                        window.wpiUploadedData = d.all_data;
+                    }
+                    if (d.type === 'image') {
+                        window.wpiLastUploadedImage = {id: d.id, url: d.url};
+                    }
+                } else {
+                    appendMsg('ai', '❌ ' + (res.data || 'Upload failed'));
+                }
+                scrollBottom();
+            },
+            error: function() {
+                appendMsg('ai', '❌ Upload failed - network error');
+                scrollBottom();
+            }
+        });
+    });
+
     $(document).on('click','#capExportChat', function(){
       var lines = ['WPilot Chat Export', '========================', ''];
       $msgs.find('.cap-m').each(function(){
