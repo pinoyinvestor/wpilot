@@ -16,9 +16,9 @@ function wpilot_build_context( $scope = 'general' ) {
             $ctx['pages']    = wpilot_ctx_pages();
             $ctx['posts']    = wpilot_ctx_posts();
             $ctx['menus']    = wpilot_ctx_menus();
-            $ctx['images']   = wpilot_ctx_images( 40 );
+            $ctx['images']   = wpilot_ctx_images( 20 );
             $ctx['seo']      = wpilot_ctx_seo_summary();
-            $ctx['css']      = substr( wp_get_custom_css(), 0, 3000 );
+            $ctx['css']      = substr( wp_get_custom_css(), 0, 800 );
             $ctx['performance'] = wpilot_ctx_performance();
             $ctx['plugin_configs'] = function_exists('wpilot_ctx_plugin_configs') ? wpilot_ctx_plugin_configs() : [];
             // If user is on a specific page, include its full content
@@ -51,10 +51,10 @@ function wpilot_build_context( $scope = 'general' ) {
                     $ctx['current_page_content'] = [
                         'id' => $current_id,
                         'title' => $current_post->post_title,
-                        'raw_content' => substr($raw_content, 0, 8000),
+                        'raw_content' => substr($raw_content, 0, 3000),
                         'content_length' => strlen($raw_content),
                         'custom_css' => get_post_meta($current_id, '_ca_custom_css', true) ?: '',
-                        'elementor_css' => substr($el_css, 0, 2000),
+                        'elementor_css' => substr($el_css, 0, 500),
                         'divi_settings' => $divi_settings,
                         'post_meta_keys' => array_keys(get_post_meta($current_id)),
                     ];
@@ -129,9 +129,9 @@ function wpilot_ctx_theme() {
     $custom_css_lines = $custom_css ? substr_count($custom_css, "\n") + 1 : 0;
 
     // Read theme files (truncated for context size)
-    $header_php = file_exists($theme_dir . '/header.php') ? substr(file_get_contents($theme_dir . '/header.php'), 0, 3000) : '';
-    $footer_php = file_exists($theme_dir . '/footer.php') ? substr(file_get_contents($theme_dir . '/footer.php'), 0, 2000) : '';
-    $functions_php = file_exists($theme_dir . '/functions.php') ? substr(file_get_contents($theme_dir . '/functions.php'), 0, 3000) : '';
+    $header_php = file_exists($theme_dir . '/header.php') ? substr(file_get_contents($theme_dir . '/header.php'), 0, 800) : '';
+    $footer_php = file_exists($theme_dir . '/footer.php') ? substr(file_get_contents($theme_dir . '/footer.php'), 0, 500) : '';
+    $functions_php = file_exists($theme_dir . '/functions.php') ? substr(file_get_contents($theme_dir . '/functions.php'), 0, 800) : '';
 
     return [
         'name'           => $t->get( 'Name' ),
@@ -140,7 +140,7 @@ function wpilot_ctx_theme() {
         'parent'         => $t->get( 'Template' ) ?: null,
         'is_child_theme' => $t->get( 'Template' ) ? true : false,
         'supports'       => $supports,
-        'custom_css'     => substr($custom_css, 0, 2000),
+        'custom_css'     => substr($custom_css, 0, 500),
         'header_php'     => $header_php,
         'footer_php'     => $footer_php,
         'functions_php'  => $functions_php,
@@ -270,7 +270,7 @@ function wpilot_ctx_plugins() {
     ];
 }
 
-function wpilot_ctx_pages( $limit = 50 ) {
+function wpilot_ctx_pages( $limit = 20 ) {
     $pages = get_pages( ['number' => $limit, 'sort_column' => 'menu_order'] );
     return array_map( function( $p ) {
         $content = $p->post_content;
@@ -321,7 +321,7 @@ function wpilot_ctx_pages( $limit = 50 ) {
             'status'         => $p->post_status,
             'template'       => get_post_meta($p->ID, '_wp_page_template', true) ?: 'default',
             'content_preview'=> $clean_text,
-            'raw_content'    => substr($content, 0, 3000),
+            'raw_content'    => substr($content, 0, 500),
             'word_count'     => $word_count,
             'has_meta_desc'  => wpilot_has_meta_desc($p->ID),
             'builder'        => $builder_type,
