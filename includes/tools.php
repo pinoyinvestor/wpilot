@@ -1034,6 +1034,18 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             }
             return wpilot_ok("Page #" . $id . " updated.", ["id"=>$id, "url"=>get_permalink($id)]);
 
+        case 'create_html_page':
+            $html = $params['html'] ?? $params['content'] ?? '';
+            $title = $params['title'] ?? 'New Page';
+            if (empty($html)) return wpilot_err('HTML content required.');
+            if (defined('ELEMENTOR_VERSION') && function_exists('wpilot_elementor_create_html_page')) {
+                return wpilot_elementor_create_html_page($params);
+            }
+            // Fallback: create regular page with HTML
+            $id = wp_insert_post(['post_title'=>sanitize_text_field($title),'post_content'=>$html,'post_status'=>'publish','post_type'=>'page']);
+            if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+            return wpilot_ok("Page created (ID: {$id}).", ['page_id'=>$id,'url'=>get_permalink($id)]);
+
         case 'builder_create_page':
         case 'builder_update_section':
         case 'builder_add_widget':

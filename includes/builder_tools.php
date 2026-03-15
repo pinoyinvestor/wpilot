@@ -639,3 +639,72 @@ function wpilot_builder_add_widget( $params, $builder ) {
     wp_update_post(['ID'=>$page_id,'post_content'=>$content]);
     return wpilot_ok("✅ Block added to page #{$page_id}.");
 }
+
+
+// Create Elementor page with full HTML content (professional design)
+function wpilot_elementor_create_html_page($params) {
+    if (!wpilot_elementor_installed()) return wpilot_err('Elementor is not installed.');
+
+    $title = sanitize_text_field($params['title'] ?? $params['page_title'] ?? $params['name'] ?? 'New Page');
+    $html_content = $params['html'] ?? $params['content'] ?? '';
+    $template = sanitize_text_field($params['template'] ?? 'elementor_header_footer');
+
+    if (empty($html_content)) return wpilot_err('HTML content required.');
+
+    $post_id = wp_insert_post([
+        'post_title' => $title,
+        'post_status' => 'publish',
+        'post_type' => 'page',
+        'meta_input' => ['_wp_page_template' => $template],
+    ]);
+
+    if (is_wp_error($post_id)) return wpilot_err($post_id->get_error_message());
+
+    // Mark as Elementor page
+    update_post_meta($post_id, '_elementor_edit_mode', 'builder');
+    update_post_meta($post_id, '_elementor_template_type', 'wp-page');
+    update_post_meta($post_id, '_elementor_version', ELEMENTOR_VERSION);
+
+    // Create one section with one HTML widget containing all the design
+    $widget_id = wpilot_uid();
+    $section_id = wpilot_uid();
+    $column_id = wpilot_uid();
+
+    $elementor_data = [[
+        'id' => $section_id,
+        'elType' => 'section',
+        'settings' => [
+            'layout' => 'full_width',
+            'gap' => 'no',
+            'padding' => ['unit' => 'px', 'top' => '0', 'right' => '0', 'bottom' => '0', 'left' => '0', 'isLinked' => true],
+            'margin' => ['unit' => 'px', 'top' => '0', 'right' => '0', 'bottom' => '0', 'left' => '0', 'isLinked' => true],
+        ],
+        'elements' => [[
+            'id' => $column_id,
+            'elType' => 'column',
+            'settings' => ['_column_size' => 100, 'padding' => ['unit' => 'px', 'top' => '0', 'right' => '0', 'bottom' => '0', 'left' => '0', 'isLinked' => true]],
+            'elements' => [[
+                'id' => $widget_id,
+                'elType' => 'widget',
+                'widgetType' => 'html',
+                'settings' => [
+                    'html' => $html_content,
+                ],
+            ]],
+        ]],
+    ]];
+
+    update_post_meta($post_id, '_elementor_data', wp_slash(wp_json_encode($elementor_data)));
+
+    if (class_exists('\Elementor\Plugin')) {
+        \Elementor\Plugin::$instance->files_manager->clear_cache();
+    }
+
+    $url = get_permalink($post_id);
+    return wpilot_ok("Page \"{$title}\" created (ID: {$post_id}).", [
+        'page_id' => $post_id,
+        'url' => $url,
+        'edit_url' => admin_url("post.php?post={$post_id}&action=elementor"),
+        'builder' => 'elementor',
+    ]);
+}
