@@ -120,7 +120,13 @@ function wpilot_run_tool( $tool, $params = [] ) {
             $css = wp_strip_all_tags( $params['css'] ?? '' );
             wpilot_save_css_snapshot();
             wp_update_custom_css_post( $css );
-            return wpilot_ok('Custom CSS replaced.');
+            // Fallback: inject via mu-plugin for block themes that don't load custom CSS
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            file_put_contents($mu_dir . '/wpilot-custom-css.php', "<?php
+add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</style>'; }, 999);
+");
+            return wpilot_ok('Custom CSS applied.');
 
         case 'append_custom_css':
             $new  = wp_strip_all_tags( $params['css'] ?? '' );
