@@ -132,6 +132,9 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_ok("Featured image set.");
 
         /* ── Image Conversion — WebP ────────────────────────── */
+        case 'compress_images':
+            return wpilot_compress_images($params);
+
         case 'convert_all_images_webp':
             return wpilot_bulk_convert_webp( intval( $params['quality'] ?? 82 ) );
 
@@ -2637,4 +2640,66 @@ function wpilot_minify_assets($p) {
         return wpilot_cache_configure($p);
     }
     return wpilot_ok("Install a cache plugin (LiteSpeed Cache or WP Rocket) for CSS/JS minification. Use cache_configure after installing.");
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  Image Compression — compress images using WordPress image editor
+// ═══════════════════════════════════════════════════════════════
+
+function wpilot_compress_images($p) {
+    $quality = intval($p['quality'] ?? 70);
+    $limit = intval($p['limit'] ?? 50);
+    $min_size = intval($p['min_size_kb'] ?? 100); // only compress images larger than this
+
+    $images = get_posts([
+        'post_type' => 'attachment',
+        'post_mime_type' => 'image',
+        'numberposts' => $limit,
+        'post_status' => 'inherit',
+    ]);
+
+    $compressed = 0;
+    $saved_total = 0;
+    $skipped = 0;
+
+    foreach ($images as $img) {
+        $file = get_attached_file($img->ID);
+        if (!$file || !file_exists($file)) { $skipped++; continue; }
+
+        $size = filesize($file);
+        if ($size < $min_size * 1024) { $skipped++; continue; }
+
+        $editor = wp_get_image_editor($file);
+        if (is_wp_error($editor)) { $skipped++; continue; }
+
+        // Backup original
+        $backup = $file . '.wpilot-compress-backup';
+        if (!file_exists($backup)) copy($file, $backup);
+
+        // Compress
+        $editor->set_quality($quality);
+        $saved = $editor->save($file);
+
+        if (!is_wp_error($saved)) {
+            $new_size = filesize($file);
+            $saved_bytes = $size - $new_size;
+            if ($saved_bytes > 0) {
+                $saved_total += $saved_bytes;
+                $compressed++;
+
+                // Regenerate thumbnails
+                $metadata = wp_generate_attachment_metadata($img->ID, $file);
+                wp_update_attachment_metadata($img->ID, $metadata);
+            }
+        }
+    }
+
+    $saved_kb = round($saved_total / 1024);
+    $saved_mb = round($saved_total / 1048576, 1);
+
+    return wpilot_ok(
+        "Compressed {$compressed} images — saved {$saved_kb}KB ({$saved_mb}MB). Skipped {$skipped} (already small or unsupported).",
+        ['compressed' => $compressed, 'saved_bytes' => $saved_total, 'skipped' => $skipped]
+    );
 }

@@ -107,7 +107,7 @@ function wpilot_system_prompt( $mode = 'chat' ) {
         'update_meta_desc', 'update_seo_title', 'update_focus_keyword',
         'update_custom_css', 'append_custom_css',
         'update_image_alt', 'bulk_fix_alt_text', 'set_featured_image',
-        'convert_all_images_webp', 'convert_image_webp',
+        'convert_all_images_webp', 'compress_images', 'convert_image_webp',
         'create_coupon', 'woo_create_product', 'woo_update_product', 'woo_set_sale', 'woo_remove_sale',
         'woo_dashboard', 'woo_recent_orders', 'woo_best_sellers',
         'update_product_price', 'update_product_desc', 'create_product_category',
