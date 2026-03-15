@@ -720,7 +720,7 @@ function wpilot_plugin_update_option( $p ) {
 // ══════════════════════════════════════════════════════════════
 
 function wpilot_plugin_install( $p ) {
-    $slug = sanitize_text_field($p['slug'] ?? '');
+    $slug = sanitize_text_field($p['slug'] ?? $p['plugin'] ?? $p['name'] ?? '');
     if ( !$slug ) return wpilot_err('Plugin slug required. E.g. "amelia", "woocommerce", "learndash".');
     require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
     require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';

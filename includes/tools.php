@@ -405,7 +405,15 @@ function wpilot_run_tool( $tool, $params = [] ) {
         // woo_create_product handled by plugin_tools.php (more complete version)
 
         case 'woo_update_product':
-            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            if (!class_exists('WooCommerce')) {
+                // Auto-install WooCommerce if not present
+                if (function_exists('wpilot_plugin_install')) {
+                    wpilot_plugin_install(['slug'=>'woocommerce']);
+                    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce installation failed. Install it manually first.');
+                } else {
+                    return wpilot_err('WooCommerce required. Install it first.');
+                }
+            }
             $pid = intval($params['product_id'] ?? 0);
             if (!$pid) return wpilot_err('product_id required.');
             wpilot_save_post_snapshot($pid);
