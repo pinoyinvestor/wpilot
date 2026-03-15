@@ -849,3 +849,40 @@ add_action('wp_ajax_wpi_bulk_create_products', function() {
         'message' => "Created {$created} products." . ($failed > 0 ? " {$failed} failed." : ''),
     ]);
 });
+
+
+// ── User Feedback ──────────────────────────────────────────
+add_action('wp_ajax_wpi_send_feedback', function() {
+    check_ajax_referer('ca_nonce', 'nonce');
+    if ( ! wpilot_user_has_access() && ! current_user_can('manage_options') ) {
+        wp_send_json_error('Unauthorized.', 403);
+    }
+
+    $message = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
+    $type = sanitize_text_field($_POST['type'] ?? 'feedback');
+    if (empty($message)) wp_send_json_error('Message required.');
+
+    $feedback = get_option('wpi_feedback', []);
+    $feedback[] = [
+        'message' => $message,
+        'type' => $type,
+        'email' => wp_get_current_user()->user_email,
+        'site' => get_site_url(),
+        'date' => current_time('mysql'),
+        'version' => defined('CA_VERSION') ? CA_VERSION : '?',
+    ];
+    if (count($feedback) > 200) $feedback = array_slice($feedback, -200);
+    update_option('wpi_feedback', $feedback, false);
+
+    wp_remote_post('https://weblease.se/api/plugin/feedback', [
+        'timeout' => 5,
+        'body' => wp_json_encode([
+            'message' => $message, 'type' => $type,
+            'email' => wp_get_current_user()->user_email,
+            'site' => get_site_url(), 'version' => defined('CA_VERSION') ? CA_VERSION : '?',
+        ]),
+        'headers' => ['Content-Type' => 'application/json'],
+    ]);
+
+    wp_send_json_success('Feedback sent. Thank you!');
+});

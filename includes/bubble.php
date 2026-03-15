@@ -231,6 +231,7 @@ function wpilot_render_bubble() {
                 
                 <span class="cap-footer-dot">·</span>
                 <span>Powered by <a href="https://anthropic.com" target="_blank" rel="noopener">Claude AI</a></span>
+                <span class="cap-footer-dot">&middot;</span><span><a href="#" onclick="wpiShowFeedback();return false" style="color:var(--ca-text3)">Feedback</a></span>
                 <?php
                 $slots_msg = '';
                 if (!wpilot_is_licensed()) {
@@ -460,6 +461,79 @@ function wpilot_render_bubble() {
             var el = document.getElementById('capTyping');
             if (el) el.style.display = 'none';
             if (window._wpiThinkTimer) { clearInterval(window._wpiThinkTimer); window._wpiThinkTimer = null; }
+        };
+
+        // Feedback form
+        window.wpiShowFeedback = function() {
+            var msgs = document.getElementById('capMsgs');
+            if (!msgs) return;
+            var existing = document.getElementById('wpiFeedbackForm');
+            if (existing) { existing.remove(); return; }
+            var fbType = 'feedback';
+            var form = document.createElement('div');
+            form.id = 'wpiFeedbackForm';
+            form.style.cssText = 'padding:14px;background:var(--ca-bg3,#0B0E18);border:1px solid var(--ca-border2,#1a1a2e);border-radius:12px;margin:8px 0';
+
+            var title = document.createElement('div');
+            title.textContent = 'Send Feedback';
+            title.style.cssText = 'font-size:13px;font-weight:700;margin-bottom:8px;color:var(--ca-text,#fff)';
+            form.appendChild(title);
+
+            var types = document.createElement('div');
+            types.style.cssText = 'display:flex;gap:6px;margin-bottom:8px';
+            ['Feedback','Bug','Feature'].forEach(function(t) {
+                var btn = document.createElement('button');
+                btn.textContent = t;
+                btn.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid var(--ca-border2,#333);background:var(--ca-bg4,#111);color:var(--ca-text2,#888);font-size:11px;cursor:pointer';
+                btn.onclick = function() {
+                    fbType = t.toLowerCase();
+                    types.querySelectorAll('button').forEach(function(b){b.style.background='var(--ca-bg4,#111)';b.style.color='var(--ca-text2,#888)';});
+                    btn.style.background='#4F7EFF';btn.style.color='#fff';
+                };
+                types.appendChild(btn);
+            });
+            form.appendChild(types);
+
+            var textarea = document.createElement('textarea');
+            textarea.id = 'wpiFbMsg';
+            textarea.placeholder = 'Tell us what you think...';
+            textarea.style.cssText = 'width:100%;height:60px;padding:8px;background:var(--ca-bg,#050608);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text,#fff);font-size:12px;resize:none;font-family:inherit;box-sizing:border-box';
+            form.appendChild(textarea);
+
+            var btns = document.createElement('div');
+            btns.style.cssText = 'display:flex;gap:6px;margin-top:8px';
+            var sendBtn = document.createElement('button');
+            sendBtn.textContent = 'Send';
+            sendBtn.style.cssText = 'padding:6px 14px;background:#4F7EFF;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer';
+            sendBtn.onclick = function() {
+                var msg = document.getElementById('wpiFbMsg');
+                if (!msg || !msg.value.trim()) return;
+                sendBtn.textContent = 'Sending...';
+                sendBtn.disabled = true;
+                var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : '/wp-admin/admin-ajax.php';
+                var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
+                var x = new XMLHttpRequest();
+                x.open('POST', url, true);
+                x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                x.onload = function() {
+                    try {
+                        var r = JSON.parse(x.responseText);
+                        if (r.success) { sendBtn.textContent = 'Thank you!'; sendBtn.style.background='#10B981'; setTimeout(function(){form.remove()},1500); }
+                        else { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+                    } catch(e) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+                };
+                x.send('action=wpi_send_feedback&nonce='+encodeURIComponent(nc)+'&message='+encodeURIComponent(msg.value.trim())+'&type='+encodeURIComponent(fbType));
+            };
+            btns.appendChild(sendBtn);
+            var cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = 'padding:6px 14px;background:transparent;color:var(--ca-text3,#555);border:1px solid var(--ca-border2,#333);border-radius:6px;font-size:12px;cursor:pointer';
+            cancelBtn.onclick = function() { form.remove(); };
+            btns.appendChild(cancelBtn);
+            form.appendChild(btns);
+
+            msgs.appendChild(form);
+            msgs.scrollTop = msgs.scrollHeight;
         };
 
         var lastBackupId = null;
