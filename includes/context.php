@@ -321,6 +321,7 @@ function wpilot_ctx_pages( $limit = 50 ) {
             'status'         => $p->post_status,
             'template'       => get_post_meta($p->ID, '_wp_page_template', true) ?: 'default',
             'content_preview'=> $clean_text,
+            'raw_content'    => substr($content, 0, 3000),
             'word_count'     => $word_count,
             'has_meta_desc'  => wpilot_has_meta_desc($p->ID),
             'builder'        => $builder_type,
