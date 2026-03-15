@@ -200,7 +200,8 @@ add_action( 'wp_ajax_ca_chat', function () {
     // Capture page-specific context from the bubble (which page the user is on)
     $page_context = $context;
     // Build fresh site context (pages, plugins, SEO, media)
-    $context = wpilot_build_context( $mode === 'chat' ? 'general' : $mode );
+    // Always send full context so AI sees EVERYTHING (SEO, images, performance, plugins, CSS)
+    $context = wpilot_build_context( 'full' );
     // Merge in the current page info from the bubble so AI knows WHERE the user is
     if ( !empty($page_context['post_id']) ) $context['current_page_id'] = intval($page_context['post_id']);
     if ( !empty($page_context['url']) )     $context['current_url'] = sanitize_url($page_context['url']);
