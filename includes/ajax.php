@@ -62,6 +62,14 @@ function wpilot_infer_params( $tool, $description ) {
             'elementor' => 'elementor', 'polylang' => 'polylang',
             'woocommerce' => 'woocommerce', 'amelia' => 'ameliabooking',
             'hello dolly' => 'hello-dolly',
+            'contact form 7' => 'contact-form-7', 'contact form' => 'contact-form-7',
+            'smush' => 'wp-smushit', 'shortpixel' => 'shortpixel-image-optimiser',
+            'autoptimize' => 'autoptimize', 'jetpack' => 'jetpack',
+            'akismet' => 'akismet', 'site kit' => 'google-site-kit',
+            'classic editor' => 'classic-editor', 'duplicate post' => 'duplicate-post',
+            'redirection' => 'redirection', 'really simple ssl' => 'really-simple-ssl',
+            'all in one seo' => 'all-in-one-seo-pack', 'sucuri' => 'sucuri-scanner',
+            'mailpoet' => 'mailpoet', 'newsletter' => 'developer',
         ];
         $desc_lower = strtolower($description);
         foreach ($known_slugs as $name => $slug) {

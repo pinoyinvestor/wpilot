@@ -53,13 +53,38 @@ function wpilot_run_tool( $tool, $params = [] ) {
             $menu_id = intval( $params['menu_id'] ?? 0 );
             $title   = sanitize_text_field( $params['title'] ?? '' );
             $url     = esc_url_raw( $params['url'] ?? '#' );
-            if ( !$menu_id ) return wpilot_err('menu_id required.');
-            $item_id = wp_update_nav_menu_item( $menu_id, 0, [
+            $page_id = intval( $params['page_id'] ?? 0 );
+            // Auto-find primary menu if not specified
+            if ( !$menu_id ) {
+                $locations = get_nav_menu_locations();
+                foreach (['primary','main-menu','header-menu','main','header','top'] as $loc) {
+                    if (!empty($locations[$loc])) { $menu_id = $locations[$loc]; break; }
+                }
+                // If still no menu, get any menu
+                if (!$menu_id) {
+                    $menus = wp_get_nav_menus();
+                    if (!empty($menus)) $menu_id = $menus[0]->term_id;
+                }
+                // If still no menu, create one
+                if (!$menu_id) {
+                    $menu_id = wp_create_nav_menu(get_bloginfo('name') . ' Menu');
+                    if (is_wp_error($menu_id)) return wpilot_err('Could not create menu.');
+                }
+            }
+            $menu_args = [
                 'menu-item-title'  => $title,
-                'menu-item-url'    => $url,
                 'menu-item-status' => 'publish',
-                'menu-item-type'   => 'custom',
-            ]);
+            ];
+            if ($page_id) {
+                $menu_args['menu-item-object'] = 'page';
+                $menu_args['menu-item-object-id'] = $page_id;
+                $menu_args['menu-item-type'] = 'post_type';
+                if (!$title) $menu_args['menu-item-title'] = get_the_title($page_id);
+            } else {
+                $menu_args['menu-item-url'] = $url;
+                $menu_args['menu-item-type'] = 'custom';
+            }
+            $item_id = wp_update_nav_menu_item( $menu_id, 0, $menu_args );
             if ( is_wp_error($item_id) ) return wpilot_err( $item_id->get_error_message() );
             return wpilot_ok( "Menu item \"{$title}\" added." );
 
@@ -212,7 +237,24 @@ function wpilot_run_tool( $tool, $params = [] ) {
                     if ($name && stripos($d['Name'], $name) !== false) { $file = $f; break; }
                 }
             }
-            if (!$file) return wpilot_err('Could not find the plugin.');
+            if (!$file) {
+                // Plugin not installed — try to install it first
+                $search_name = $name ?: $slug ?: '';
+                if ($search_name && function_exists('wpilot_infer_params')) {
+                    $install_params = wpilot_infer_params('plugin_install', 'Install ' . $search_name);
+                    if (!empty($install_params['slug'])) {
+                        wpilot_load_heavy();
+                        $install_result = wpilot_safe_run_tool('plugin_install', $install_params);
+                        if ($install_result['success']) {
+                            // Now try to find and activate
+                            foreach (get_plugins() as $f => $d) {
+                                if (stripos($d['Name'], $search_name) !== false) { $file = $f; break; }
+                            }
+                        }
+                    }
+                }
+                if (!$file) return wpilot_err('Plugin not found. Try: [ACTION: plugin_install | Install ' . ($name ?: $slug) . ' | Install the plugin first | 🔌]');
+            }
             if (is_plugin_active($file)) return wpilot_ok("Plugin is already active.");
             $result = activate_plugin($file);
             if (is_wp_error($result)) return wpilot_err("Could not activate: " . $result->get_error_message());
@@ -251,7 +293,24 @@ function wpilot_run_tool( $tool, $params = [] ) {
                     if ($name && stripos($d['Name'], $name) !== false) { $file = $f; break; }
                 }
             }
-            if (!$file) return wpilot_err('Could not find the plugin.');
+            if (!$file) {
+                // Plugin not installed — try to install it first
+                $search_name = $name ?: $slug ?: '';
+                if ($search_name && function_exists('wpilot_infer_params')) {
+                    $install_params = wpilot_infer_params('plugin_install', 'Install ' . $search_name);
+                    if (!empty($install_params['slug'])) {
+                        wpilot_load_heavy();
+                        $install_result = wpilot_safe_run_tool('plugin_install', $install_params);
+                        if ($install_result['success']) {
+                            // Now try to find and activate
+                            foreach (get_plugins() as $f => $d) {
+                                if (stripos($d['Name'], $search_name) !== false) { $file = $f; break; }
+                            }
+                        }
+                    }
+                }
+                if (!$file) return wpilot_err('Plugin not found. Try: [ACTION: plugin_install | Install ' . ($name ?: $slug) . ' | Install the plugin first | 🔌]');
+            }
             if (!function_exists('delete_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
             // Deactivate first
             if (is_plugin_active($file)) deactivate_plugins($file);
