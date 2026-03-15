@@ -270,7 +270,7 @@
 
 /* ── Chat messages ───────────────────────────────────────────── */
 .cap-m { display: flex; gap: 8px; align-items: flex-start; max-width: 100%; }
-.cap-m-user { flex-direction: row-reverse; }
+.cap-m-user { flex-direction: row-reverse; justify-content: flex-end; }
 
 .cap-mt {
   padding: 9px 12px;
@@ -280,12 +280,13 @@
   min-width: 0;
 }
 .cap-m-user .cap-mt {
-  background: var(--ca-grad);
-  color: #fff;
+  background: linear-gradient(135deg, #5B7FFF 0%, #7C5CFC 100%) !important;
+  color: #ffffff !important;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(91,127,255,.2);
+  box-shadow: 0 2px 8px rgba(91,127,255,.3);
   max-width: 85%;
-  padding: 8px 14px;
+  padding: 10px 14px;
+  font-size: 13px;
 }
 .cap-m-ai .cap-mt {
   background: var(--ca-bg3);
@@ -369,7 +370,7 @@
 .cap-input-row { display: flex; gap: 7px; align-items: flex-end; }
 
 #capIn {
-  flex: 1; background: var(--ca-bg3);
+  flex: 1; background: var(--ca-bg3); color: #F1F5FF !important;
   border: 1px solid var(--ca-border2);
   border-radius: 10px; padding: 9px 12px;
   color: var(--ca-text); font-family: var(--ca-font);
@@ -740,7 +741,7 @@
 .cap-m-ai .cap-mt { min-width: 0; overflow-wrap: anywhere; }
 
 /* User messages */  
-.cap-m-user .cap-mt { max-width: 80%; }
+
 
 /* Action card - prevent overflow */
 .cap-ac { max-width: 100%; overflow: hidden; box-sizing: border-box; }
