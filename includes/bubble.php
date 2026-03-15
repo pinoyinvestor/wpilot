@@ -323,14 +323,15 @@ function wpilot_render_bubble() {
 
             // Thinking state with timer
             var startTime = Date.now();
-            btn.textContent = '\u23f3 Thinking... 0s';
+            btn.textContent = '\u23f3 Thinking...';
             btn.disabled = true;
             btn.style.cssText = 'padding:5px 11px;background:rgba(91,127,255,.15);color:#93B4FF;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:wait;opacity:0.7;pointer-events:none';
             if (skipBtn) skipBtn.style.display = 'none';
+            var thinkSecs = 0;
             var thinkInterval = setInterval(function() {
-                var secs = Math.floor((Date.now() - startTime) / 1000);
-                var label = secs < 5 ? 'Thinking...' : secs < 15 ? 'Working...' : 'Almost done...';
-                btn.textContent = '\u23f3 ' + label + ' ' + secs + 's';
+                thinkSecs++;
+                var label = thinkSecs < 5 ? 'Thinking' : thinkSecs < 15 ? 'Working' : 'Almost done';
+                btn.textContent = '\u23f3 ' + label + '... ' + thinkSecs + 's';
             }, 1000);
 
             var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
@@ -344,8 +345,10 @@ function wpilot_render_bubble() {
                     var r = JSON.parse(x.responseText);
                     if (r && r.success) {
                         clearInterval(thinkInterval);
-                        btn.textContent = '\u2705 Applied';
-                        btn.style.cssText = 'padding:5px 11px;background:#10B981;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:default;opacity:1';
+                        btn.textContent = '\u2705 Done';
+                        btn.disabled = true;
+                        btn.onclick = null;
+                        btn.style.cssText = 'padding:5px 11px;background:#10B981;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:default;opacity:1;pointer-events:none';
                         if (card) card.style.borderLeftColor = '#10B981';
                         var msg = r.data && r.data.message ? r.data.message : 'Done';
                         var bid = r.data && r.data.backup_id ? r.data.backup_id : null;
@@ -431,6 +434,33 @@ function wpilot_render_bubble() {
             x.send('action=ca_restore_backup&nonce=' + encodeURIComponent(nc) + '&backup_id=' + backupId);
         };
 
+
+        // Chat thinking indicator - works independently of bubble.js
+        window.wpiShowThinking = function() {
+            var el = document.getElementById('capTyping');
+            if (el) {
+                el.style.display = 'block';
+                var txt = document.getElementById('capThinkText');
+                var tmr = document.getElementById('capThinkTimer');
+                if (txt) txt.textContent = 'Thinking...';
+                if (tmr) tmr.textContent = '0s';
+                var start = Date.now();
+                window._wpiThinkTimer = setInterval(function() {
+                    var s = Math.floor((Date.now() - start) / 1000);
+                    if (tmr) tmr.textContent = s + 's';
+                    if (txt && s > 5) txt.textContent = 'Working...';
+                    if (txt && s > 15) txt.textContent = 'Almost done...';
+                }, 1000);
+                // Scroll to it
+                var msgs = document.getElementById('capMsgs');
+                if (msgs) msgs.scrollTop = msgs.scrollHeight + 9999;
+            }
+        };
+        window.wpiHideThinking = function() {
+            var el = document.getElementById('capTyping');
+            if (el) el.style.display = 'none';
+            if (window._wpiThinkTimer) { clearInterval(window._wpiThinkTimer); window._wpiThinkTimer = null; }
+        };
 
         var lastBackupId = null;
 
