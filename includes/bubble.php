@@ -309,12 +309,94 @@ function wpilot_render_bubble() {
         // Apply tool - inline so it works without bubble.js event delegation
         window.wpiApply = function(btn) {
             if (btn.disabled) return;
-            var tool = btn.getAttribute('data-tool');
+            var tool = btn.getAttribute('data-tool') || '';
             var params = {};
             try { params = JSON.parse(btn.getAttribute('data-params') || '{}'); } catch(e) {}
-            btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⏳</span> Working...';
+            var lbl = btn.getAttribute('data-label') || '';
+            var dsc = btn.getAttribute('data-desc') || '';
+            var card = btn.closest('.cap-ac');
+            var skipBtn = card ? card.querySelector('.cap-ac-skip') : null;
+
+            // Working state
+            btn.textContent = '\u23f3 Working...';
             btn.disabled = true;
-            btn.style.opacity = '0.8';
+            btn.style.cssText = 'padding:5px 11px;background:rgba(91,127,255,.15);color:#93B4FF;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:wait;opacity:0.7;pointer-events:none';
+            if (skipBtn) skipBtn.style.display = 'none';
+
+            var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
+            var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
+
+            var x = new XMLHttpRequest();
+            x.open('POST', url, true);
+            x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            x.onload = function() {
+                try {
+                    var r = JSON.parse(x.responseText);
+                    if (r && r.success) {
+                        btn.textContent = '\u2705 Applied';
+                        btn.style.cssText = 'padding:5px 11px;background:#10B981;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:default;opacity:1';
+                        if (card) card.style.borderLeftColor = '#10B981';
+                        var msg = r.data && r.data.message ? r.data.message : 'Done';
+                        var bid = r.data && r.data.backup_id ? r.data.backup_id : null;
+                        if (card) {
+                            var wrap = document.createElement('div');
+                            wrap.style.cssText = 'margin-top:10px;padding:10px 12px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:8px';
+                            var msgDiv = document.createElement('div');
+                            msgDiv.style.cssText = 'font-size:12px;color:#6EE7B7;line-height:1.5';
+                            msgDiv.textContent = '\u2705 ' + msg;
+                            wrap.appendChild(msgDiv);
+                            if (bid) {
+                                var btnsDiv = document.createElement('div');
+                                btnsDiv.style.cssText = 'display:flex;gap:6px;margin-top:8px;flex-wrap:wrap';
+                                var undoBtn = document.createElement('button');
+                                undoBtn.textContent = '\u21a9\ufe0f Undo';
+                                undoBtn.style.cssText = 'padding:5px 10px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);border-radius:6px;color:#FCD34D;font-size:11px;font-weight:600;cursor:pointer';
+                                undoBtn.onclick = function() { wpiUndo(bid, undoBtn); };
+                                btnsDiv.appendChild(undoBtn);
+                                var refBtn = document.createElement('button');
+                                refBtn.textContent = '\ud83d\udd04 Refresh';
+                                refBtn.style.cssText = 'padding:5px 10px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:6px;color:#6EE7B7;font-size:11px;font-weight:600;cursor:pointer';
+                                refBtn.onclick = function() { location.reload(); };
+                                btnsDiv.appendChild(refBtn);
+                                wrap.appendChild(btnsDiv);
+                            }
+                            card.appendChild(wrap);
+                        }
+                        if (typeof window.wpiAddToHistory === 'function') {
+                            window.wpiAddToHistory('assistant', '[TOOL EXECUTED] ' + tool + ': ' + msg);
+                        }
+                    } else {
+                        var errMsg = r && r.data ? (typeof r.data === 'string' ? r.data : r.data.message || 'Error') : 'Error';
+                        btn.textContent = '\u274c Retry';
+                        btn.style.cssText = 'padding:5px 11px;background:#EF4444;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;opacity:1';
+                        btn.disabled = false;
+                        if (card) {
+                            card.style.borderLeftColor = '#EF4444';
+                            var errDiv = document.createElement('div');
+                            errDiv.style.cssText = 'margin-top:10px;padding:10px 12px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:8px;font-size:12px;color:#FCA5A5;line-height:1.5';
+                            errDiv.textContent = '\u26a0\ufe0f ' + errMsg;
+                            card.appendChild(errDiv);
+                        }
+                        if (typeof window.wpiAddToHistory === 'function') {
+                            window.wpiAddToHistory('assistant', '[TOOL FAILED] ' + tool + ': ' + errMsg);
+                        }
+                    }
+                } catch(e) {
+                    btn.textContent = '\u274c Error';
+                    btn.style.cssText = 'padding:5px 11px;background:#EF4444;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;opacity:1';
+                    btn.disabled = false;
+                }
+            };
+            x.onerror = function() {
+                btn.textContent = '\u274c Network error';
+                btn.style.cssText = 'padding:5px 11px;background:#EF4444;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;opacity:1';
+                btn.disabled = false;
+            };
+            x.send('action=ca_tool&nonce=' + encodeURIComponent(nc) + '&tool=' + encodeURIComponent(tool) + '&params=' + encodeURIComponent(JSON.stringify(params)) + '&label=' + encodeURIComponent(lbl) + '&description=' + encodeURIComponent(dsc));
+        };
+
+        window.wpiUndo = function(backupId, btn) {
+            if (btn) { btn.textContent = 'Restoring...'; btn.disabled = true; }
             var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
             var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
             var x = new XMLHttpRequest();
@@ -324,55 +406,17 @@ function wpilot_render_bubble() {
                 try {
                     var r = JSON.parse(x.responseText);
                     if (r && r.success) {
-                        btn.textContent = '✅ Done!';
-                        btn.style.background = '#10B981';
-                        btn.style.opacity = '1';
-                        var card = btn.closest('.cap-ac');
-                        if (card) {
-                            var msg = r.data && r.data.message ? r.data.message : 'Done';
-                            var html = '<div style="margin-top:8px;padding:8px 12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:8px;font-size:12px;color:#6EE7B7">✅ ' + msg + '</div>';
-                            if (r.data && r.data.backup_id) {
-                                html += '<button onclick="wpiUndo(' + r.data.backup_id + ')" style="margin-top:6px;padding:6px 12px;background:rgba(91,127,255,.12);border:1px solid rgba(91,127,255,.3);border-radius:7px;color:#93B4FF;font-size:12px;font-weight:700;cursor:pointer">↩️ Undo</button>';
-                            }
-                            card.insertAdjacentHTML('beforeend', html);
-                        }
+                        if (btn) { btn.textContent = '\u2705 Restored'; btn.style.color = '#10B981'; }
+                        setTimeout(function() { location.reload(); }, 1000);
                     } else {
-                        btn.textContent = '❌ Failed';
-                        btn.style.background = '#EF4444';
-                        btn.style.opacity = '1';
-                        var errMsg = r && r.data ? (typeof r.data === 'string' ? r.data : r.data.message || 'Error') : 'Error';
-                        var card2 = btn.closest('.cap-ac');
-                        if (card2) card2.insertAdjacentHTML('beforeend', '<div style="margin-top:8px;padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:12px;color:#FCA5A5">⚠️ ' + errMsg + '</div>');
+                        if (btn) { btn.textContent = '\u274c Could not restore'; btn.disabled = false; }
                     }
-                } catch(e) {
-                    btn.textContent = '❌ Error';
-                    btn.style.background = '#EF4444';
-                }
+                } catch(e) { if (btn) { btn.textContent = '\u274c Error'; btn.disabled = false; } }
             };
-            x.onerror = function() {
-                btn.textContent = '❌ Network error';
-                btn.style.background = '#EF4444';
-                btn.disabled = false;
-            };
-            var lbl = btn.getAttribute('data-label') || ''; var dsc = btn.getAttribute('data-desc') || ''; x.send('action=ca_tool&nonce=' + encodeURIComponent(nc) + '&tool=' + encodeURIComponent(tool) + '&params=' + encodeURIComponent(JSON.stringify(params)) + '&label=' + encodeURIComponent(lbl) + '&description=' + encodeURIComponent(dsc));
-        };
-
-        // Undo from inline button
-        window.wpiUndo = function(backupId) {
-            var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
-            var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
-            var x = new XMLHttpRequest();
-            x.open('POST', url, true);
-            x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            x.onload = function() {
-                try {
-                    var r = JSON.parse(x.responseText);
-                    if (r && r.success) alert('Restored! Refresh to see changes.');
-                    else alert('Could not restore.');
-                } catch(e) { alert('Error'); }
-            };
+            x.onerror = function() { if (btn) { btn.textContent = '\u274c Network error'; btn.disabled = false; } };
             x.send('action=ca_restore_backup&nonce=' + encodeURIComponent(nc) + '&backup_id=' + backupId);
         };
+
 
         var lastBackupId = null;
 
