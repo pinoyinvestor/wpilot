@@ -20,18 +20,43 @@ function wpilot_build_context( $scope = 'general' ) {
             $ctx['seo']      = wpilot_ctx_seo_summary();
             $ctx['css']      = substr( wp_get_custom_css(), 0, 3000 );
             $ctx['performance'] = wpilot_ctx_performance();
+            $ctx['plugin_configs'] = function_exists('wpilot_ctx_plugin_configs') ? wpilot_ctx_plugin_configs() : [];
             // If user is on a specific page, include its full content
             $current_pid = isset($_POST['context']) ? json_decode(wp_unslash($_POST['context']), true) : [];
             $current_id = intval($current_pid['post_id'] ?? 0);
             if ($current_id > 0) {
                 $current_post = get_post($current_id);
                 if ($current_post) {
+                    $raw_content = $current_post->post_content;
+
+                    // For Elementor pages, get the rendered CSS too
+                    $el_css = '';
+                    if (get_post_meta($current_id, '_elementor_edit_mode', true) === 'builder') {
+                        $el_css = get_post_meta($current_id, '_elementor_css', true) ?: '';
+                        if (is_array($el_css)) $el_css = '';
+                    }
+
+                    // For Divi pages, extract module settings
+                    $divi_settings = [];
+                    if (strpos($raw_content, '[et_pb_') !== false) {
+                        // Extract key Divi settings like colors, fonts from shortcode attrs
+                        if (preg_match_all('/background_color="([^"]+)"/', $raw_content, $bg_m)) {
+                            $divi_settings['background_colors'] = array_unique($bg_m[1]);
+                        }
+                        if (preg_match_all('/text_font_size="([^"]+)"/', $raw_content, $fs_m)) {
+                            $divi_settings['font_sizes'] = array_unique($fs_m[1]);
+                        }
+                    }
+
                     $ctx['current_page_content'] = [
                         'id' => $current_id,
                         'title' => $current_post->post_title,
-                        'content' => substr($current_post->post_content, 0, 5000),
-                        'content_length' => strlen($current_post->post_content),
-                        'custom_css_for_page' => get_post_meta($current_id, '_ca_custom_css', true) ?: '',
+                        'raw_content' => substr($raw_content, 0, 8000),
+                        'content_length' => strlen($raw_content),
+                        'custom_css' => get_post_meta($current_id, '_ca_custom_css', true) ?: '',
+                        'elementor_css' => substr($el_css, 0, 2000),
+                        'divi_settings' => $divi_settings,
+                        'post_meta_keys' => array_keys(get_post_meta($current_id)),
                     ];
                 }
             }
@@ -103,6 +128,11 @@ function wpilot_ctx_theme() {
     $custom_css = wp_get_custom_css();
     $custom_css_lines = $custom_css ? substr_count($custom_css, "\n") + 1 : 0;
 
+    // Read theme files (truncated for context size)
+    $header_php = file_exists($theme_dir . '/header.php') ? substr(file_get_contents($theme_dir . '/header.php'), 0, 3000) : '';
+    $footer_php = file_exists($theme_dir . '/footer.php') ? substr(file_get_contents($theme_dir . '/footer.php'), 0, 2000) : '';
+    $functions_php = file_exists($theme_dir . '/functions.php') ? substr(file_get_contents($theme_dir . '/functions.php'), 0, 3000) : '';
+
     return [
         'name'           => $t->get( 'Name' ),
         'version'        => $t->get( 'Version' ),
@@ -110,11 +140,10 @@ function wpilot_ctx_theme() {
         'parent'         => $t->get( 'Template' ) ?: null,
         'is_child_theme' => $t->get( 'Template' ) ? true : false,
         'supports'       => $supports,
-        'custom_css_lines' => $custom_css_lines,
-        'custom_css_bytes' => strlen($custom_css),
-        'has_header_php' => file_exists($theme_dir . '/header.php'),
-        'has_footer_php' => file_exists($theme_dir . '/footer.php'),
-        'has_functions'  => file_exists($theme_dir . '/functions.php'),
+        'custom_css'     => substr($custom_css, 0, 2000),
+        'header_php'     => $header_php,
+        'footer_php'     => $footer_php,
+        'functions_php'  => $functions_php,
     ];
 }
 
@@ -266,12 +295,22 @@ function wpilot_ctx_pages( $limit = 50 ) {
             }
         }
 
-        // Divi-specific: detect modules
+        // Builder-specific data
         $divi_modules = [];
+        $elementor_widgets = [];
         if ($builder_type === 'divi') {
             preg_match_all('/\[et_pb_(\w+)/i', $content, $divi_m);
             if (!empty($divi_m[1])) {
                 $divi_modules = array_count_values($divi_m[1]);
+            }
+        }
+        if ($builder_type === 'elementor') {
+            $el_data = get_post_meta($p->ID, '_elementor_data', true);
+            if ($el_data) {
+                $el_json = json_decode($el_data, true);
+                if (is_array($el_json)) {
+                    $elementor_widgets = wpilot_count_elementor_widgets($el_json);
+                }
             }
         }
 
@@ -290,6 +329,7 @@ function wpilot_ctx_pages( $limit = 50 ) {
             'has_slider'     => strpos($content, 'slider') !== false || strpos($content, 'et_pb_slider') !== false || strpos($content, 'carousel') !== false,
             'has_video'      => strpos($content, '<video') !== false || strpos($content, 'youtube') !== false || strpos($content, 'vimeo') !== false,
             'divi_modules'   => $divi_modules,
+            'elementor_widgets' => $elementor_widgets,
             'content_length' => strlen($content),
         ];
     }, $pages );
@@ -396,6 +436,77 @@ function wpilot_detect_seo_plugin() {
     return 'None detected';
 }
 
+
+function wpilot_ctx_plugin_configs() {
+    $configs = [];
+
+    // Divi settings
+    if (defined('ET_BUILDER_VERSION')) {
+        $divi_opts = get_option('et_divi', []);
+        $configs['divi'] = [
+            'version' => ET_BUILDER_VERSION,
+            'accent_color' => $divi_opts['accent_color'] ?? '',
+            'body_font' => $divi_opts['body_font'] ?? '',
+            'header_font' => $divi_opts['header_font'] ?? '',
+            'body_font_size' => $divi_opts['body_font_size'] ?? '',
+            'logo' => $divi_opts['divi_logo'] ?? '',
+        ];
+    }
+
+    // Elementor settings
+    if (defined('ELEMENTOR_VERSION')) {
+        $configs['elementor'] = [
+            'version' => ELEMENTOR_VERSION,
+            'default_generic_fonts' => get_option('elementor_default_generic_fonts', ''),
+            'container_width' => get_option('elementor_container_width', 1140),
+            'space_between_widgets' => get_option('elementor_space_between_widgets', 20),
+        ];
+    }
+
+    // SEO plugin settings
+    if (defined('WPSEO_VERSION')) {
+        $configs['yoast'] = [
+            'version' => WPSEO_VERSION,
+            'titles' => get_option('wpseo_titles', []),
+        ];
+    }
+    if (class_exists('RankMath')) {
+        $configs['rankmath'] = [
+            'general' => get_option('rank-math-options-general', []),
+        ];
+    }
+
+    // WooCommerce settings
+    if (class_exists('WooCommerce')) {
+        $configs['woocommerce'] = [
+            'version' => WC()->version ?? '',
+            'currency' => get_woocommerce_currency(),
+            'store_address' => get_option('woocommerce_store_address', ''),
+            'store_city' => get_option('woocommerce_store_city', ''),
+            'store_country' => get_option('woocommerce_default_country', ''),
+            'calc_taxes' => get_option('woocommerce_calc_taxes', 'no'),
+            'enable_reviews' => get_option('woocommerce_enable_reviews', 'yes'),
+        ];
+    }
+
+    return $configs;
+}
+
+// Count Elementor widgets recursively
+function wpilot_count_elementor_widgets($elements) {
+    $counts = [];
+    foreach ($elements as $el) {
+        if (isset($el['widgetType'])) {
+            $type = $el['widgetType'];
+            $counts[$type] = ($counts[$type] ?? 0) + 1;
+        }
+        if (!empty($el['elements'])) {
+            $sub = wpilot_count_elementor_widgets($el['elements']);
+            foreach ($sub as $k => $v) $counts[$k] = ($counts[$k] ?? 0) + $v;
+        }
+    }
+    return $counts;
+}
 
 function wpilot_ctx_performance() {
     $images = get_posts(['post_type'=>'attachment','post_mime_type'=>'image','numberposts'=>-1]);
