@@ -2148,15 +2148,33 @@ function wpilot_pagespeed_test($p) {
         . '&strategy=' . $strategy
         . '&category=performance&category=seo&category=best-practices&category=accessibility';
 
-    $response = wp_remote_get($api_url, ['timeout' => 60]);
+    // Check cache first (results valid for 10 min)
+    $cache_key = 'wpi_pagespeed_' . md5($url . $strategy);
+    $cached = get_transient($cache_key);
+    if ($cached !== false) {
+        return $cached;
+    }
+
+    // Call API with retry on rate limit
+    $response = wp_remote_get($api_url, ['timeout' => 90]);
 
     if (is_wp_error($response)) {
-        return wpilot_err('PageSpeed test failed: ' . $response->get_error_message());
+        return wpilot_err('PageSpeed test failed: ' . $response->get_error_message() . '. Try again in a minute.');
     }
 
     $code = wp_remote_retrieve_response_code($response);
+    if ($code === 429) {
+        // Rate limited - wait 5 seconds and retry once
+        sleep(5);
+        $response = wp_remote_get($api_url, ['timeout' => 90]);
+        if (is_wp_error($response)) return wpilot_err('PageSpeed temporarily unavailable. Try again in 1-2 minutes.');
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code === 429) {
+            return wpilot_err('Google PageSpeed is rate limited. Wait 1-2 minutes and try again. This is a Google API limit, not a WPilot issue.');
+        }
+    }
     if ($code !== 200) {
-        return wpilot_err('PageSpeed API error (HTTP ' . $code . ')');
+        return wpilot_err('PageSpeed API error (HTTP ' . $code . '). Try again shortly.');
     }
 
     $data = json_decode(wp_remote_retrieve_body($response), true);
@@ -2258,7 +2276,7 @@ function wpilot_pagespeed_test($p) {
         }
     }
 
-    return wpilot_ok($msg, [
+    $result = wpilot_ok($msg, [
         'url' => $url,
         'strategy' => $strategy,
         'scores' => $scores,
@@ -2266,6 +2284,11 @@ function wpilot_pagespeed_test($p) {
         'opportunities' => $opportunities,
         'grade' => $grade,
     ]);
+
+    // Cache for 10 minutes to avoid rate limits
+    set_transient($cache_key, $result, 600);
+
+    return $result;
 }
 
 
