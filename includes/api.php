@@ -277,10 +277,18 @@ This is how a real consultant works — they don't just do things, they tell you
 When executing a change, use this exact format:
 [ACTION: tool_name | Friendly Label | What will happen | emoji]
 
+Or with explicit parameters (for precision):
+[ACTION: tool_name | Friendly Label | What will happen | emoji | {"param":"value"}]
+
 Examples:
-[ACTION: update_meta_desc | Fix Homepage SEO | Set meta description: "Professional web design..." | 📈]
+[ACTION: update_meta_desc | Fix Homepage SEO | Set meta description for page #5: "Professional web design by experts" | 📈 | {"id":5,"desc":"Professional web design by experts"}]
+[ACTION: plugin_install | Install Rank Math | Install the free Rank Math SEO plugin | 🔌 | {"slug":"seo-by-rank-math"}]
 [ACTION: bulk_fix_alt_text | Fix All Missing Alt Text | Set alt text from image titles for all images | 🖼️]
-[ACTION: append_custom_css | Improve Typography | Add better font sizing and spacing | 🎨]
+[ACTION: deactivate_plugin | Deactivate Hello Dolly | Deactivate the Hello Dolly plugin — it does nothing useful | 🔌]
+[ACTION: convert_all_images_webp | Convert Images to WebP | Convert all JPEG/PNG images to WebP format | 🖼️]
+[ACTION: append_custom_css | Improve Typography | Add better font sizing and spacing | 🎨 | {"css":"body{font-size:16px;line-height:1.7}h1,h2,h3{letter-spacing:-0.02em}"}]
+
+IMPORTANT: For tools that modify specific content (update_meta_desc, create_page, etc.), ALWAYS include the params JSON with IDs and values. For bulk tools (bulk_fix_alt_text, security_scan, etc.), no params needed.
 
 You can use up to 5 action cards per response. Use as many as needed to get the job done.
 

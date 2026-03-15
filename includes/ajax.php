@@ -12,18 +12,161 @@ function wpilot_user_can_admin() {
 // ── Parse [ACTION:...] cards from AI text ──────────────────────
 function wpilot_parse_actions( $text ) {
     $actions = [];
-    if ( preg_match_all( '/\[ACTION:\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\]]+)\]/', $text, $m, PREG_SET_ORDER ) ) {
+    // Format 1: [ACTION: tool | label | description | emoji]
+    // Format 2: [ACTION: tool | label | description | emoji | {"param":"value"}]
+    if ( preg_match_all( '/\[ACTION:\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|\]]+)(?:\|\s*([^\]]+))?\]/', $text, $m, PREG_SET_ORDER ) ) {
         foreach ( $m as $match ) {
+            $params = [];
+            if ( !empty($match[5]) ) {
+                $json = trim($match[5]);
+                $decoded = json_decode($json, true);
+                if (is_array($decoded)) $params = $decoded;
+            }
+            // Auto-detect params from tool name + description
+            if (empty($params)) {
+                $params = wpilot_infer_params(trim($match[1]), trim($match[3]));
+            }
             $actions[] = [
                 'tool'        => trim( $match[1] ),
                 'label'       => trim( $match[2] ),
                 'description' => trim( $match[3] ),
                 'icon'        => trim( $match[4] ),
-                'params'      => [],
+                'params'      => $params,
             ];
         }
     }
     return $actions;
+}
+
+// Auto-infer params from tool name and description when AI doesn't provide explicit JSON
+function wpilot_infer_params( $tool, $description ) {
+    $params = [];
+
+    // Tools that need no params (they scan/audit everything)
+    $no_params = ['security_scan','seo_audit','bulk_fix_alt_text','bulk_fix_seo',
+                  'convert_all_images_webp','site_health_check','database_cleanup',
+                  'check_broken_links','cache_configure','cache_purge',
+                  'newsletter_list_subscribers','list_users'];
+    if (in_array($tool, $no_params)) return $params;
+
+    // Plugin install: extract slug from description
+    if ($tool === 'plugin_install') {
+        // Try to find a plugin name in the description
+        $known_slugs = [
+            'rank math' => 'seo-by-rank-math', 'yoast' => 'wordpress-seo',
+            'wordfence' => 'wordfence', 'litespeed' => 'litespeed-cache',
+            'wp rocket' => 'wp-rocket', 'w3 total' => 'w3-total-cache',
+            'wp super cache' => 'wp-super-cache', 'wp mail smtp' => 'wp-mail-smtp',
+            'fluentsmtp' => 'fluent-smtp', 'updraftplus' => 'updraftplus',
+            'contact form 7' => 'contact-form-7', 'wpforms' => 'wpforms-lite',
+            'elementor' => 'elementor', 'polylang' => 'polylang',
+            'woocommerce' => 'woocommerce', 'amelia' => 'ameliabooking',
+            'hello dolly' => 'hello-dolly',
+        ];
+        $desc_lower = strtolower($description);
+        foreach ($known_slugs as $name => $slug) {
+            if (strpos($desc_lower, $name) !== false) {
+                $params['slug'] = $slug;
+                break;
+            }
+        }
+    }
+
+    // Plugin activate/deactivate: try to find file
+    if (in_array($tool, ['activate_plugin', 'deactivate_plugin', 'delete_plugin'])) {
+        if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        $desc_lower = strtolower($description);
+        foreach (get_plugins() as $file => $data) {
+            if (strpos($desc_lower, strtolower($data['Name'])) !== false) {
+                $params['file'] = $file;
+                break;
+            }
+        }
+    }
+
+    // Update tagline
+    if ($tool === 'update_tagline') {
+        // Extract quoted text from description
+        if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
+            $params['tagline'] = $m[1];
+        } else {
+            $params['tagline'] = $description;
+        }
+    }
+
+    // Update blogname
+    if ($tool === 'update_blogname') {
+        if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
+            $params['name'] = $m[1];
+        }
+    }
+
+    // SEO tools: try to find page ID
+    if (in_array($tool, ['update_meta_desc','update_seo_title','fix_heading_structure','set_open_graph'])) {
+        if (preg_match('/(?:#|ID[: ]|page )(\d+)/', $description, $m)) {
+            $params['id'] = intval($m[1]);
+        }
+        if ($tool === 'update_meta_desc' && empty($params['id'])) {
+            // Try to find page by name in description
+            $pages = get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>50]);
+            $desc_lower = strtolower($description);
+            foreach ($pages as $p) {
+                if (strpos($desc_lower, strtolower($p->post_title)) !== false) {
+                    $params['id'] = $p->ID;
+                    // Extract the actual meta description from the description text
+                    if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
+                        $params['desc'] = $m[1];
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Create page
+    if ($tool === 'create_page' || $tool === 'create_post') {
+        if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
+            $params['title'] = $m[1];
+        }
+        $params['status'] = 'publish';
+    }
+
+    // CSS tools
+    if (in_array($tool, ['update_custom_css','append_custom_css'])) {
+        // The CSS content should be in the description
+        $params['css'] = $description;
+    }
+
+    // Image alt text
+    if ($tool === 'update_image_alt') {
+        if (preg_match('/(?:#|ID )(\d+)/', $description, $m)) {
+            $params['id'] = intval($m[1]);
+        }
+        if (preg_match('/alt[: ]+"?([^"]+)"?/', $description, $m)) {
+            $params['alt'] = trim($m[1]);
+        }
+    }
+
+    // Generate full site
+    if ($tool === 'generate_full_site') {
+        $params['business_name'] = get_bloginfo('name');
+        $desc_lower = strtolower($description);
+        $types = ['booking','ecommerce','restaurant','portfolio','education','membership','events','realestate'];
+        foreach ($types as $t) {
+            if (strpos($desc_lower, $t) !== false) { $params['site_type'] = $t; break; }
+        }
+        if (empty($params['site_type'])) $params['site_type'] = 'general';
+    }
+
+    // Redirect
+    if ($tool === 'create_redirect') {
+        if (preg_match('/from\s+([^\s]+)\s+to\s+([^\s]+)/i', $description, $m)) {
+            $params['from'] = $m[1];
+            $params['to'] = $m[2];
+        }
+    }
+
+    return $params;
 }
 
 // ── Main chat (admin + editor) ─────────────────────────────────
