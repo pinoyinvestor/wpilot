@@ -2143,7 +2143,7 @@ function wpilot_pagespeed_test($p) {
     $strategy = sanitize_text_field($p['strategy'] ?? 'mobile'); // mobile or desktop
 
     // Google PageSpeed Insights API (free, no key required for basic use)
-    $api_key = get_option('wpi_google_api_key', '');
+    $api_key = get_option('wpi_google_api_key', 'AIzaSyCQUl3oP-NN7DHY2VJz084oGRtBq_guTk4');
     $api_url = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url='
         . urlencode($url)
         . '&strategy=' . $strategy
