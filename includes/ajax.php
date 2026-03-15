@@ -65,7 +65,7 @@ add_action( 'wp_ajax_ca_chat', function () {
     $mem_id   = is_array($result) ? ($result['memory_id'] ?? null) : null;
 
     // Only count against prompt limit if Claude was used
-    if ( $source === 'claude' ) wpilot_bump_prompts();
+    if ( $source === 'claude' ) { wpilot_bump_prompts(); if (function_exists('wpilot_track_usage')) wpilot_track_usage(); }
 
     $actions = wpilot_parse_actions( $response );
 

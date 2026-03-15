@@ -40,6 +40,56 @@ if ( ! function_exists( 'wpilot_md_to_html' ) ) {
     }
 }
 
+
+// ── Usage Tracking ─────────────────────────────────────────
+function wpilot_track_usage() {
+    $today = date('Y-m-d');
+    $usage = get_option('wpi_usage_stats', []);
+    if (!isset($usage[$today])) $usage[$today] = ['prompts'=>0, 'tokens_est'=>0];
+    $usage[$today]['prompts']++;
+    $usage[$today]['tokens_est'] += 800; // rough average tokens per request
+    // Keep only last 90 days
+    $cutoff = date('Y-m-d', strtotime('-90 days'));
+    $usage = array_filter($usage, function($k) use ($cutoff) { return $k >= $cutoff; }, ARRAY_FILTER_USE_KEY);
+    update_option('wpi_usage_stats', $usage, false);
+}
+
+function wpilot_get_usage_summary() {
+    $usage = get_option('wpi_usage_stats', []);
+    $today = date('Y-m-d');
+    $week_ago = date('Y-m-d', strtotime('-7 days'));
+    $month_ago = date('Y-m-d', strtotime('-30 days'));
+
+    $today_prompts = $usage[$today]['prompts'] ?? 0;
+    $week_prompts = 0; $month_prompts = 0; $total_prompts = 0;
+    $week_tokens = 0; $month_tokens = 0; $total_tokens = 0;
+
+    foreach ($usage as $date => $data) {
+        $p = $data['prompts'] ?? 0;
+        $t = $data['tokens_est'] ?? 0;
+        $total_prompts += $p;
+        $total_tokens += $t;
+        if ($date >= $week_ago) { $week_prompts += $p; $week_tokens += $t; }
+        if ($date >= $month_ago) { $month_prompts += $p; $month_tokens += $t; }
+    }
+
+    // Estimate cost: ~$3/MTok input + ~$15/MTok output, rough average ~$0.01/prompt
+    $est_cost_month = round($month_prompts * 0.01, 2);
+    $est_cost_total = round($total_prompts * 0.01, 2);
+
+    return [
+        'today' => $today_prompts,
+        'week' => $week_prompts,
+        'month' => $month_prompts,
+        'total' => $total_prompts,
+        'tokens_month' => $month_tokens,
+        'tokens_total' => $total_tokens,
+        'est_cost_month' => $est_cost_month,
+        'est_cost_total' => $est_cost_total,
+        'daily' => $usage,
+    ];
+}
+
 // Admin notice when not connected
 add_action( 'admin_notices', function () {
     if ( ! current_user_can( 'manage_options' ) ) return;

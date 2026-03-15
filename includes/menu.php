@@ -63,6 +63,7 @@ function wpilot_wrap( $title, $icon, $html, $narrow = false ) {
 // ══════════════════════════════════════════════════════════════
 function wpilot_page_dashboard() {
     $used    = wpilot_prompts_used();
+    $usage   = function_exists('wpilot_get_usage_summary') ? wpilot_get_usage_summary() : ['today'=>0,'week'=>0,'month'=>0,'total'=>$used,'est_cost_month'=>0,'est_cost_total'=>0];
     $remain  = wpilot_prompts_remaining();
     $woo     = class_exists( 'WooCommerce' );
     $bld     = ucfirst( wpilot_detect_builder() );
@@ -119,6 +120,40 @@ function wpilot_page_dashboard() {
     <div class="ca-section-lbl" style="margin-bottom:10px">All Tools</div>
     <div class="ca-nav-grid">
         <?php
+    
+    // ── API Usage Section ──────────────────────────────
+    ?>
+    <div class="ca-section" style="margin-bottom:24px">
+        <h2 class="ca-section-title" style="font-size:13px;color:var(--ca-text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px">API Usage</h2>
+        <div class="ca-stat-row">
+            <div class="ca-stat-card">
+                <div class="ca-sc-label">Today</div>
+                <div class="ca-sc-val"><?= esc_html($usage['today']) ?></div>
+                <div class="ca-sc-sub">prompts</div>
+            </div>
+            <div class="ca-stat-card">
+                <div class="ca-sc-label">This Week</div>
+                <div class="ca-sc-val"><?= esc_html($usage['week']) ?></div>
+                <div class="ca-sc-sub">prompts</div>
+            </div>
+            <div class="ca-stat-card">
+                <div class="ca-sc-label">This Month</div>
+                <div class="ca-sc-val"><?= esc_html($usage['month']) ?></div>
+                <div class="ca-sc-sub">~$<?= esc_html($usage['est_cost_month']) ?> est.</div>
+            </div>
+            <div class="ca-stat-card">
+                <div class="ca-sc-label">All Time</div>
+                <div class="ca-sc-val"><?= esc_html($usage['total']) ?></div>
+                <div class="ca-sc-sub">~$<?= esc_html($usage['est_cost_total']) ?> est.</div>
+            </div>
+        </div>
+        <p style="font-size:11px;color:var(--ca-text3);margin-top:8px">
+            Cost estimates are approximate (~$0.01/prompt). Actual costs depend on message length.
+            <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener" style="color:var(--ca-accent)">View exact usage on Anthropic →</a>
+        </p>
+    </div>
+    <?php
+
         $cards = [
             [CA_SLUG.'-chat',     '💬', 'Chat',            'Ask Claude anything about your site'],
             [CA_SLUG.'-analyze',  '🔍', 'Analyze Website', 'Full site intelligence & action plan'],
