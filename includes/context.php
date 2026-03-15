@@ -18,7 +18,8 @@ function wpilot_build_context( $scope = 'general' ) {
             $ctx['menus']    = wpilot_ctx_menus();
             $ctx['images']   = wpilot_ctx_images( 40 );
             $ctx['seo']      = wpilot_ctx_seo_summary();
-            $ctx['css']      = substr( wp_get_custom_css(), 0, 3000 ); // cap size
+            $ctx['css']      = substr( wp_get_custom_css(), 0, 3000 );
+            $ctx['performance'] = wpilot_ctx_performance();
             if ( class_exists( 'WooCommerce' ) ) $ctx['woocommerce'] = wpilot_ctx_woo();
             break;
 
@@ -256,6 +257,8 @@ function wpilot_ctx_images( $limit = 30 ) {
     return array_map( function( $img ) {
         $alt  = get_post_meta( $img->ID, '_wp_attachment_image_alt', true );
         $meta = wp_get_attachment_metadata( $img->ID );
+        $file = get_attached_file( $img->ID );
+        $size = $file && file_exists($file) ? filesize($file) : 0;
         return [
             'id'          => $img->ID,
             'title'       => $img->post_title,
@@ -264,6 +267,10 @@ function wpilot_ctx_images( $limit = 30 ) {
             'missing_alt' => empty( $alt ),
             'width'       => $meta['width']  ?? null,
             'height'      => $meta['height'] ?? null,
+            'mime'        => $img->post_mime_type,
+            'format'      => pathinfo( $file ?: '', PATHINFO_EXTENSION ),
+            'size_kb'     => round( $size / 1024 ),
+            'is_webp'     => $img->post_mime_type === 'image/webp',
         ];
     }, $images );
 }
@@ -312,4 +319,52 @@ function wpilot_detect_seo_plugin() {
     if ( class_exists( 'RankMath' ) )         return 'Rank Math';
     if ( class_exists( 'AIOSEO_Plugin' ) )    return 'All in One SEO';
     return 'None detected';
+}
+
+
+function wpilot_ctx_performance() {
+    $images = get_posts(['post_type'=>'attachment','post_mime_type'=>'image','numberposts'=>-1]);
+    $total_size = 0;
+    $jpeg_count = 0; $png_count = 0; $webp_count = 0; $other_count = 0;
+    $large_images = [];
+    foreach ($images as $img) {
+        $file = get_attached_file($img->ID);
+        $size = $file && file_exists($file) ? filesize($file) : 0;
+        $total_size += $size;
+        $mime = $img->post_mime_type;
+        if ($mime === 'image/jpeg') $jpeg_count++;
+        elseif ($mime === 'image/png') $png_count++;
+        elseif ($mime === 'image/webp') $webp_count++;
+        else $other_count++;
+        if ($size > 200 * 1024) {
+            $large_images[] = ['id'=>$img->ID, 'title'=>$img->post_title, 'size_kb'=>round($size/1024)];
+        }
+    }
+
+    // Check cache
+    $has_cache = false;
+    $cache_plugin = 'None';
+    foreach (get_option('active_plugins', []) as $p) {
+        if (preg_match('/litespeed|wp-rocket|w3-total-cache|wp-super-cache|wp-fastest-cache/i', $p)) {
+            $has_cache = true;
+            $cache_plugin = explode('/', $p)[0];
+            break;
+        }
+    }
+
+    return [
+        'total_images'    => count($images),
+        'total_size_mb'   => round($total_size / 1048576, 1),
+        'jpeg_count'      => $jpeg_count,
+        'png_count'       => $png_count,
+        'webp_count'      => $webp_count,
+        'not_webp'        => $jpeg_count + $png_count,
+        'large_images'    => array_slice($large_images, 0, 10),
+        'has_cache'       => $has_cache,
+        'cache_plugin'    => $cache_plugin,
+        'php_version'     => PHP_VERSION,
+        'memory_limit'    => ini_get('memory_limit'),
+        'max_execution'   => ini_get('max_execution_time'),
+        'active_plugins'  => count(get_option('active_plugins', [])),
+    ];
 }

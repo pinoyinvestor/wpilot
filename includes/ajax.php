@@ -586,6 +586,16 @@ function wpilot_free_site_scan($ctx) {
     $missing_alt = 0;
     foreach ($images as $img) { if (!empty($img['missing_alt'])) $missing_alt++; }
     if (count($images) > 0 && $missing_alt == 0) $good[] = 'All images have alt text';
+
+    // Performance from context
+    $perf = function_exists('wpilot_ctx_performance') ? wpilot_ctx_performance() : [];
+    if (!empty($perf)) {
+        if ($perf['not_webp'] > 0) $warn[] = $perf['not_webp'] . ' images are JPEG/PNG (not WebP) — convert to save ' . round($perf['total_size_mb'] * 0.4, 1) . 'MB';
+        if (!empty($perf['large_images'])) $warn[] = count($perf['large_images']) . ' images are over 200KB — should be optimized';
+        $good[] = 'PHP ' . $perf['php_version'] . ' | Memory: ' . $perf['memory_limit'] . ' | ' . $perf['active_plugins'] . ' plugins';
+        if ($perf['has_cache']) $good[] = 'Cache: ' . $perf['cache_plugin'] . ' active';
+        else $warn[] = 'No cache plugin — install LiteSpeed Cache (free) for faster loading';
+    }
     if ($missing_alt > 0) $warn[] = $missing_alt . ' images missing alt text';
 
     // Theme + builder
