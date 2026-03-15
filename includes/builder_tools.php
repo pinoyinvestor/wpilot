@@ -67,7 +67,7 @@ function wpilot_elementor_create_page( $params ) {
 
     $title    = sanitize_text_field($params['title']      ?? 'New Page');
     $sections = $params['sections']                       ?? [];
-    $template = sanitize_text_field($params['template']   ?? 'elementor_canvas');
+    $template = sanitize_text_field($params['template']   ?? 'elementor_header_footer');
 
     // Create the WP post first
     $post_id = wp_insert_post([

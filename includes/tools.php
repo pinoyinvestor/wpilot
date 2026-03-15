@@ -30,6 +30,17 @@ function wpilot_run_tool( $tool, $params = [] ) {
             wp_update_post( ['ID'=>$id,'post_title'=>$title] );
             return wpilot_ok( "Title updated to \"{$title}\"." );
 
+        case 'set_page_template':
+            $id = intval($params['id'] ?? $params['page_id'] ?? $params['post_id'] ?? 0);
+            $template = sanitize_text_field($params['template'] ?? 'default');
+            if (!$id) return wpilot_err('Page ID required.');
+            update_post_meta($id, '_wp_page_template', $template);
+            // For Elementor
+            if (strpos($template, 'elementor') !== false) {
+                update_post_meta($id, '_elementor_edit_mode', 'builder');
+            }
+            return wpilot_ok("Page #{$id} template set to {$template}.");
+
         case 'set_homepage':
             $id = intval( $params['id'] ?? 0 );
             if ( !$id ) return wpilot_err('Page ID required.');
