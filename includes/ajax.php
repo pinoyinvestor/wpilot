@@ -321,6 +321,22 @@ add_action( 'wp_ajax_ca_tool', function () {
         }
     }
 
+    // Extract CSS from AI response if update_custom_css has empty css param
+    if (in_array($tool, ['update_custom_css', 'append_custom_css']) && empty($params['css'])) {
+        $hist = get_option('ca_chat_history', []);
+        if (!empty($hist)) {
+            $last_ai = '';
+            foreach (array_reverse($hist) as $h) {
+                if (($h['role'] ?? '') === 'assistant') { $last_ai = $h['content'] ?? ''; break; }
+            }
+            if (preg_match('/```css\s*(.*?)```/s', $last_ai, $m)) {
+                $params['css'] = $m[1];
+            } elseif (preg_match('/```\s*(.*?)```/s', $last_ai, $m) && strpos($m[1], '{') !== false) {
+                $params['css'] = $m[1];
+            }
+        }
+    }
+
     // Log backup BEFORE running the tool — so we always have backup_id
     $backup_id = wpilot_backup_log( $tool, $params );
 
