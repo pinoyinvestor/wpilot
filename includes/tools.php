@@ -488,6 +488,10 @@ function wpilot_run_tool( $tool, $params = [] ) {
         case 'disable_xmlrpc':
             return wpilot_fix_security('disable_xmlrpc', $params);
 
+        /* ── PageSpeed Test ──────────────────────────────── */
+        case 'pagespeed_test':
+            return wpilot_pagespeed_test($params);
+
         case 'security_scan':
             return wpilot_security_scan();
 
@@ -2107,4 +2111,139 @@ function wpilot_delete_directory($dir) {
         is_dir($path) ? wpilot_delete_directory($path) : @unlink($path);
     }
     return @rmdir($dir);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  PageSpeed Test — calls Google PageSpeed Insights API (free)
+// ═══════════════════════════════════════════════════════════════
+
+function wpilot_pagespeed_test($p) {
+    $url = esc_url_raw($p['url'] ?? get_site_url());
+    $strategy = sanitize_text_field($p['strategy'] ?? 'mobile'); // mobile or desktop
+
+    // Google PageSpeed Insights API (free, no key required for basic use)
+    $api_url = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url='
+        . urlencode($url)
+        . '&strategy=' . $strategy
+        . '&category=performance&category=seo&category=best-practices&category=accessibility';
+
+    $response = wp_remote_get($api_url, ['timeout' => 60]);
+
+    if (is_wp_error($response)) {
+        return wpilot_err('PageSpeed test failed: ' . $response->get_error_message());
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code !== 200) {
+        return wpilot_err('PageSpeed API error (HTTP ' . $code . ')');
+    }
+
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    if (empty($data) || !isset($data['lighthouseResult'])) {
+        return wpilot_err('Invalid PageSpeed response');
+    }
+
+    $lh = $data['lighthouseResult'];
+    $cats = $lh['categories'] ?? [];
+    $audits = $lh['audits'] ?? [];
+
+    // Extract scores
+    $scores = [];
+    foreach (['performance', 'seo', 'best-practices', 'accessibility'] as $cat) {
+        if (isset($cats[$cat])) {
+            $scores[$cat] = round(($cats[$cat]['score'] ?? 0) * 100);
+        }
+    }
+
+    // Extract key metrics
+    $metrics = [];
+    $metric_keys = [
+        'first-contentful-paint' => 'FCP',
+        'largest-contentful-paint' => 'LCP',
+        'total-blocking-time' => 'TBT',
+        'cumulative-layout-shift' => 'CLS',
+        'speed-index' => 'Speed Index',
+        'interactive' => 'Time to Interactive',
+    ];
+    foreach ($metric_keys as $key => $label) {
+        if (isset($audits[$key])) {
+            $metrics[$label] = [
+                'value' => $audits[$key]['displayValue'] ?? '?',
+                'score' => round(($audits[$key]['score'] ?? 0) * 100),
+            ];
+        }
+    }
+
+    // Extract opportunities (things to fix)
+    $opportunities = [];
+    $opp_keys = [
+        'render-blocking-resources' => 'Render-blocking resources',
+        'unused-javascript' => 'Unused JavaScript',
+        'unused-css-rules' => 'Unused CSS',
+        'modern-image-formats' => 'Use WebP/AVIF images',
+        'uses-optimized-images' => 'Optimize images',
+        'uses-text-compression' => 'Enable text compression',
+        'uses-responsive-images' => 'Properly size images',
+        'efficient-animated-content' => 'Efficient animations',
+        'offscreen-images' => 'Defer offscreen images',
+        'unminified-javascript' => 'Minify JavaScript',
+        'unminified-css' => 'Minify CSS',
+        'uses-long-cache-ttl' => 'Cache static assets',
+        'dom-size' => 'Reduce DOM size',
+        'bootup-time' => 'Reduce JavaScript execution',
+        'mainthread-work-breakdown' => 'Minimize main-thread work',
+        'font-display' => 'Font display',
+        'third-party-summary' => 'Third-party code',
+    ];
+
+    foreach ($opp_keys as $key => $label) {
+        if (isset($audits[$key]) && ($audits[$key]['score'] ?? 1) < 1) {
+            $savings = '';
+            if (isset($audits[$key]['details']['overallSavingsMs'])) {
+                $savings = round($audits[$key]['details']['overallSavingsMs']) . 'ms';
+            } elseif (isset($audits[$key]['details']['overallSavingsBytes'])) {
+                $savings = round($audits[$key]['details']['overallSavingsBytes'] / 1024) . 'KB';
+            }
+            $opportunities[] = [
+                'issue' => $label,
+                'savings' => $savings,
+                'score' => round(($audits[$key]['score'] ?? 0) * 100),
+                'displayValue' => $audits[$key]['displayValue'] ?? '',
+            ];
+        }
+    }
+
+    // Sort by score (worst first)
+    usort($opportunities, function($a, $b) { return $a['score'] - $b['score']; });
+
+    // Build result message
+    $perf_score = $scores['performance'] ?? 0;
+    $grade = $perf_score >= 90 ? 'A' : ($perf_score >= 50 ? 'B' : ($perf_score >= 25 ? 'C' : 'D'));
+
+    $msg = "PageSpeed Results ({$strategy}):\n\n";
+    $msg .= "Performance: {$perf_score}/100 (Grade: {$grade})\n";
+    if (isset($scores['seo'])) $msg .= "SEO: {$scores['seo']}/100\n";
+    if (isset($scores['accessibility'])) $msg .= "Accessibility: {$scores['accessibility']}/100\n";
+    if (isset($scores['best-practices'])) $msg .= "Best Practices: {$scores['best-practices']}/100\n";
+    $msg .= "\nMetrics:\n";
+    foreach ($metrics as $label => $m) {
+        $msg .= "- {$label}: {$m['value']}\n";
+    }
+    if (!empty($opportunities)) {
+        $msg .= "\nTop issues to fix:\n";
+        foreach (array_slice($opportunities, 0, 8) as $opp) {
+            $save = $opp['savings'] ? " (save {$opp['savings']})" : '';
+            $msg .= "- {$opp['issue']}{$save}\n";
+        }
+    }
+
+    return wpilot_ok($msg, [
+        'url' => $url,
+        'strategy' => $strategy,
+        'scores' => $scores,
+        'metrics' => $metrics,
+        'opportunities' => $opportunities,
+        'grade' => $grade,
+    ]);
 }

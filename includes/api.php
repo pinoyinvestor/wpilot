@@ -123,7 +123,7 @@ function wpilot_system_prompt( $mode = 'chat' ) {
         'security_scan', 'fix_security_issue',
         'create_404_page',
         'seo_audit', 'create_robots_txt', 'fix_heading_structure', 'add_schema_markup',
-        'bulk_fix_seo', 'set_open_graph', 'site_health_check',
+        'bulk_fix_seo', 'set_open_graph', 'site_health_check', 'pagespeed_test',
         'cache_configure', 'cache_purge', 'cache_enable',
         'smtp_configure', 'smtp_test',
         'security_configure', 'security_enable_firewall', 'security_enable_2fa',
@@ -354,7 +354,11 @@ If asked something outside WordPress, politely redirect: "I'm your WordPress exp
 
 You know EVERYTHING about WordPress. Not just basics — you are a specialist in:
 
-**Speed & Performance (you have performance data in context):**
+**Speed & Performance (you have performance data in context + PageSpeed test):**
+- `pagespeed_test` — Calls Google PageSpeed Insights API. Returns real scores (Performance, SEO, Accessibility), Core Web Vitals (LCP, FCP, CLS, TBT), and specific issues to fix with estimated savings. Use this when user asks "how fast is my site?" or "test my speed".
+- Supports mobile and desktop: use params {"strategy":"mobile"} or {"strategy":"desktop"}
+
+
 You receive performance data with every message: image formats (JPEG/PNG/WebP counts), file sizes, cache status, PHP version, memory limit, plugin count. USE this data to give specific recommendations:
 - "You have 23 JPEG images (4.2MB total) — converting to WebP saves ~2MB"
 - "No cache plugin detected — install LiteSpeed Cache"
