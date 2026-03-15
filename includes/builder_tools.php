@@ -109,12 +109,46 @@ function wpilot_elementor_build_data( $sections, $params ) {
     $data = [];
 
     if (empty($sections)) {
-        // Default: hero + content sections based on params
         $sections = wpilot_generate_default_sections($params);
     }
 
+    // Normalize sections - AI might send different formats
+    $normalized = [];
     foreach ($sections as $section_def) {
-        $data[] = wpilot_elementor_build_section($section_def);
+        // Format 1: AI sends {type:"section", columns:[{widgets:[{type:"heading",settings:{title:"X"}}]}]}
+        if (isset($section_def['columns'])) {
+            foreach ($section_def['columns'] as $col) {
+                foreach (($col['widgets'] ?? []) as $widget) {
+                    $type = $widget['type'] ?? 'text';
+                    $settings = $widget['settings'] ?? [];
+                    $normalized[] = [
+                        'type' => $type,
+                        'content' => $settings['title'] ?? $settings['text'] ?? $settings['description'] ?? $settings['editor'] ?? $settings['content'] ?? '',
+                        'title' => $settings['title_text'] ?? $settings['title'] ?? '',
+                        'font_size' => $settings['font_size'] ?? ($settings['size'] === 'xl' ? 56 : ($settings['size'] === 'lg' ? 42 : 32)),
+                        'align' => $settings['align'] ?? 'center',
+                        'tag' => $settings['header_size'] ?? $settings['tag'] ?? 'h2',
+                        'color' => $settings['title_color'] ?? $settings['color'] ?? '',
+                        'icon' => $settings['icon'] ?? $settings['selected_icon']['value'] ?? 'fas fa-star',
+                        'url' => $settings['url'] ?? $settings['link']['url'] ?? '#',
+                        'bg_color' => $section_def['background_color'] ?? '',
+                    ];
+                }
+            }
+        }
+        // Format 2: Our expected {type:"heading", content:"X"}
+        elseif (isset($section_def['type']) && $section_def['type'] !== 'section') {
+            $normalized[] = $section_def;
+        }
+        // Format 3: Just a section wrapper without columns
+        else {
+            $normalized[] = $section_def;
+        }
+    }
+
+    foreach ($normalized as $section_def) {
+        $built = wpilot_elementor_build_section($section_def);
+        if ($built) $data[] = $built;
     }
 
     return $data;
