@@ -474,37 +474,4 @@ PROMPT;
 }
 
 // ── Test connection ─────────────────────────────────────────────
-add_action( 'wp_ajax_ca_test_connection', function () {
-    check_ajax_referer( 'ca_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.' );
-
-    $key = sanitize_text_field( wp_unslash( $_POST['key'] ?? get_option( 'ca_api_key', '' ) ) );
-    if ( empty( $key ) ) wp_send_json_error( 'No API key provided.' );
-
-    $res = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
-        'timeout' => 20,
-        'headers' => [
-            'Content-Type'      => 'application/json',
-            'x-api-key'         => $key,
-            'anthropic-version' => '2023-06-01',
-        ],
-        'body' => wp_json_encode( [
-            'model'      => CA_MODEL,
-            'max_tokens' => 10,
-            'messages'   => [['role' => 'user', 'content' => 'Reply: OK']],
-        ] ),
-    ] );
-
-    if ( is_wp_error( $res ) ) wp_send_json_error( 'Connection failed: ' . $res->get_error_message() );
-
-    $code = wp_remote_retrieve_response_code( $res );
-    $body = json_decode( wp_remote_retrieve_body( $res ), true );
-
-    if ( $code === 200 ) {
-        update_option( 'ca_api_key',  $key );
-        update_option( 'ca_onboarded', 'yes' );
-        wp_send_json_success( ['message' => '✅ Claude connected successfully!', 'model' => CA_MODEL] );
-    }
-
-    wp_send_json_error( $body['error']['message'] ?? "API error (HTTP {$code})" );
-} );
+// ca_test_connection moved to ajax.php (needs to load before heavy modules)
