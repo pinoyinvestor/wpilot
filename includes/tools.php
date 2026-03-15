@@ -118,6 +118,13 @@ function wpilot_run_tool( $tool, $params = [] ) {
         /* ── CSS ────────────────────────────────────────────── */
         case 'update_custom_css':
             $css = wp_strip_all_tags( $params['css'] ?? '' );
+            // If css param empty, check if description contains CSS
+            if (empty($css) || strlen($css) < 50) {
+                $desc = $params['description'] ?? '';
+                if (strpos($desc, '{') !== false && strpos($desc, '}') !== false) {
+                    $css = wp_strip_all_tags($desc);
+                }
+            }
             wpilot_save_css_snapshot();
             wp_update_custom_css_post( $css );
             // Fallback: inject via mu-plugin for block themes that don't load custom CSS
@@ -130,6 +137,10 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
 
         case 'append_custom_css':
             $new  = wp_strip_all_tags( $params['css'] ?? '' );
+            if (empty($new) || strlen($new) < 50) {
+                $desc = $params['description'] ?? '';
+                if (strpos($desc, '{') !== false) $new = wp_strip_all_tags($desc);
+            }
             $curr = wp_get_custom_css();
             wpilot_save_css_snapshot();
             wp_update_custom_css_post( trim($curr) . "\n\n/* WPilot — " . date('Y-m-d H:i') . " */\n" . $new );
