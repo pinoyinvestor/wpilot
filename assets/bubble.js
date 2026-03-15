@@ -19,28 +19,7 @@
     if ( !$root.length || !$trigger.length ) return;
     if ( CA && CA.theme ) $root.attr('data-theme', CA.theme);
 
-    /* ── Input area restructure — voice button next to textarea ── */
-    (function setupInputRow(){
-      var $wrap = $root.find('.cap-inp-wrap');
-      if (!$wrap.length) return;
-      var $textarea = $wrap.find('#capIn');
-      var $sendBtn  = $wrap.find('#capSend');
-      if (!$textarea.length) return;
-
-      // Wrap textarea and buttons in a row container
-      var $row = $('<div class="cap-input-row"></div>');
-      var $voiceBtn = $('<button type="button" class="cap-voice-btn" title="Voice input" style="display:none">🎤</button>');
-
-      $textarea.detach();
-      $sendBtn.detach();
-
-      $row.append($voiceBtn).append($textarea).append($sendBtn);
-      $wrap.prepend($row);
-
-      // Re-assign references
-      $in   = $('#capIn');
-      $send = $('#capSend');
-    })();
+    /* ── Input row rendered by bubble.php — no JS duplication needed ── */
 
     /* ── Toggle ────────────────────────────────────────────── */
     var wpiScanned    = false;
@@ -372,12 +351,11 @@
       appendMsg('user', originalMsg);
       $in.val('').css('height','auto');
 
-      // Load existing instructions, append new one, save
+      // Append instruction via dedicated endpoint
       $.post(CA.ajax_url, {
-        action: 'ca_save_setting',
+        action: 'wpi_save_instruction',
         nonce:  CA.nonce,
-        key:    'ca_custom_instructions',
-        value:  instruction
+        instruction: instruction
       }).done(function(r){
         if (r && r.success) {
           appendMsg('ai', '✅ **Saved!** Instruction added to your AI rules.\n\n> ' + instruction + '\n\nI will follow this in future responses.');

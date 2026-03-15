@@ -1055,7 +1055,7 @@ function wpilot_page_license() {
         var msg = document.getElementById('wpiLicenseMsg');
         if (!key) { msg.textContent = 'Enter your license key.'; return; }
         msg.textContent = 'Verifying…';
-        jQuery.post(ajaxurl, {action:'ca_activate_license',nonce:CA.nonce,license_key:key}, function(r) {
+        jQuery.post(ajaxurl, {action:'ca_activate_license',nonce:CA.nonce,key:key}, function(r) {
             if (r.success) { msg.style.color='#10b981'; msg.textContent='✅ '+r.data.message; setTimeout(()=>location.reload(),1500); }
             else { msg.style.color='#ef4444'; msg.textContent='❌ '+(r.data||'Ogiltig nyckel'); }
         });

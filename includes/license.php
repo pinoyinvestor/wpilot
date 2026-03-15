@@ -33,7 +33,7 @@ function wpilot_is_pro()         { return in_array(wpilot_license_type(), ['life
 function wpilot_is_licensed()    { return wpilot_is_pro(); }  // backwards compat
 
 function wpilot_prompts_used()   { return (int) get_option('wpilot_prompts_used', 0); }
-function wpilot_is_locked()      { return !wpilot_is_pro() && wpilot_prompts_used() >= CA_FREE_LIMIT; }
+function wpilot_is_locked()      { return !wpilot_can_use(); }
 function wpilot_prompts_remaining() {
     if ( wpilot_is_pro() ) return '∞';
     return max(0, CA_FREE_LIMIT - wpilot_prompts_used());
