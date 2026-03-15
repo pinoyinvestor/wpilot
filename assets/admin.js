@@ -128,6 +128,7 @@
       $('#caTyping').show(); scrollBottom();
 
       history.push({role:'user',content:msg});
+      try { localStorage.setItem('wpi_chat_sync', Date.now().toString()); } catch(e) {}
 
       ajax('ca_chat', {message:msg, mode:currentMode, history:JSON.stringify(history.slice(-14))}, function(ok, data){
         adminSending = false;

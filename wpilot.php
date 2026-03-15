@@ -14,6 +14,12 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+// Suppress deprecated warnings from other plugins during WPilot AJAX calls
+if ( wp_doing_ajax() && isset($_POST['action']) && ( strpos($_POST['action'], 'ca_') === 0 || strpos($_POST['action'] ?? '', 'wpi_') === 0 ) ) {
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
+}
+
+
 // ── PHP version guard ─────────────────────────────────────────
 if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
     add_action( 'admin_notices', function() {

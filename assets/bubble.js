@@ -541,6 +541,7 @@
       }, 1000);
       scrollBottom();
       history.push({role:'user', content:msg});
+      syncToStorage();
 
       sending = true;
       $.post(CA.ajax_url, {
@@ -649,76 +650,7 @@
       return $wrap;
     }
 
-    $(document).on('click', '.cap-ac-apply', function(){
-      var $btn    = $(this);
-      var $card   = $btn.closest('.cap-ac');
-      $btn.html('⏳ Working...').prop('disabled', true).css('opacity','0.7');
-      var tool   = $btn.data('tool');
-      var params = {};
-      try { params = JSON.parse($btn.data('params') || '{}'); } catch(e) {}
-
-      $.post(CA.ajax_url, {
-        action: 'ca_tool', nonce: CA.nonce,
-        tool: tool, params: JSON.stringify(params),
-        label: $btn.data('label') || '',
-        description: $btn.data('desc') || ''
-      })
-      .done(function(res) {
-        if (res && res.success) {
-          $btn.html('✅ Done!').css({'background':'var(--ca-green)','cursor':'default','opacity':'1','color':'#fff'});
-          if(lastPairId) sendRating(lastPairId, 5);
-
-          var backupId = res.data && res.data.backup_id ? res.data.backup_id : null;
-
-          // Push to undo stack
-          if (backupId) {
-            lastBackupStack.push(backupId);
-            if (typeof window.wpiSetLastBackup === 'function') {
-              window.wpiSetLastBackup(backupId);
-            }
-            updateStickyUndo();
-          }
-
-          var successHtml = '<div class="cap-tool-result cap-tool-ok">'
-            + '<span class="cap-tr-icon">✅</span>'
-            + '<span class="cap-tr-msg">' + escHtml(res.data && res.data.message ? res.data.message : 'Done') + '</span>';
-          if (backupId) {
-            successHtml += '<button class="cap-restore-btn" data-backup="' + backupId + '">↩️ Undo</button>';
-          }
-          // Show refresh button for content/page changes so user sees the result
-          var pageTools = ['edit_current_page','update_page_content','create_page','update_custom_css','append_custom_css','builder_create_page','generate_full_site','update_post_title','set_homepage','create_post','update_post','fix_heading_structure','bulk_fix_seo'];
-          if (pageTools.indexOf(tool) !== -1) {
-            successHtml += '<button class="cap-refresh-btn" onclick="location.reload()">🔄 Refresh to see changes</button>';
-          }
-          successHtml += '</div>';
-          $card.append(successHtml);
-
-        } else {
-          $btn.text('❌ Failed').css({'background':'var(--ca-danger)','cursor':'default'});
-
-          var errData  = res && res.data ? res.data : {};
-          var errMsg   = typeof errData === 'string' ? errData : (errData.message || 'Something went wrong');
-          var backupId = errData.backup_id || null;
-
-          var errorHtml = '<div class="cap-tool-result cap-tool-err">'
-            + '<span class="cap-tr-icon">⚠️</span>'
-            + '<div class="cap-tr-body">'
-            + '<span class="cap-tr-msg">' + escHtml(errMsg) + '</span>';
-
-          if (backupId) {
-            errorHtml += '<button class="cap-restore-btn cap-restore-urgent" data-backup="' + backupId + '">↩️ Restore previous state</button>';
-          }
-          errorHtml += '</div></div>';
-          $card.append(errorHtml);
-        }
-        scrollBottom();
-      })
-      .fail(function() {
-        $btn.text('❌ Failed').prop('disabled', false);
-        $card.append('<div class="cap-tool-result cap-tool-err"><span class="cap-tr-icon">⚠️</span><span class="cap-tr-msg">Network error — no changes were saved.</span></div>');
-        scrollBottom();
-      });
-    });
+    // Apply handled by inline onclick="wpiApply(this)" in bubble.php
 
     /* ── Sticky "Undo last" button at bottom of messages ─────── */
     var $stickyUndo = null;
