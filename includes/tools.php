@@ -493,10 +493,17 @@ function wpilot_run_tool( $tool, $params = [] ) {
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
             $filename = 'wpilot-' . $name . '.php';
+            // Use heredoc to avoid quote escaping issues
+            $safe_code = str_replace("'", "\'", $code);
             $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
                 . "add_action('wp_head', function() {\n"
-                . "    echo '" . addslashes($code) . "';\n"
+                . "    echo '" . $safe_code . "';\n"
                 . "}, 1);\n";
+            // Validate before saving
+            $test_result = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            if ($ret !== 0 && $ret !== null) {
+                return wpilot_err('Code has syntax issues. Not saved.');
+            }
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
 
@@ -520,6 +527,10 @@ function wpilot_run_tool( $tool, $params = [] ) {
             $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
             $priority = intval($params['priority'] ?? 10);
             if (empty($code)) return wpilot_err('Code required.');
+            // Validate: code must not contain raw HTML tags (common AI mistake)
+            if (preg_match('/<[a-z]/i', $code) && !preg_match('/echo|print/', $code)) {
+                return wpilot_err('PHP snippet contains HTML. Use add_head_code for HTML or wrap in echo/print for PHP.');
+            }
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
             $filename = 'wpilot-' . $name . '.php';
@@ -527,6 +538,11 @@ function wpilot_run_tool( $tool, $params = [] ) {
                 . "add_action('" . $hook . "', function() {\n"
                 . $code . "\n"
                 . "}, " . $priority . ");\n";
+            // Validate PHP syntax before saving
+            $test = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            if ($ret !== 0 && $ret !== null) {
+                return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
+            }
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
 
@@ -1256,10 +1272,17 @@ function wpilot_fix_security($issue, $params = []) {
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
             $filename = 'wpilot-' . $name . '.php';
+            // Use heredoc to avoid quote escaping issues
+            $safe_code = str_replace("'", "\'", $code);
             $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
                 . "add_action('wp_head', function() {\n"
-                . "    echo '" . addslashes($code) . "';\n"
+                . "    echo '" . $safe_code . "';\n"
                 . "}, 1);\n";
+            // Validate before saving
+            $test_result = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            if ($ret !== 0 && $ret !== null) {
+                return wpilot_err('Code has syntax issues. Not saved.');
+            }
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
 
@@ -1283,6 +1306,10 @@ function wpilot_fix_security($issue, $params = []) {
             $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
             $priority = intval($params['priority'] ?? 10);
             if (empty($code)) return wpilot_err('Code required.');
+            // Validate: code must not contain raw HTML tags (common AI mistake)
+            if (preg_match('/<[a-z]/i', $code) && !preg_match('/echo|print/', $code)) {
+                return wpilot_err('PHP snippet contains HTML. Use add_head_code for HTML or wrap in echo/print for PHP.');
+            }
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
             $filename = 'wpilot-' . $name . '.php';
@@ -1290,6 +1317,11 @@ function wpilot_fix_security($issue, $params = []) {
                 . "add_action('" . $hook . "', function() {\n"
                 . $code . "\n"
                 . "}, " . $priority . ");\n";
+            // Validate PHP syntax before saving
+            $test = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            if ($ret !== 0 && $ret !== null) {
+                return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
+            }
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
 
