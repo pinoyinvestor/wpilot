@@ -246,39 +246,7 @@ add_action( 'wp_ajax_ca_restore_backup', function () {
 } );
 
 // ── Smart site scan — AI proactively reviews installed plugins ──
-add_action('wp_ajax_wpi_smart_scan', function() {
-    check_ajax_referer('ca_nonce','nonce');
-    if ( ! wpilot_user_has_access() ) wp_send_json_error('You don\'t have WPilot access. Ask your admin to grant it.', 403);
-    if (!wpilot_is_connected()) wp_send_json_error('Not connected');
-    if (wpilot_is_locked()) wp_send_json_error('Free limit reached. Please activate your license.');
 
-    $ctx = wpilot_build_context('plugins');
-
-    $prompt = <<<PROMPT
-Jag har precis öppnat WPilot och vill ha en snabb genomgång av min WordPress-sajt.
-
-Titta på:
-1. Vilka plugins jag har installerade och aktiverade
-2. Vilka essentiella plugins som saknas (SEO, backup, säkerhet, prestanda, formulär)
-3. Plugins som jag har men kanske inte använder optimalt
-4. Om det finns plugins som överlappar varandra
-
-Svara strukturerat:
-- Börja med en kort sammanfattning (1-2 meningar) om sajten
-- Lista vad som fungerar bra ✅
-- Lista vad som saknas eller kan förbättras ⚠️
-- Avsluta med: "Vad vill du att jag ska hjälpa dig med först?"
-
-Var alltid ärlig om vad som är gratis och vad som kostar. Håll det kort och konkret — max 200 ord.
-PROMPT;
-
-    $result = wpilot_smart_answer($prompt, 'plugins', $ctx, []);
-    if (is_wp_error($result)) wp_send_json_error($result->get_error_message());
-    $response = is_array($result) ? $result['text'] : $result;
-    $source   = is_array($result) ? $result['source'] : 'claude';
-    if ($source === 'claude') wpilot_bump_prompts();
-    wp_send_json_success(['scan' => $response]);
-});
 
 // ── Load chat history (admin only) ─────────────────────────────
 add_action( 'wp_ajax_wpi_load_history', function () {
@@ -403,3 +371,89 @@ add_action('wp_ajax_wpi_debug', function() {
         'jquery_version'  => wp_scripts()->registered['jquery-core']->ver ?? 'unknown',
     ]);
 });
+
+// ── Smart scan — FREE, local analysis only ─────────────────
+add_action('wp_ajax_wpi_smart_scan', function() {
+    check_ajax_referer('ca_nonce', 'nonce');
+    if ( ! wpilot_user_has_access() && ! current_user_can('manage_options') ) {
+        wp_send_json_error('Unauthorized.', 403);
+    }
+    // Load heavy modules for context building
+    if (function_exists('wpilot_load_heavy')) wpilot_load_heavy();
+    $ctx = function_exists('wpilot_build_context') ? wpilot_build_context('full') : [];
+    $scan = wpilot_free_site_scan($ctx);
+    wp_send_json_success(['scan' => $scan]);
+});
+
+function wpilot_free_site_scan($ctx) {
+    $site_name = get_bloginfo('name');
+    $good = [];
+    $warn = [];
+    $info = [];
+
+    // Plugins
+    $active = isset($ctx['plugins']['active_count']) ? $ctx['plugins']['active_count'] : count(get_option('active_plugins', []));
+    $inactive = $ctx['plugins']['inactive_count'] ?? 0;
+    $missing = $ctx['plugins']['missing_essentials'] ?? [];
+    if ($active > 0) $good[] = $active . ' active plugins';
+    if ($active > 25) $warn[] = $active . ' plugins is a lot — consider deactivating unused ones';
+    if ($inactive > 3) $info[] = $inactive . ' inactive plugins — consider removing them';
+    foreach ($missing as $m) $warn[] = 'Missing: ' . $m;
+
+    // Pages
+    $pages = $ctx['pages'] ?? [];
+    $page_count = count($pages);
+    if ($page_count > 0) $good[] = $page_count . ' pages published';
+    if ($page_count == 0) $warn[] = 'No pages found — need to create site content';
+
+    // SEO
+    $seo = $ctx['seo'] ?? [];
+    $seo_plugin = $seo['seo_plugin'] ?? 'None detected';
+    if ($seo_plugin !== 'None detected') $good[] = $seo_plugin . ' installed';
+    else $warn[] = 'No SEO plugin — install Rank Math (free) for better Google rankings';
+    $missing_meta = ($seo['pages_missing_meta'] ?? 0) + ($seo['posts_missing_meta'] ?? 0);
+    if ($missing_meta > 0) $warn[] = $missing_meta . ' pages/posts missing meta description';
+
+    // Images
+    $images = $ctx['images'] ?? [];
+    $missing_alt = 0;
+    foreach ($images as $img) { if (!empty($img['missing_alt'])) $missing_alt++; }
+    if (count($images) > 0 && $missing_alt == 0) $good[] = 'All images have alt text';
+    if ($missing_alt > 0) $warn[] = $missing_alt . ' images missing alt text';
+
+    // Theme + builder
+    $theme = $ctx['theme']['name'] ?? wp_get_theme()->get('Name');
+    $builder = $ctx['builder'] ?? 'gutenberg';
+    $good[] = 'Theme: ' . $theme . ' | Builder: ' . ucfirst($builder);
+
+    // Tagline
+    $tagline = get_bloginfo('description');
+    if (empty($tagline) || $tagline === 'Just another WordPress site') {
+        $warn[] = 'Default tagline — update it for better SEO';
+    }
+
+    // SSL
+    if (!is_ssl()) $warn[] = 'No HTTPS/SSL — important for security and SEO';
+
+    // WooCommerce
+    if (class_exists('WooCommerce') && isset($ctx['woocommerce'])) {
+        $products = $ctx['woocommerce']['product_count'] ?? 0;
+        $good[] = 'WooCommerce active with ' . $products . ' products';
+    }
+
+    // Build response
+    $r = '**' . $site_name . '** — Site Overview' . "
+";
+    if (!empty($good)) { $r .= "
+"; foreach ($good as $g) $r .= '✅ ' . $g . "
+"; }
+    if (!empty($warn)) { $r .= "
+"; foreach ($warn as $w) $r .= '⚠️ ' . $w . "
+"; }
+    if (!empty($info)) { $r .= "
+"; foreach ($info as $i) $r .= '💡 ' . $i . "
+"; }
+    $r .= "
+What would you like me to help with first?";
+    return $r;
+}
