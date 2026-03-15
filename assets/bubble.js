@@ -156,13 +156,17 @@
     /* ── Clear chat button ──────────────────────────────── */
     $('#capClearChat').on('click', function(e){
       e.stopPropagation();
-      if (!confirm('Clear all chat history?')) return;
       $.post(CA.ajax_url, { action: 'ca_clear_history', nonce: CA.nonce });
       history = []; $msgs.empty();
       wpiScanned = false;
-      appendMsg('ai', '🗑️ Chat cleared. Type anything to start fresh.');
+      appendMsg('ai', '🔍 Scanning your site...');
+      $.post(CA.ajax_url, {action:'wpi_smart_scan', nonce:CA.nonce}, function(r) {
+        $msgs.find('.cap-m:last').remove();
+        if (r.success) appendMsg('ai', r.data.scan);
+        else appendMsg('ai', 'Ready! Tell me what you need.');
+        scrollBottom();
+      });
       try { localStorage.setItem('wpi_chat_sync', Date.now().toString()); } catch(ex){}
-      scrollBottom();
     });
 
     /* ── Restart + re-analyze button ────────────────────── */
