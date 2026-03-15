@@ -117,7 +117,8 @@ register_activation_hook( __FILE__, function () {
     add_option( 'wpilot_prompts_used',        0 );
     add_option( 'ca_custom_instructions', '' );
     add_option( 'ca_onboarded',           'no' );
-    add_option( 'wpi_data_consent',        'no' );   // GDPR: default to no consent
+    add_option( 'wpi_data_consent',        'no' );
+    add_option( 'wpilot_allowed_roles', ['administrator', 'editor'] );   // GDPR: default to no consent
     wpilot_backup_create_table();
     wpilot_brain_install();
     // Track activation on weblease.se
@@ -136,8 +137,8 @@ function wpilot_asset_suffix() {
 
 // ── Shared enqueue helper ─────────────────────────────────────
 function wpilot_enqueue_bubble() {
-    // Always load bubble for users with access — the bubble handles connected/locked states itself
-    if ( ! wpilot_user_has_access() ) return;
+    // Load bubble for any user with access OR any admin (fallback)
+    if ( ! wpilot_user_has_access() && ! current_user_can( 'manage_options' ) ) return;
     $sfx = wpilot_asset_suffix();
     wp_enqueue_style(  'aib-bubble', CA_URL . "assets/bubble{$sfx}.css", [], CA_VERSION );
     wp_enqueue_script( 'aib-bubble', CA_URL . "assets/bubble{$sfx}.js",  ['jquery'], CA_VERSION, true );

@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // Shared render function used by both admin and frontend
 function wpilot_render_bubble() {
-    if ( ! wpilot_user_has_access() ) return;
+    if ( ! wpilot_user_has_access() && ! current_user_can( "manage_options" ) ) return;
 
     $connected = wpilot_is_connected();
     $is_admin  = current_user_can( 'manage_options' );
