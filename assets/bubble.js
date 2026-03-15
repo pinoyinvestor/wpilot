@@ -659,7 +659,9 @@
 
       $.post(CA.ajax_url, {
         action: 'ca_tool', nonce: CA.nonce,
-        tool: tool, params: JSON.stringify(params)
+        tool: tool, params: JSON.stringify(params),
+        label: $btn.data('label') || '',
+        description: $btn.data('desc') || ''
       })
       .done(function(res) {
         if (res && res.success) {
