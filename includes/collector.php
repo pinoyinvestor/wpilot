@@ -55,7 +55,7 @@ function wpilot_auto_rate( $question, $answer, $tools_used = [] ) {
 // ── Collect one exchange ──────────────────────────────────────
 // Called from ajax.php after every Claude response
 function wpilot_collect_exchange( $question, $answer, $mode = 'chat', $rating = 3, $extra = [] ) {
-    if ( ! wpilot_has_consent() ) return null;
+    // Always collect locally. Consent only controls sending to server.
 
     $q = wpilot_anonymize( $question );
     $a = wpilot_anonymize( $answer );
