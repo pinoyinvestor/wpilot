@@ -354,7 +354,7 @@ function wpilot_render_bubble() {
                 btn.style.background = '#EF4444';
                 btn.disabled = false;
             };
-            x.send('action=ca_tool&nonce=' + encodeURIComponent(nc) + '&tool=' + encodeURIComponent(tool) + '&params=' + encodeURIComponent(JSON.stringify(params)));
+            var lbl = btn.getAttribute('data-label') || ''; var dsc = btn.getAttribute('data-desc') || ''; x.send('action=ca_tool&nonce=' + encodeURIComponent(nc) + '&tool=' + encodeURIComponent(tool) + '&params=' + encodeURIComponent(JSON.stringify(params)) + '&label=' + encodeURIComponent(lbl) + '&description=' + encodeURIComponent(dsc));
         };
 
         // Undo from inline button

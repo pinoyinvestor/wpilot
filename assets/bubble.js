@@ -638,7 +638,7 @@
               '<div class="cap-ac-title">'+esc(a.icon||'🔧')+' '+esc(a.label||'')+'</div>',
               '<div class="cap-ac-desc">'+esc(a.description||'')+'</div>',
               '<div class="cap-ac-btns">',
-                '<button class="cap-ac-apply" data-tool="'+escAttr(a.tool)+'" data-params="'+escAttr(JSON.stringify(a.params||{}))+'" onclick="wpiApply(this)">✅ Apply</button>',
+                '<button class="cap-ac-apply" data-tool="'+escAttr(a.tool)+'" data-params="'+escAttr(JSON.stringify(a.params||{}))+'" data-label="'+escAttr(a.label||'')+'" data-desc="'+escAttr(a.description||'')+'" onclick="wpiApply(this)">✅ Apply</button>',
                 '<button class="cap-ac-skip">Skip</button>',
               '</div>',
             '</div>',
