@@ -120,11 +120,11 @@ function wpilot_render_bubble() {
                     <p class="cap-nc-sub" style="margin-bottom:12px">Paste your Claude API key to start. Get one free at <a href="https://console.anthropic.com" target="_blank" rel="noopener" style="color:#4F7EFF">console.anthropic.com</a></p>
                     
                     <div style="width:100%;margin-bottom:12px">
-                        <input type="password" id="capApiKeyInput" placeholder="sk-ant-api03-..." 
+                        <input type="password" id="capApiKeyInput" placeholder="sk-ant-api03-..." onkeydown="if(event.key==='Enter'){event.preventDefault();wpiConnect()}" 
                             style="width:100%;padding:10px 14px;background:var(--ca-bg3);border:1px solid var(--ca-border2);border-radius:10px;color:var(--ca-text);font-family:var(--ca-mono);font-size:12px;outline:none" />
                     </div>
                     
-                    <button id="capConnectBtn" style="width:100%;padding:10px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--ca-font)">
+                    <button id="capConnectBtn" onclick="wpiConnect()" style="width:100%;padding:10px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--ca-font)">
                         Connect & Start
                     </button>
                     
@@ -260,6 +260,49 @@ function wpilot_render_bubble() {
         // Built by Christos Ferlachidis & Daniel Hedenberg
 
         function wpiLS(key,val){try{if(val!==undefined)localStorage.setItem(key,val);else return localStorage.getItem(key);}catch(e){return null;}}
+
+
+        // Connect API key - inline so it works without external JS
+        window.wpiConnect = function() {
+            var btn = document.getElementById('capConnectBtn');
+            var inp = document.getElementById('capApiKeyInput');
+            var st = document.getElementById('capConnectStatus');
+            if (!btn || !inp) return;
+            var key = (inp.value || '').trim();
+            if (!key || key.indexOf('sk-') !== 0) {
+                if(st){st.textContent='Enter a valid Claude API key (starts with sk-)';st.style.color='#EF4444';st.style.display='block';}
+                return;
+            }
+            btn.textContent = 'Connecting...';
+            btn.disabled = true;
+            if(st){st.textContent='Testing connection...';st.style.color='#5E6E91';st.style.display='block';}
+            var xhr = new XMLHttpRequest();
+            var url = (typeof ajaxurl !== 'undefined') ? ajaxurl : '/wp-admin/admin-ajax.php';
+            var nonce = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
+            xhr.open('POST', url, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onload = function() {
+                try {
+                    var r = JSON.parse(xhr.responseText);
+                    if (r && r.success) {
+                        if(st){st.textContent='Connected! Reloading...';st.style.color='#10B981';}
+                        setTimeout(function(){location.reload()},1000);
+                    } else {
+                        var m = r && r.data ? (typeof r.data === 'string' ? r.data : r.data.message || 'Failed') : 'Failed';
+                        if(st){st.textContent=m;st.style.color='#EF4444';}
+                        btn.textContent='Connect & Start';btn.disabled=false;
+                    }
+                } catch(e) {
+                    if(st){st.textContent='Error parsing response';st.style.color='#EF4444';}
+                    btn.textContent='Connect & Start';btn.disabled=false;
+                }
+            };
+            xhr.onerror = function() {
+                if(st){st.textContent='Network error';st.style.color='#EF4444';}
+                btn.textContent='Connect & Start';btn.disabled=false;
+            };
+            xhr.send('action=ca_test_connection&nonce=' + encodeURIComponent(nonce) + '&key=' + encodeURIComponent(key));
+        };
 
         var lastBackupId = null;
 
