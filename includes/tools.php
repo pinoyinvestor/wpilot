@@ -482,6 +482,75 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_ok("Permalink structure set to: {$structure}");
 
         /* ── Security Scanner ───────────────────────────────── */
+        /* ── Code Injection (mu-plugin) ──────────────────── */
+        case 'add_head_code':
+            $code = $params['code'] ?? '';
+            $name = sanitize_file_name($params['name'] ?? 'custom-head-' . time());
+            if (empty($code)) return wpilot_err('Code required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            $filename = 'wpilot-' . $name . '.php';
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('wp_head', function() {\n"
+                . "    echo '" . addslashes($code) . "';\n"
+                . "}, 1);\n";
+            file_put_contents($mu_dir . '/' . $filename, $php);
+            return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
+
+        case 'add_footer_code':
+            $code = $params['code'] ?? '';
+            $name = sanitize_file_name($params['name'] ?? 'custom-footer-' . time());
+            if (empty($code)) return wpilot_err('Code required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            $filename = 'wpilot-' . $name . '.php';
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('wp_footer', function() {\n"
+                . "    echo '" . addslashes($code) . "';\n"
+                . "});\n";
+            file_put_contents($mu_dir . '/' . $filename, $php);
+            return wpilot_ok("Code added to footer via mu-plugin: {$filename}");
+
+        case 'add_php_snippet':
+            $code = $params['code'] ?? '';
+            $hook = sanitize_text_field($params['hook'] ?? 'init');
+            $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
+            $priority = intval($params['priority'] ?? 10);
+            if (empty($code)) return wpilot_err('Code required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            $filename = 'wpilot-' . $name . '.php';
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('" . $hook . "', function() {\n"
+                . $code . "\n"
+                . "}, " . $priority . ");\n";
+            file_put_contents($mu_dir . '/' . $filename, $php);
+            return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
+
+        case 'list_snippets':
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            $snippets = [];
+            if (is_dir($mu_dir)) {
+                foreach (glob($mu_dir . '/wpilot-*.php') as $file) {
+                    $content = file_get_contents($file);
+                    $snippets[] = [
+                        'file' => basename($file),
+                        'description' => preg_match('/WPilot: (.+)/', $content, $m) ? $m[1] : basename($file),
+                        'size' => filesize($file),
+                    ];
+                }
+            }
+            return wpilot_ok(count($snippets) . " WPilot snippets active.", ['snippets' => $snippets]);
+
+        case 'remove_snippet':
+            $name = sanitize_file_name($params['name'] ?? '');
+            if (empty($name)) return wpilot_err('Snippet name required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            $file = $mu_dir . '/wpilot-' . $name . '.php';
+            if (!file_exists($file)) $file = $mu_dir . '/' . $name;
+            if (file_exists($file)) { @unlink($file); return wpilot_ok("Snippet removed: " . basename($file)); }
+            return wpilot_err("Snippet not found: {$name}");
+
         case 'add_security_headers':
             return wpilot_fix_security('add_security_headers', $params);
 
@@ -1175,6 +1244,75 @@ function wpilot_fix_security($issue, $params = []) {
             $file2 = ABSPATH . 'license.txt';
             if (file_exists($file2)) { @unlink($file2); }
             return wpilot_ok("readme.html and license.txt deleted.");
+
+        /* ── Code Injection (mu-plugin) ──────────────────── */
+        case 'add_head_code':
+            $code = $params['code'] ?? '';
+            $name = sanitize_file_name($params['name'] ?? 'custom-head-' . time());
+            if (empty($code)) return wpilot_err('Code required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            $filename = 'wpilot-' . $name . '.php';
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('wp_head', function() {\n"
+                . "    echo '" . addslashes($code) . "';\n"
+                . "}, 1);\n";
+            file_put_contents($mu_dir . '/' . $filename, $php);
+            return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
+
+        case 'add_footer_code':
+            $code = $params['code'] ?? '';
+            $name = sanitize_file_name($params['name'] ?? 'custom-footer-' . time());
+            if (empty($code)) return wpilot_err('Code required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            $filename = 'wpilot-' . $name . '.php';
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('wp_footer', function() {\n"
+                . "    echo '" . addslashes($code) . "';\n"
+                . "});\n";
+            file_put_contents($mu_dir . '/' . $filename, $php);
+            return wpilot_ok("Code added to footer via mu-plugin: {$filename}");
+
+        case 'add_php_snippet':
+            $code = $params['code'] ?? '';
+            $hook = sanitize_text_field($params['hook'] ?? 'init');
+            $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
+            $priority = intval($params['priority'] ?? 10);
+            if (empty($code)) return wpilot_err('Code required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            $filename = 'wpilot-' . $name . '.php';
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('" . $hook . "', function() {\n"
+                . $code . "\n"
+                . "}, " . $priority . ");\n";
+            file_put_contents($mu_dir . '/' . $filename, $php);
+            return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
+
+        case 'list_snippets':
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            $snippets = [];
+            if (is_dir($mu_dir)) {
+                foreach (glob($mu_dir . '/wpilot-*.php') as $file) {
+                    $content = file_get_contents($file);
+                    $snippets[] = [
+                        'file' => basename($file),
+                        'description' => preg_match('/WPilot: (.+)/', $content, $m) ? $m[1] : basename($file),
+                        'size' => filesize($file),
+                    ];
+                }
+            }
+            return wpilot_ok(count($snippets) . " WPilot snippets active.", ['snippets' => $snippets]);
+
+        case 'remove_snippet':
+            $name = sanitize_file_name($params['name'] ?? '');
+            if (empty($name)) return wpilot_err('Snippet name required.');
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            $file = $mu_dir . '/wpilot-' . $name . '.php';
+            if (!file_exists($file)) $file = $mu_dir . '/' . $name;
+            if (file_exists($file)) { @unlink($file); return wpilot_ok("Snippet removed: " . basename($file)); }
+            return wpilot_err("Snippet not found: {$name}");
 
         case 'add_security_headers':
             $mu_dir = WPMU_PLUGIN_DIR;
