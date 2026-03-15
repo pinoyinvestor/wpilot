@@ -465,6 +465,11 @@
 }
 .cap-refresh-btn:hover { background: rgba(16,185,129,.22); color: #fff; }
 #caRoot[data-theme="light"] .cap-refresh-btn { color: #047857; background: rgba(16,185,129,.1); }
+
+/* Apply button progress animation */
+.cap-spin { display: inline-block; animation: capSpin 1s linear infinite; }
+@keyframes capSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.cap-ac-apply[disabled] { pointer-events: none; }
 .cap-slash-menu {
   position: absolute; bottom: calc(100% + 6px);
   left: 11px; right: 11px;
