@@ -104,6 +104,7 @@
     $('#caClearHist').on('click',function(){
       if(!confirm('Clear all chat history?')) return;
       ajax('ca_clear_history',{},function(ok){
+        try { localStorage.setItem('wpi_chat_sync', Date.now().toString()); } catch(e) {}
         if(ok){ history=[]; $('#caMsgs').html(buildWelcome()); scrollBottom(); }
       });
     });
