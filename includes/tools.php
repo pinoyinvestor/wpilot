@@ -234,8 +234,8 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
         /* ── Plugins ─────────────────────────────────────────── */
         case 'activate_plugin':
             $file = sanitize_text_field($params['file'] ?? '');
-            $slug = sanitize_text_field($params['slug'] ?? '');
-            $name = sanitize_text_field($params['name'] ?? '');
+            $slug = sanitize_text_field($params['slug'] ?? $params['plugin_slug'] ?? $params['plugin'] ?? '');
+            $name = sanitize_text_field($params['name'] ?? $params['plugin_name'] ?? '');
             if (!$file) {
                 if (!function_exists('get_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
                 foreach (get_plugins() as $f => $d) {
@@ -269,8 +269,8 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
 
         case 'deactivate_plugin':
             $file = sanitize_text_field($params['file'] ?? '');
-            $slug = sanitize_text_field($params['slug'] ?? '');
-            $name = sanitize_text_field($params['name'] ?? '');
+            $slug = sanitize_text_field($params['slug'] ?? $params['plugin_slug'] ?? $params['plugin'] ?? '');
+            $name = sanitize_text_field($params['name'] ?? $params['plugin_name'] ?? '');
             // Auto-find plugin file from slug or name
             if (!$file) {
                 if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -290,8 +290,8 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
 
         case 'delete_plugin':
             $file = sanitize_text_field($params['file'] ?? '');
-            $slug = sanitize_text_field($params['slug'] ?? '');
-            $name = sanitize_text_field($params['name'] ?? '');
+            $slug = sanitize_text_field($params['slug'] ?? $params['plugin_slug'] ?? $params['plugin'] ?? '');
+            $name = sanitize_text_field($params['name'] ?? $params['plugin_name'] ?? '');
             if (!$file) {
                 if (!function_exists('get_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
                 foreach (get_plugins() as $f => $d) {
