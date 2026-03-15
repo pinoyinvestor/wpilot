@@ -123,7 +123,8 @@ register_activation_hook( __FILE__, function () {
     wpilot_load_heavy(); // Ensure backup.php + brain.php are available
     add_option( 'wpilot_theme',               'dark' );
     add_option( 'wpilot_auto_approve',        'no' );
-    add_option( 'wpilot_prompts_used',        0 );
+    // Only set prompts_used if it doesn't exist (prevents reset on reinstall)
+    if (get_option('wpilot_prompts_used') === false) add_option('wpilot_prompts_used', 0);
     add_option( 'ca_custom_instructions', '' );
     add_option( 'ca_onboarded',           'no' );
     add_option( 'wpi_data_consent',        'no' );

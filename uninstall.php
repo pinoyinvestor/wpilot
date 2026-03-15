@@ -9,7 +9,8 @@ global $wpdb;
 // Remove all WPilot options
 $options = [
     'ca_api_key', 'ca_chat_history', 'ca_custom_instructions', 'ca_onboarded',
-    'wpilot_theme', 'wpilot_auto_approve', 'wpilot_prompts_used', 'wpilot_allowed_roles',
+    'wpilot_theme', 'wpilot_auto_approve', 'wpilot_allowed_roles',
+    // wpilot_prompts_used intentionally NOT deleted - prevents free prompt abuse on reinstall
     'wpi_data_consent', 'wpi_collect_queue', 'wpi_collect_stats',
     'wpi_shadow_tests', 'wpi_shadow_topic_stats',
     'wpi_custom_robots_txt', 'wpi_pwa_enabled', 'wpi_pwa_theme_color',

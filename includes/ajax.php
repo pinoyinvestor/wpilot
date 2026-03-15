@@ -182,7 +182,10 @@ function wpilot_infer_params( $tool, $description ) {
 add_action( 'wp_ajax_ca_chat', function () {
     check_ajax_referer( 'ca_nonce', 'nonce' );
     if ( ! wpilot_user_has_access() ) wp_send_json_error( 'You don\'t have WPilot access. Ask your admin to grant it.', 403 );
-    if ( wpilot_is_locked() )       wp_send_json_error( 'Free limit reached. Please activate your license.' );
+    if ( wpilot_is_locked() ) {
+        $used = wpilot_prompts_used();
+        wp_send_json_error( 'You have used all ' . CA_FREE_LIMIT . ' free prompts. Activate a license to continue. Visit WPilot > License.' );
+    }
 
     $message = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
     $mode    = sanitize_text_field( wp_unslash( $_POST['mode']    ?? 'chat' ) );
