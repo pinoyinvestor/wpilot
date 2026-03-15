@@ -71,6 +71,8 @@ function wpilot_render_bubble() {
                     <?php if ( $is_admin ): ?>
                     <button class="cap-ib" id="capCfgBtn" title="Quick settings">⚙️</button>
                     <?php endif; ?>
+                    <button class="cap-ib" id="capClearChat" title="Clear chat">🗑️</button>
+                    <button class="cap-ib" id="capRestartScan" title="Clear + re-analyze site">🔄</button>
                     <button class="cap-ib" id="capExportChat" title="Export chat">📋</button>
                     <button class="cap-ib" id="capClose">✕</button>
                 </div>
