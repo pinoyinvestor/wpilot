@@ -201,28 +201,54 @@ function wpilot_run_tool( $tool, $params = [] ) {
         case 'activate_plugin':
             $file = sanitize_text_field($params['file'] ?? '');
             $slug = sanitize_text_field($params['slug'] ?? '');
-            if (!$file && !$slug) return wpilot_err('Plugin file or slug required.');
-            if (!$file && $slug) {
-                // Find plugin file from slug
+            $name = sanitize_text_field($params['name'] ?? '');
+            if (!$file) {
                 if (!function_exists('get_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
                 foreach (get_plugins() as $f => $d) {
-                    if (strpos($f, $slug.'/') === 0 || $f === $slug.'.php') { $file = $f; break; }
+                    if ($slug && (strpos($f, $slug.'/') === 0 || $f === $slug.'.php')) { $file = $f; break; }
+                    if ($name && stripos($d['Name'], $name) !== false) { $file = $f; break; }
                 }
-                if (!$file) return wpilot_err("Plugin \"{$slug}\" not found.");
             }
+            if (!$file) return wpilot_err('Could not find the plugin.');
+            if (is_plugin_active($file)) return wpilot_ok("Plugin is already active.");
             $result = activate_plugin($file);
             if (is_wp_error($result)) return wpilot_err("Could not activate: " . $result->get_error_message());
-            return wpilot_ok("Plugin activated: {$file}.");
+            $plugin_name = get_plugin_data(WP_PLUGIN_DIR . '/' . $file)['Name'] ?? $file;
+            return wpilot_ok("Plugin \"" . $plugin_name . "\" activated.");
 
         case 'deactivate_plugin':
             $file = sanitize_text_field($params['file'] ?? '');
-            if (!$file) return wpilot_err('Plugin file required.');
+            $slug = sanitize_text_field($params['slug'] ?? '');
+            $name = sanitize_text_field($params['name'] ?? '');
+            // Auto-find plugin file from slug or name
+            if (!$file) {
+                if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
+                foreach (get_plugins() as $f => $d) {
+                    if ($slug && (strpos($f, $slug.'/') === 0 || $f === $slug.'.php')) { $file = $f; break; }
+                    if ($name && stripos($d['Name'], $name) !== false) { $file = $f; break; }
+                    // Also try matching the tool description
+                    $desc = sanitize_text_field($params['description'] ?? '');
+                    if ($desc && stripos($desc, $d['Name']) !== false) { $file = $f; break; }
+                }
+            }
+            if (!$file) return wpilot_err('Could not find the plugin. Try specifying the plugin name.');
+            if (!is_plugin_active($file)) return wpilot_ok("Plugin is already inactive.");
             deactivate_plugins($file);
-            return wpilot_ok("Plugin deactivated.");
+            $plugin_name = get_plugin_data(WP_PLUGIN_DIR . '/' . $file)['Name'] ?? $file;
+            return wpilot_ok("Plugin \"" . $plugin_name . "\" deactivated.");
 
         case 'delete_plugin':
             $file = sanitize_text_field($params['file'] ?? '');
-            if (!$file) return wpilot_err('Plugin file required.');
+            $slug = sanitize_text_field($params['slug'] ?? '');
+            $name = sanitize_text_field($params['name'] ?? '');
+            if (!$file) {
+                if (!function_exists('get_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
+                foreach (get_plugins() as $f => $d) {
+                    if ($slug && (strpos($f, $slug.'/') === 0 || $f === $slug.'.php')) { $file = $f; break; }
+                    if ($name && stripos($d['Name'], $name) !== false) { $file = $f; break; }
+                }
+            }
+            if (!$file) return wpilot_err('Could not find the plugin.');
             if (!function_exists('delete_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
             deactivate_plugins($file);
             delete_plugins([$file]);
