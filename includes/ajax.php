@@ -275,10 +275,15 @@ add_action( 'wp_ajax_ca_tool', function () {
 
     $result = wpilot_safe_run_tool( $tool, $params );
 
+    // Save tool result to chat history so AI knows what happened
+    $hist = get_option( 'ca_chat_history', [] );
     if ( $result['success'] ) {
+        $hist[] = ['role'=>'assistant', 'content'=>'[TOOL EXECUTED] ' . $tool . ': ' . ($result['message'] ?? 'Done'), 'time'=>current_time('H:i'), 'source'=>'tool'];
+        update_option( 'ca_chat_history', $hist, false );
         wp_send_json_success( array_merge( $result, ['backup_id' => $backup_id] ) );
     } else {
-        // On error: always return backup_id so UI can show Restore button
+        $hist[] = ['role'=>'assistant', 'content'=>'[TOOL FAILED] ' . $tool . ': ' . ($result['message'] ?? 'Error'), 'time'=>current_time('H:i'), 'source'=>'tool'];
+        update_option( 'ca_chat_history', $hist, false );
         wp_send_json_error( [
             'message'   => $result['message'],
             'backup_id' => $backup_id,

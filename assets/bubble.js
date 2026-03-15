@@ -18,6 +18,11 @@
     var thinkTimer = null;
     var thinkStart = 0;
 
+    // Global: add tool result to chat history (called from inline wpiApply)
+    window.wpiAddToHistory = function(role, content) {
+      history.push({role: role, content: content});
+    };
+
     if ( !$root.length || !$trigger.length ) return;
     if ( CA && CA.theme ) $root.attr('data-theme', CA.theme);
 
