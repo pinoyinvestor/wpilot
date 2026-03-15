@@ -721,3 +721,41 @@
     border-radius: 13px 13px 13px 3px;
     padding: 10px 14px;
 }
+
+/* ── Fix all overflow and overlapping issues ─────────────── */
+
+/* Messages container */
+.cap-msgs { overflow-x: hidden; }
+
+/* Message layout - no overlap */
+.cap-m { max-width: 100%; overflow: hidden; }
+.cap-m-ai { gap: 6px; align-items: flex-start; }
+.cap-m-ai .cap-av { flex-shrink: 0; margin-top: 2px; }
+.cap-m-ai .cap-mt { min-width: 0; overflow-wrap: anywhere; }
+
+/* User messages */  
+.cap-m-user .cap-mt { max-width: 80%; }
+
+/* Action card - prevent overflow */
+.cap-ac { max-width: 100%; overflow: hidden; box-sizing: border-box; }
+.cap-ac-title { overflow: hidden; text-overflow: ellipsis; }
+.cap-ac-desc { overflow-wrap: anywhere; }
+
+/* Results after Apply */
+.cap-ac > div { min-width: 0; max-width: 100%; overflow: hidden; }
+.cap-ac div[style*=margin-top] { word-break: break-word; overflow-wrap: anywhere; }
+
+/* Header - no overlap */
+.cap-hdr { overflow: hidden; }
+.cap-hdr-l { overflow: hidden; min-width: 0; }
+.cap-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Footer - no overlap */
+.cap-footer { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* Input area */
+.cap-inp-wrap { overflow: hidden; }
+
+/* Context bar */
+.cap-ctx { overflow: hidden; }
+.cap-ctx span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
