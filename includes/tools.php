@@ -15,7 +15,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_ok( "Page \"{$title}\" created (ID: {$id}, status: {$status}).", ['id'=>$id] );
 
         case 'update_page_content':
-            $id      = intval( $params['id'] ?? 0 );
+            $id      = intval( $params['id'] ?? $params['page_id'] ?? $params['post_id'] ?? 0 );
             $content = wp_kses_post( $params['content'] ?? '' );
             if ( !$id ) return wpilot_err('Page ID required.');
             wpilot_save_post_snapshot( $id );
