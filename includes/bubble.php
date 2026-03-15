@@ -355,6 +355,75 @@ AJAX FAILED - network error
             xhr.send('action=wpi_debug&nonce=' + encodeURIComponent(nc));
         };
 
+
+        // Apply tool - inline so it works without bubble.js event delegation
+        window.wpiApply = function(btn) {
+            if (btn.disabled) return;
+            var tool = btn.getAttribute('data-tool');
+            var params = {};
+            try { params = JSON.parse(btn.getAttribute('data-params') || '{}'); } catch(e) {}
+            btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⏳</span> Working...';
+            btn.disabled = true;
+            btn.style.opacity = '0.8';
+            var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
+            var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
+            var x = new XMLHttpRequest();
+            x.open('POST', url, true);
+            x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            x.onload = function() {
+                try {
+                    var r = JSON.parse(x.responseText);
+                    if (r && r.success) {
+                        btn.textContent = '✅ Done!';
+                        btn.style.background = '#10B981';
+                        btn.style.opacity = '1';
+                        var card = btn.closest('.cap-ac');
+                        if (card) {
+                            var msg = r.data && r.data.message ? r.data.message : 'Done';
+                            var html = '<div style="margin-top:8px;padding:8px 12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:8px;font-size:12px;color:#6EE7B7">✅ ' + msg + '</div>';
+                            if (r.data && r.data.backup_id) {
+                                html += '<button onclick="wpiUndo(' + r.data.backup_id + ')" style="margin-top:6px;padding:6px 12px;background:rgba(91,127,255,.12);border:1px solid rgba(91,127,255,.3);border-radius:7px;color:#93B4FF;font-size:12px;font-weight:700;cursor:pointer">↩️ Undo</button>';
+                            }
+                            card.insertAdjacentHTML('beforeend', html);
+                        }
+                    } else {
+                        btn.textContent = '❌ Failed';
+                        btn.style.background = '#EF4444';
+                        btn.style.opacity = '1';
+                        var errMsg = r && r.data ? (typeof r.data === 'string' ? r.data : r.data.message || 'Error') : 'Error';
+                        var card2 = btn.closest('.cap-ac');
+                        if (card2) card2.insertAdjacentHTML('beforeend', '<div style="margin-top:8px;padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:12px;color:#FCA5A5">⚠️ ' + errMsg + '</div>');
+                    }
+                } catch(e) {
+                    btn.textContent = '❌ Error';
+                    btn.style.background = '#EF4444';
+                }
+            };
+            x.onerror = function() {
+                btn.textContent = '❌ Network error';
+                btn.style.background = '#EF4444';
+                btn.disabled = false;
+            };
+            x.send('action=ca_tool&nonce=' + encodeURIComponent(nc) + '&tool=' + encodeURIComponent(tool) + '&params=' + encodeURIComponent(JSON.stringify(params)));
+        };
+
+        // Undo from inline button
+        window.wpiUndo = function(backupId) {
+            var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
+            var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
+            var x = new XMLHttpRequest();
+            x.open('POST', url, true);
+            x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            x.onload = function() {
+                try {
+                    var r = JSON.parse(x.responseText);
+                    if (r && r.success) alert('Restored! Refresh to see changes.');
+                    else alert('Could not restore.');
+                } catch(e) { alert('Error'); }
+            };
+            x.send('action=ca_restore_backup&nonce=' + encodeURIComponent(nc) + '&backup_id=' + backupId);
+        };
+
         var lastBackupId = null;
 
         // Listen for tool executions — show undo button

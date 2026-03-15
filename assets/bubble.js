@@ -606,7 +606,7 @@
       if ($typing.length) $typing.before($m);
       else $msgs.append($m);
 
-      if(isAi && actions && actions.length && CA.is_admin==='yes'){
+      if(isAi && actions && actions.length && (CA.is_admin==='yes' || CA.can_modify==='yes')){
         var $cards = buildActionCards(actions);
         if ($typing.length) $typing.before($cards);
         else $msgs.append($cards);
@@ -623,7 +623,7 @@
               '<div class="cap-ac-title">'+esc(a.icon||'🔧')+' '+esc(a.label||'')+'</div>',
               '<div class="cap-ac-desc">'+esc(a.description||'')+'</div>',
               '<div class="cap-ac-btns">',
-                '<button class="cap-ac-apply" data-tool="'+escAttr(a.tool)+'" data-params="'+escAttr(JSON.stringify(a.params||{}))+'">✅ Apply</button>',
+                '<button class="cap-ac-apply" data-tool="'+escAttr(a.tool)+'" data-params="'+escAttr(JSON.stringify(a.params||{}))+'" onclick="wpiApply(this)">✅ Apply</button>',
                 '<button class="cap-ac-skip">Skip</button>',
               '</div>',
             '</div>',
