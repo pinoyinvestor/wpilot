@@ -170,7 +170,12 @@ add_action('admin_footer', function() {
             <div>⚡ AI bubble works on every page of your WordPress admin</div>
           </div>
           <div class="aib-wiz-license-info">
-            Your license: <strong>Free plan</strong> — 20 prompts. <a href="https://weblease.se/wpilot-account" target="_blank" rel="noopener">Upgrade at weblease.se/wpilot-account</a>
+            <?php
+            $tier = wpilot_get_license_tier();
+            $tier_labels = ['free'=>'Free plan — 20 prompts','pro'=>'Pro — unlimited','team'=>'Team — unlimited','lifetime'=>'Lifetime — unlimited forever'];
+            $tier_label = $tier_labels[$tier] ?? 'Free plan — 20 prompts';
+            ?>
+            Your license: <strong><?= esc_html($tier_label) ?></strong>. <a href="https://weblease.se/wpilot-account" target="_blank" rel="noopener">Manage at weblease.se/wpilot-account</a>
           </div>
           <div style="display:flex;flex-direction:column;gap:8px">
             <button class="aib-wiz-btn" id="aibGoToChat">💬 Open Chat →</button>
@@ -345,17 +350,20 @@ add_action('admin_footer', function() {
       });
 
       $('#aibConsentYes').on('click', function(){
-        // Set consent to yes (toggle state) and proceed
-        $.post(ajaxurl, {action:'wpi_set_consent', nonce:nonce, consent: consentOn ? 'yes' : 'no'});
-        goStep(5);
-        startAnalysis();
+        // Clicking Yes = turn on consent
+        consentOn = true;
+        $('#aibConsentToggle').addClass('on');
+        $.post(ajaxurl, {action:'wpi_set_consent', nonce:nonce, consent:'yes'}, function(){
+          goStep(5);
+          startAnalysis();
+        });
       });
 
       $('#aibConsentSkip').on('click', function(){
-        // Keep consent as no and proceed
-        $.post(ajaxurl, {action:'wpi_set_consent', nonce:nonce, consent:'no'});
-        goStep(5);
-        startAnalysis();
+        $.post(ajaxurl, {action:'wpi_set_consent', nonce:nonce, consent:'no'}, function(){
+          goStep(5);
+          startAnalysis();
+        });
       });
 
       // ── Auto-run site analysis on step 5 ───────────────────

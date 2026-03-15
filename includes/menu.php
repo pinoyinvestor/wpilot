@@ -23,6 +23,16 @@ add_action( 'admin_menu', function () {
     foreach ( $pages as [$slug,$title,$cb] ) {
         add_submenu_page( CA_SLUG, $title.' — WPilot', $title, 'manage_options', $slug, $cb );
     }
+
+    // Hidden pages (accessible via direct URL, not in sidebar)
+    $hidden = [
+        [CA_SLUG.'-instr',      'AI Instructions', 'wpilot_page_instructions'],
+        [CA_SLUG.'-brain',      'WPilot Brain',    'wpilot_page_brain'],
+        [CA_SLUG.'-scheduler',  'Scheduler',       'wpilot_page_scheduler'],
+    ];
+    foreach ($hidden as [$slug, $title, $cb]) {
+        add_submenu_page(null, $title.' — WPilot', $title, 'manage_options', $slug, $cb);
+    }
 } );
 
 // ── Page wrapper ───────────────────────────────────────────────
@@ -119,6 +129,7 @@ function wpilot_page_dashboard() {
             [CA_SLUG.'-settings', '⚙️', 'Settings',        'API key, theme & preferences'],
             [CA_SLUG.'-license',  '🔑', 'License',         'Plan, usage & subscription'],
             [CA_SLUG.'-restore',  '🔄', 'Restore History', 'Undo any AI change'],
+            [CA_SLUG.'-activity', '📋', 'Activity Log',    'View all AI changes'],
         ];
         foreach ( $cards as [$slug,$icon,$title,$desc] ): ?>
         <a href="<?= esc_url( admin_url("admin.php?page={$slug}") ) ?>" class="ca-nav-card">
@@ -132,6 +143,14 @@ function wpilot_page_dashboard() {
         <?php endforeach; ?>
     </div>
 
+    <div class="glass-card p-5 mt-6" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px;margin-top:24px">
+        <h3 style="font-size:11px;font-weight:700;color:#5E6E91;text-transform:uppercase;letter-spacing:.07em;margin:0 0 12px">Advanced</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+            <a href="<?= admin_url('admin.php?page='.CA_SLUG.'-brain') ?>" style="font-size:13px;color:#4F7EFF;text-decoration:none">🧠 WPilot Brain</a>
+            <a href="<?= admin_url('admin.php?page='.CA_SLUG.'-scheduler') ?>" style="font-size:13px;color:#4F7EFF;text-decoration:none">📅 Scheduler</a>
+            <a href="<?= admin_url('admin.php?page='.CA_SLUG.'-instr') ?>" style="font-size:13px;color:#4F7EFF;text-decoration:none">📝 AI Instructions</a>
+        </div>
+    </div>
 
     <?php wpilot_wrap( 'WPilot', '⚡', ob_get_clean() );
 }

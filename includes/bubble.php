@@ -189,10 +189,12 @@ function wpilot_render_bubble() {
 
             <div class="cap-inp-wrap">
                 <?php if ( $connected && ! $locked ): ?>
+                    <div class="cap-input-row" style="display:flex;gap:7px;align-items:flex-end">
                     <textarea id="capIn" placeholder="Ask Claude to build, design, or fix…" rows="1"></textarea>
                     <button id="capSend">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     </button>
+                    </div>
                 <?php elseif ( ! $connected ): ?>
                     <div class="cap-inp-cta">
                         <?php if ( $is_admin ): ?>

@@ -74,11 +74,11 @@
     function runSmartScan() {
       if (wpiScanned || CA.connected !== 'yes') return;
       wpiScanned = true;
-      appendMsg('ai', '🔍 Scannar din WordPress-sajt och dina plugins…');
+      appendMsg('ai', '🔍 Scanning your WordPress site...');
       $.post(CA.ajax_url, {action:'wpi_smart_scan', nonce:CA.nonce}, function(r) {
         $msgs.find('.cap-m:last').remove();
         if (r.success) appendMsg('ai', r.data.scan);
-        else appendMsg('ai', 'Hej! Jag är WPilot. Skriv vad du vill ha hjälp med så hjälper jag dig!');
+        else appendMsg('ai', 'Hi! I\'m WPilot. Tell me what you need help with!');
         scrollBottom();
       });
     }
@@ -175,8 +175,8 @@
       {cmd:'/woo',      label:'WooCommerce review', mode:'woo',     msg:'Review the WooCommerce store. Check product pages, checkout flow, missing descriptions, pricing, and conversion opportunities.'},
       {cmd:'/build',    label:'Build mode',         mode:'build',   msg:'I want to build a new page. Ask me what page I want to create and help me design it step by step.'},
       {cmd:'/plugins',  label:'Plugin audit',       mode:'plugins', msg:'Audit all installed plugins. Identify conflicts, overlap, outdated plugins, security risks, and performance impact.'},
-      {cmd:'/scan',     label:'Scanna mina plugins', mode:'plugins', msg:'Scanna alla mina installerade plugins. Vad fungerar bra? Vad saknas? Vad kan optimeras? Var alltid tydlig med vad som är gratis och vad som kostar.'},
-      {cmd:'/gratis',    label:'Gratis-optimeringar', mode:'chat',    msg:'Visa mig allt jag kan förbättra på min WordPress-sajt med enbart gratis plugins och inställningar. Inga betalda lösningar.'},
+      {cmd:'/scan',     label:'Scan my plugins', mode:'plugins', msg:'Scan all installed plugins. What works? What\'s missing? What can be optimized? Be clear about what\'s free and what costs money.'},
+      {cmd:'/gratis',    label:'Free optimizations', mode:'chat',    msg:'Show me everything I can improve on my WordPress site using only free plugins and settings. No paid solutions.'},
       {cmd:'/help',     label:'Show all commands',  mode:'chat',    msg:'List all available slash commands and what each one does.'},
     ];
 
@@ -336,13 +336,13 @@
         value:  instruction
       }).done(function(r){
         if (r && r.success) {
-          appendMsg('ai', '✅ **Sparat!** Instruktionen har lagts till:\n\n> ' + instruction + '\n\nJag kommer att följa den i framtida svar.');
+          appendMsg('ai', '✅ **Saved!** Instruction added to your AI rules.\n\n> ' + instruction + '\n\nI will follow this in future responses.');
         } else {
-          appendMsg('ai', '⚠️ Kunde inte spara instruktionen. Försök igen.');
+          appendMsg('ai', '⚠️ Could not save instruction.');
         }
         scrollBottom();
       }).fail(function(){
-        appendMsg('ai', '⚠️ Nätverksfel — instruktionen sparades inte.');
+        appendMsg('ai', '⚠️ Network error.');
         scrollBottom();
       });
     }
