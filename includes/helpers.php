@@ -119,6 +119,9 @@ function wpilot_track_tokens($input_tokens, $output_tokens) {
     // Real cost: Sonnet input=$3/MTok, output=$15/MTok
     $cost = ($input_tokens / 1000000 * 3) + ($output_tokens / 1000000 * 15);
     $usage[$today]['cost'] = round(($usage[$today]['cost'] ?? 0) + $cost, 4);
+    // Prune entries older than 90 days
+    $cutoff = date('Y-m-d', strtotime('-90 days'));
+    foreach (array_keys($usage) as $d) { if ($d < $cutoff) unset($usage[$d]); }
     update_option('wpi_usage_stats', $usage, false);
 }
 

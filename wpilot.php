@@ -106,7 +106,10 @@ add_action( 'current_screen', function( $screen ) {
 
 // 3. Frontend hooks (robots.txt, schema, PWA manifest)
 add_action( 'template_redirect', function() {
-    wpilot_load_heavy();
+    // Only load heavy modules for logged-in users with WPilot access
+    if ( is_user_logged_in() && ( wpilot_user_has_access() || current_user_can('manage_options') ) ) {
+        wpilot_load_heavy();
+    }
 }, 1 );
 
 // ── Activation ────────────────────────────────────────────────

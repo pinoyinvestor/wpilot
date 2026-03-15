@@ -747,8 +747,10 @@ function wpilot_run_tool( $tool, $params = [] ) {
             $post = get_post($id);
             if (!$post) return wpilot_err("Page #{$id} not found.");
             wpilot_save_post_snapshot($id);
-            if (!empty($params['content'])) wp_update_post(['ID'=>$id, 'post_content'=>wp_kses_post($params['content'])]);
-            if (!empty($params['title'])) wp_update_post(['ID'=>$id, 'post_title'=>sanitize_text_field($params['title'])]);
+            $update = ['ID' => $id];
+            if (!empty($params['content'])) $update['post_content'] = wp_kses_post($params['content']);
+            if (!empty($params['title']))   $update['post_title'] = sanitize_text_field($params['title']);
+            if (count($update) > 1) wp_update_post($update);
             if (!empty($params['css'])) {
                 $existing = wp_get_custom_css();
                 wpilot_save_css_snapshot();
@@ -956,6 +958,7 @@ function wpilot_save_css_snapshot() {
     global $wpdb;
     $wpdb->insert($wpdb->prefix.'ca_backups', [
         'tool'        => 'css_snapshot',
+        'target_id'   => 0,
         'target_type' => 'custom_css',
         'data_before' => wp_json_encode(['css'=>wp_get_custom_css()]),
         'created_at'  => current_time('mysql'),

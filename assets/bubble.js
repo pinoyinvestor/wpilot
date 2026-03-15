@@ -305,11 +305,7 @@
       var words  = val.trim().split(/\s+/).length;
       var tokens = Math.round(words * 1.3 + 200);
       var cost   = (tokens / 1000000 * 3).toFixed(5);
-      if(!$tokenHint){
-        $tokenHint = $('<div class="cap-token-hint"></div>');
-        $panel.find('.cap-footer').prepend($tokenHint);
-      }
-      $tokenHint.html('~'+tokens+' tokens · $'+cost+' input cost').show();
+      return; // disabled
     }
 
     /* ── Voice input ─────────────────────────────────────────── */
