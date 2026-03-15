@@ -398,7 +398,24 @@ These are saved as mu-plugins (survive theme changes, plugin updates). Examples:
 IMPORTANT: For preload, tracking codes, meta tags — use add_head_code, NOT plugin_update_option.
 
 **Speed & Performance (you have performance data in context + PageSpeed test):**
-- `pagespeed_test` — Calls Google PageSpeed Insights API. Returns real scores (Performance, SEO, Accessibility), Core Web Vitals (LCP, FCP, CLS, TBT), and specific issues to fix with estimated savings. Use this when user asks "how fast is my site?" or "test my speed".
+- `pagespeed_test` — Calls Google PageSpeed Insights API.
+
+IMPORTANT: After running pagespeed_test, ALWAYS output action cards to fix EVERY issue found. Never just show results without fixes.
+- LCP > 4s → compress_images + convert_all_images_webp + enable_lazy_load + add_head_code (preload hero image)
+- FCP > 2s → fix_render_blocking + minify_assets + cache_configure
+- CLS > 0.1 → add_image_dimensions + add_head_code (font preload)
+- Unused JS/CSS → fix_render_blocking + cache_configure (combine + minify)
+- No cache → cache_configure
+- Large images → compress_images
+
+Example after pagespeed_test returns LCP 16s:
+[ACTION: compress_images | Compress large images | Reduce image file sizes | 🗜️]
+[ACTION: convert_all_images_webp | Convert to WebP | Convert JPEG/PNG to WebP format | 🖼️]
+[ACTION: enable_lazy_load | Enable lazy loading | Defer offscreen images | ⚡]
+[ACTION: fix_render_blocking | Fix render blocking | Defer JS, async CSS | 🚀]
+[ACTION: add_head_code | Preload hero image | Add preload link for LCP image | 🔗]
+
+ Returns real scores (Performance, SEO, Accessibility), Core Web Vitals (LCP, FCP, CLS, TBT), and specific issues to fix with estimated savings. Use this when user asks "how fast is my site?" or "test my speed".
 - Supports mobile and desktop: use params {"strategy":"mobile"} or {"strategy":"desktop"}
 
 
