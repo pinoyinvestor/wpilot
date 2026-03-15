@@ -823,19 +823,36 @@
 
     /* ── Scroll ─────────────────────────────────────────────── */
     function scrollBottom(){
-      if($msgs.length) $msgs.scrollTop($msgs[0].scrollHeight + 9999);
+      if($msgs.length) {
+        setTimeout(function() {
+          $msgs.scrollTop($msgs[0].scrollHeight + 9999);
+        }, 50);
+      }
     }
 
     /* ── Markdown to HTML ───────────────────────────────────── */
     function mdToHtml(text){
       text = String(text||'')
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      // Bold
       text = text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
-      text = text.replace(/^#{1,3}\s+(.+)$/gm,'<strong class="cap-h">$1</strong>');
-      text = text.replace(/^[-•*]\s+(.+)$/gm,'<span class="cap-li">$1</span>');
-      text = text.replace(/`([^`]+)`/g,'<code>$1</code>');
-      text = text.replace(/^>\s*(.+)$/gm,'<span class="cap-quote" style="border-left:3px solid var(--ca-border2);padding-left:8px;display:block;color:var(--ca-text2);font-style:italic">$1</span>');
-      return text.replace(/\n/g,'<br>');
+      // Headings
+      text = text.replace(/^#{1,3}\s+(.+)$/gm,'<div style="font-weight:700;font-size:13px;margin:8px 0 4px">$1</div>');
+      // Bullet lists
+      text = text.replace(/^[-•*]\s+(.+)$/gm,'<div style="padding-left:12px;margin:2px 0">• $1</div>');
+      // Numbered lists
+      text = text.replace(/^(\d+)\.\s+(.+)$/gm,'<div style="padding-left:12px;margin:2px 0">$1. $2</div>');
+      // Inline code
+      text = text.replace(/`([^`]+)`/g,'<code style="background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px;font-size:11px">$1</code>');
+      // Blockquotes
+      text = text.replace(/^&gt;\s*(.+)$/gm,'<div style="border-left:3px solid var(--ca-border2,#333);padding-left:8px;color:var(--ca-text2,#888);font-style:italic;margin:4px 0">$1</div>');
+      // Horizontal rule
+      text = text.replace(/^---$/gm,'<hr style="border:none;border-top:1px solid var(--ca-border,#222);margin:8px 0">');
+      // Clean up excessive line breaks
+      text = text.replace(/\n/g,'<br>');
+      text = text.replace(/(<br>){3,}/g,'<br><br>');
+      text = text.replace(/(<div[^>]*>)/g,'$1').replace(/<br>(<div)/g,'$1');
+      return text;
     }
 
     function esc(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

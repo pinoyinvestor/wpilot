@@ -299,11 +299,8 @@
 
 /* Typing indicator */
 .cap-dots {
-  display: flex; gap: 4px;
-  padding: 9px 12px;
-  background: var(--ca-bg3);
-  border: 1px solid var(--ca-border2);
-  border-radius: 13px 13px 13px 3px;
+  display: flex; gap: 5px;
+  padding: 0;
   align-self: flex-start;
 }
 /* Built by Christos Ferlachidis & Daniel Hedenberg */
@@ -711,4 +708,14 @@
     .cap-tool-result { font-size: 12px; padding: 8px 10px; }
     .cap-restore-btn { font-size: 11px; padding: 5px 10px; }
     .cap-refresh-btn { font-size: 11px; padding: 5px 10px; }
+}
+
+/* Thinking indicator - visible and clear */
+#capTyping { margin: 8px 0; }
+#capTyping .cap-m-ai { animation: capFadeIn .2s ease; }
+#capTyping .cap-mt {
+    background: var(--ca-bg3);
+    border: 1px solid var(--ca-border2);
+    border-radius: 13px 13px 13px 3px;
+    padding: 10px 14px;
 }
