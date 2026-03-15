@@ -129,6 +129,14 @@ register_activation_hook( __FILE__, function () {
     add_option( 'wpi_data_consent',        'no' );
     add_option( 'wpilot_allowed_roles', ['administrator', 'editor'] );   // GDPR: default to no consent
     wpilot_backup_create_table();
+    // Install emergency recovery mu-plugin (works even during white screen)
+    $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+    if ( !is_dir($mu_dir) ) wp_mkdir_p($mu_dir);
+    $recovery_src = CA_PATH . 'wpilot-recovery.php';
+    $recovery_dst = $mu_dir . '/wpilot-recovery.php';
+    if ( file_exists($recovery_src) && !file_exists($recovery_dst) ) {
+        @copy($recovery_src, $recovery_dst);
+    }
     wpilot_brain_install();
     // Track activation on weblease.se
     if ( function_exists('wpilot_track_activation') ) wpilot_track_activation();
