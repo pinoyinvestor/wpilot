@@ -673,3 +673,42 @@
 @media screen and (max-width: 782px) {
   #wpiCrashRecovery { top: 46px; flex-wrap: wrap; }
 }
+
+/* ── Enhanced Responsive ─────────────────────────────────── */
+@media (max-width: 480px) {
+    .cap-mt { max-width: calc(100vw - 100px); font-size: 13px; }
+    .cap-ac { flex-direction: column; }
+    .cap-ac-title { font-size: 12px; }
+    .cap-ac-desc { font-size: 11px; }
+    .cap-ac-btns { width: 100%; }
+    .cap-ac-apply, .cap-ac-skip { width: 100%; text-align: center; padding: 8px; }
+    .cap-hdr { padding: 8px 10px; }
+    .cap-hdr-r { gap: 1px; }
+    .cap-ib { width: 24px; height: 24px; font-size: 12px; }
+    .cap-ctx { padding: 4px 10px; font-size: 10px; }
+    .cap-footer { padding: 5px 8px; font-size: 9px; }
+    .cap-msgs { padding: 10px 8px; }
+    #capIn { font-size: 14px; padding: 8px 10px; }
+    .cap-welcome { padding: 10px 6px; }
+    .cap-wlc-title { font-size: 12px; }
+    .cap-wlc-sub { font-size: 11px; }
+    .cap-chip { font-size: 11px; padding: 6px 8px; }
+    .cap-nc { padding: 14px 10px; }
+    .cap-nc-h { font-size: 16px; }
+    .cap-nc-sub { font-size: 11px; }
+}
+
+@media (max-width: 360px) {
+    #caPanel { border-radius: 12px; }
+    .cap-ac-btns { flex-direction: column; }
+    .cap-ac-apply, .cap-ac-skip { width: 100%; }
+    .cap-hdr-r .cap-ib:nth-child(n+3) { display: none; }
+    .cap-mt { font-size: 12px; }
+}
+
+/* Action card result on mobile */
+@media (max-width: 600px) {
+    .cap-tool-result { font-size: 12px; padding: 8px 10px; }
+    .cap-restore-btn { font-size: 11px; padding: 5px 10px; }
+    .cap-refresh-btn { font-size: 11px; padding: 5px 10px; }
+}

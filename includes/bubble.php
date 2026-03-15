@@ -317,11 +317,17 @@ function wpilot_render_bubble() {
             var card = btn.closest('.cap-ac');
             var skipBtn = card ? card.querySelector('.cap-ac-skip') : null;
 
-            // Working state
-            btn.textContent = '\u23f3 Working...';
+            // Thinking state with timer
+            var startTime = Date.now();
+            btn.textContent = '\u23f3 Thinking... 0s';
             btn.disabled = true;
             btn.style.cssText = 'padding:5px 11px;background:rgba(91,127,255,.15);color:#93B4FF;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:wait;opacity:0.7;pointer-events:none';
             if (skipBtn) skipBtn.style.display = 'none';
+            var thinkInterval = setInterval(function() {
+                var secs = Math.floor((Date.now() - startTime) / 1000);
+                var label = secs < 5 ? 'Thinking...' : secs < 15 ? 'Working...' : 'Almost done...';
+                btn.textContent = '\u23f3 ' + label + ' ' + secs + 's';
+            }, 1000);
 
             var url = (typeof CA !== 'undefined' && CA.ajax_url) ? CA.ajax_url : (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
             var nc = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
@@ -333,6 +339,7 @@ function wpilot_render_bubble() {
                 try {
                     var r = JSON.parse(x.responseText);
                     if (r && r.success) {
+                        clearInterval(thinkInterval);
                         btn.textContent = '\u2705 Applied';
                         btn.style.cssText = 'padding:5px 11px;background:#10B981;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:default;opacity:1';
                         if (card) card.style.borderLeftColor = '#10B981';
@@ -366,6 +373,7 @@ function wpilot_render_bubble() {
                             window.wpiAddToHistory('assistant', '[TOOL EXECUTED] ' + tool + ': ' + msg);
                         }
                     } else {
+                        clearInterval(thinkInterval);
                         var errMsg = r && r.data ? (typeof r.data === 'string' ? r.data : r.data.message || 'Error') : 'Error';
                         btn.textContent = '\u274c Retry';
                         btn.style.cssText = 'padding:5px 11px;background:#EF4444;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;opacity:1';
@@ -382,12 +390,14 @@ function wpilot_render_bubble() {
                         }
                     }
                 } catch(e) {
+                    clearInterval(thinkInterval);
                     btn.textContent = '\u274c Error';
                     btn.style.cssText = 'padding:5px 11px;background:#EF4444;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;opacity:1';
                     btn.disabled = false;
                 }
             };
             x.onerror = function() {
+                clearInterval(thinkInterval);
                 btn.textContent = '\u274c Network error';
                 btn.style.cssText = 'padding:5px 11px;background:#EF4444;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;opacity:1';
                 btn.disabled = false;
