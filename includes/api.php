@@ -123,7 +123,7 @@ function wpilot_system_prompt( $mode = 'chat' ) {
         'security_scan', 'fix_security_issue',
         'create_404_page',
         'seo_audit', 'create_robots_txt', 'fix_heading_structure', 'add_schema_markup',
-        'bulk_fix_seo', 'set_open_graph', 'site_health_check', 'pagespeed_test',
+        'bulk_fix_seo', 'set_open_graph', 'site_health_check', 'pagespeed_test', 'fix_performance', 'fix_render_blocking', 'enable_lazy_load', 'optimize_database', 'add_image_dimensions', 'minify_assets',
         'cache_configure', 'cache_purge', 'cache_enable',
         'smtp_configure', 'smtp_test',
         'security_configure', 'security_enable_firewall', 'security_enable_2fa',

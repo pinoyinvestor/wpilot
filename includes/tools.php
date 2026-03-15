@@ -489,6 +489,26 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_fix_security('disable_xmlrpc', $params);
 
         /* ── PageSpeed Test ──────────────────────────────── */
+        /* ── Performance Fix Tools ───────────────────────── */
+        case 'fix_performance':
+            return wpilot_fix_performance($params);
+
+        case 'fix_render_blocking':
+            return wpilot_fix_render_blocking($params);
+
+        case 'enable_lazy_load':
+            return wpilot_enable_lazy_load($params);
+
+        case 'optimize_database':
+            $params['dry_run'] = false;
+            return wpilot_database_cleanup($params);
+
+        case 'add_image_dimensions':
+            return wpilot_add_image_dimensions($params);
+
+        case 'minify_assets':
+            return wpilot_minify_assets($params);
+
         case 'pagespeed_test':
             return wpilot_pagespeed_test($params);
 
@@ -2246,4 +2266,212 @@ function wpilot_pagespeed_test($p) {
         'opportunities' => $opportunities,
         'grade' => $grade,
     ]);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  Performance Fix Tools
+// ═══════════════════════════════════════════════════════════════
+
+function wpilot_fix_performance($p) {
+    $results = [];
+
+    // 1. Configure cache if available
+    if (function_exists('wpilot_cache_configure')) {
+        $cache = wpilot_cache_configure($p);
+        $results[] = 'Cache: ' . ($cache['message'] ?? 'configured');
+    }
+
+    // 2. Convert images to WebP
+    $images = get_posts(['post_type'=>'attachment','post_mime_type'=>['image/jpeg','image/png'],'numberposts'=>-1]);
+    $not_webp = count($images);
+    if ($not_webp > 0) {
+        $results[] = $not_webp . ' images can be converted to WebP (use convert_all_images_webp)';
+    }
+
+    // 3. Check for lazy loading
+    $has_lazy = false;
+    foreach (get_option('active_plugins', []) as $plugin) {
+        if (preg_match('/litespeed|wp-rocket|lazy/i', $plugin)) $has_lazy = true;
+    }
+    if (!$has_lazy) {
+        $results[] = 'No lazy loading detected — enable it for faster page loads';
+    } else {
+        $results[] = 'Lazy loading: active';
+    }
+
+    // 4. Database size
+    global $wpdb;
+    $revisions = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'revision'");
+    $transients = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_%' AND option_value < UNIX_TIMESTAMP()");
+    if ($revisions > 50 || $transients > 20) {
+        $results[] = "Database bloat: {$revisions} revisions, {$transients} expired transients — clean up to speed up queries";
+    }
+
+    // 5. Plugin count
+    $plugin_count = count(get_option('active_plugins', []));
+    if ($plugin_count > 20) {
+        $results[] = "{$plugin_count} active plugins — consider deactivating unused ones";
+    }
+
+    // 6. PHP version
+    $php = PHP_VERSION;
+    if (version_compare($php, '8.0', '<')) {
+        $results[] = "PHP {$php} is slow — upgrade to 8.0+ for 20-30% speed boost";
+    }
+
+    return wpilot_ok("Performance analysis:\n" . implode("\n", array_map(function($r) { return "- " . $r; }, $results)), [
+        'not_webp' => $not_webp,
+        'revisions' => $revisions,
+        'transients' => $transients,
+        'plugin_count' => $plugin_count,
+        'php_version' => $php,
+        'has_lazy' => $has_lazy,
+    ]);
+}
+
+function wpilot_fix_render_blocking($p) {
+    // This requires cache plugin configuration
+    // LiteSpeed, WP Rocket, Autoptimize can defer/async CSS/JS
+
+    if (defined('LSCWP_V') || class_exists('LiteSpeed\Core')) {
+        update_option('litespeed.conf.optm-css_async', 1);
+        update_option('litespeed.conf.optm-js_defer', 1);
+        update_option('litespeed.conf.optm-js_inline_defer', 1);
+        update_option('litespeed.conf.css_minify', 1);
+        update_option('litespeed.conf.js_minify', 1);
+        update_option('litespeed.conf.css_combine', 1);
+        update_option('litespeed.conf.js_combine', 1);
+        update_option('litespeed.conf.optm-qs_rm', 1);
+        do_action('litespeed_purge_all');
+        return wpilot_ok("LiteSpeed configured: CSS async, JS deferred, CSS/JS minified + combined, query strings removed. Cache purged.");
+    }
+
+    if (defined('WP_ROCKET_VERSION')) {
+        $opts = get_option('wp_rocket_settings', []);
+        $opts['defer_all_js'] = 1;
+        $opts['async_css'] = 1;
+        $opts['minify_css'] = 1;
+        $opts['minify_js'] = 1;
+        $opts['minify_concatenate_css'] = 1;
+        $opts['minify_concatenate_js'] = 1;
+        $opts['remove_query_strings'] = 1;
+        update_option('wp_rocket_settings', $opts);
+        if (function_exists('rocket_clean_domain')) rocket_clean_domain();
+        return wpilot_ok("WP Rocket configured: JS deferred, CSS async, minified + combined.");
+    }
+
+    // No cache plugin — add inline via mu-plugin
+    $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+    if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+
+    $code = "<?php\n// WPilot: Defer render-blocking resources\n"
+        . "add_action('wp_enqueue_scripts', function() {\n"
+        . "    // Add defer to all scripts\n"
+        . "    add_filter('script_loader_tag', function(\$tag, \$handle) {\n"
+        . "        if (is_admin()) return \$tag;\n"
+        . "        if (strpos(\$tag, 'defer') !== false || strpos(\$tag, 'async') !== false) return \$tag;\n"
+        . "        return str_replace(' src=', ' defer src=', \$tag);\n"
+        . "    }, 10, 2);\n"
+        . "}, 20);\n";
+
+    file_put_contents($mu_dir . '/wpilot-defer-scripts.php', $code);
+    return wpilot_ok("Created mu-plugin to defer all scripts. For best results, install LiteSpeed Cache or WP Rocket.");
+}
+
+function wpilot_enable_lazy_load($p) {
+    // WordPress 5.5+ has native lazy loading, but we can enhance it
+
+    if (defined('LSCWP_V')) {
+        update_option('litespeed.conf.media_lazy', 1);
+        update_option('litespeed.conf.media_lazy_placeholder', 1);
+        update_option('litespeed.conf.media_placeholder_resp', 1);
+        update_option('litespeed.conf.media_iframe_lazy', 1);
+        return wpilot_ok("LiteSpeed lazy loading enabled: images, iframes, responsive placeholders.");
+    }
+
+    if (defined('WP_ROCKET_VERSION')) {
+        $opts = get_option('wp_rocket_settings', []);
+        $opts['lazyload'] = 1;
+        $opts['lazyload_iframes'] = 1;
+        $opts['lazyload_youtube'] = 1;
+        update_option('wp_rocket_settings', $opts);
+        return wpilot_ok("WP Rocket lazy loading enabled: images, iframes, YouTube.");
+    }
+
+    // WordPress native lazy loading is already on by default (5.5+)
+    // Add enhanced lazy loading via mu-plugin
+    $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+    if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+
+    $code = "<?php\n// WPilot: Enhanced lazy loading\n"
+        . "add_filter('wp_lazy_loading_enabled', '__return_true');\n"
+        . "add_filter('wp_img_tag_add_loading_attr', function() { return 'lazy'; });\n";
+
+    file_put_contents($mu_dir . '/wpilot-lazy-load.php', $code);
+    return wpilot_ok("Enhanced lazy loading enabled. WordPress native + mu-plugin. For best results, install LiteSpeed Cache.");
+}
+
+function wpilot_add_image_dimensions($p) {
+    $images = get_posts(['post_type'=>'attachment','post_mime_type'=>'image','numberposts'=>-1]);
+    $fixed = 0;
+
+    foreach ($images as $img) {
+        $meta = wp_get_attachment_metadata($img->ID);
+        if (empty($meta['width']) || empty($meta['height'])) {
+            $file = get_attached_file($img->ID);
+            if ($file && file_exists($file)) {
+                $size = wp_getimagesize($file);
+                if ($size) {
+                    $meta['width'] = $size[0];
+                    $meta['height'] = $size[1];
+                    wp_update_attachment_metadata($img->ID, $meta);
+                    $fixed++;
+                }
+            }
+        }
+    }
+
+    // Also fix images in content that lack width/height attributes
+    $posts = get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>100]);
+    $content_fixed = 0;
+    foreach ($posts as $post) {
+        $content = $post->post_content;
+        if (preg_match_all('/<img[^>]+>/i', $content, $matches)) {
+            $changed = false;
+            foreach ($matches[0] as $img_tag) {
+                if (strpos($img_tag, 'width=') === false || strpos($img_tag, 'height=') === false) {
+                    // Try to get dimensions from attachment
+                    if (preg_match('/wp-image-(\d+)/', $img_tag, $id_match)) {
+                        $meta = wp_get_attachment_metadata(intval($id_match[1]));
+                        if ($meta && !empty($meta['width']) && !empty($meta['height'])) {
+                            $new_tag = $img_tag;
+                            if (strpos($new_tag, 'width=') === false) {
+                                $new_tag = str_replace('<img', '<img width="' . $meta['width'] . '"', $new_tag);
+                            }
+                            if (strpos($new_tag, 'height=') === false) {
+                                $new_tag = str_replace('<img', '<img height="' . $meta['height'] . '"', $new_tag);
+                            }
+                            $content = str_replace($img_tag, $new_tag, $content);
+                            $changed = true;
+                            $content_fixed++;
+                        }
+                    }
+                }
+            }
+            if ($changed) {
+                wp_update_post(['ID' => $post->ID, 'post_content' => $content]);
+            }
+        }
+    }
+
+    return wpilot_ok("Fixed dimensions: {$fixed} image metadata + {$content_fixed} images in content now have width/height attributes.");
+}
+
+function wpilot_minify_assets($p) {
+    // Configure minification in cache plugins
+    if (function_exists('wpilot_cache_configure')) {
+        return wpilot_cache_configure($p);
+    }
+    return wpilot_ok("Install a cache plugin (LiteSpeed Cache or WP Rocket) for CSS/JS minification. Use cache_configure after installing.");
 }
