@@ -543,6 +543,16 @@ function wpilot_run_tool( $tool, $params = [] ) {
             if ($ret !== 0 && $ret !== null) {
                 return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
             }
+            // Wrap code in try/catch so it can never crash WordPress
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('" . $hook . "', function() {\n"
+                . "    try {\n"
+                . "        " . $code . "\n"
+                . "    } catch (\\Throwable \$e) {\n"
+                . "        // Auto-disable this snippet if it crashes\n"
+                . "        @rename(__FILE__, __FILE__ . '.disabled');\n"
+                . "    }\n"
+                . "}, " . $priority . ");\n";
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
 
@@ -1322,6 +1332,16 @@ function wpilot_fix_security($issue, $params = []) {
             if ($ret !== 0 && $ret !== null) {
                 return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
             }
+            // Wrap code in try/catch so it can never crash WordPress
+            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
+                . "add_action('" . $hook . "', function() {\n"
+                . "    try {\n"
+                . "        " . $code . "\n"
+                . "    } catch (\\Throwable \$e) {\n"
+                . "        // Auto-disable this snippet if it crashes\n"
+                . "        @rename(__FILE__, __FILE__ . '.disabled');\n"
+                . "    }\n"
+                . "}, " . $priority . ");\n";
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
 
