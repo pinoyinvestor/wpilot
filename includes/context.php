@@ -11,7 +11,7 @@ function wpilot_build_context( $scope = 'general' ) {
             $ctx = ['blueprint' => wpilot_compress_blueprint($bp)];
             // Add only dynamic data that changes frequently
             if (class_exists('WooCommerce')) {
-                $ctx['blueprint']['orders']['today'] = count(wc_get_orders(['date_created' => '>' . date('Y-m-d 00:00:00'), 'limit' => -1, 'return' => 'ids']));
+                $ctx['blueprint']['orders']['today'] = count(wc_get_orders(['date_created' => '>' . date('Y-m-d 00:00:00'), 'limit' => 500, 'return' => 'ids']));
             }
             return $ctx;
         }
@@ -458,7 +458,7 @@ function wpilot_ctx_seo_summary() {
 
 function wpilot_ctx_woo() {
     if ( ! class_exists( 'WooCommerce' ) ) return [];
-    $products  = wc_get_products( ['limit' => 30, 'status' => 'publish'] );
+    $products  = wc_get_products( ['limit' => 20, 'status' => 'publish'] );
     $prod_data = array_map( fn($p) => [
         'id'        => $p->get_id(),
         'name'      => $p->get_name(),
@@ -696,31 +696,31 @@ function wpilot_ctx_business_stats() {
     // ═══ WOOCOMMERCE ORDERS & REVENUE ═══
     if (class_exists('WooCommerce')) {
         // Today
-        $today_orders = wc_get_orders(['date_created' => '>' . date('Y-m-d 00:00:00'), 'limit' => -1, 'return' => 'ids']);
+        $today_orders = wc_get_orders(['date_created' => '>' . date('Y-m-d 00:00:00'), 'limit' => 500, 'return' => 'ids']);
         $today_rev = 0;
         foreach ($today_orders as $oid) { $o = wc_get_order($oid); if ($o) $today_rev += $o->get_total(); }
 
         // This week
         $week_start = date('Y-m-d 00:00:00', strtotime('monday this week'));
-        $week_orders = wc_get_orders(['date_created' => '>' . $week_start, 'limit' => -1, 'return' => 'ids']);
+        $week_orders = wc_get_orders(['date_created' => '>' . $week_start, 'limit' => 500, 'return' => 'ids']);
         $week_rev = 0;
         foreach ($week_orders as $oid) { $o = wc_get_order($oid); if ($o) $week_rev += $o->get_total(); }
 
         // This month
         $month_start = date('Y-m-01 00:00:00');
-        $month_orders = wc_get_orders(['date_created' => '>' . $month_start, 'limit' => -1, 'return' => 'ids']);
+        $month_orders = wc_get_orders(['date_created' => '>' . $month_start, 'limit' => 500, 'return' => 'ids']);
         $month_rev = 0;
         foreach ($month_orders as $oid) { $o = wc_get_order($oid); if ($o) $month_rev += $o->get_total(); }
 
         // All time
-        $all_orders = wc_get_orders(['limit' => -1, 'return' => 'ids', 'status' => ['completed','processing']]);
+        $all_orders = wc_get_orders(['limit' => 500, 'return' => 'ids', 'status' => ['completed','processing']]);
         $all_rev = 0;
         foreach (array_slice($all_orders, 0, 500) as $oid) { $o = wc_get_order($oid); if ($o) $all_rev += $o->get_total(); }
 
         // Order statuses
         $status_counts = [];
         foreach (['pending','processing','on-hold','completed','cancelled','refunded','failed'] as $s) {
-            $c = count(wc_get_orders(['status' => $s, 'limit' => -1, 'return' => 'ids']));
+            $c = count(wc_get_orders(['status' => $s, 'limit' => 500, 'return' => 'ids']));
             if ($c > 0) $status_counts[$s] = $c;
         }
 
@@ -824,7 +824,7 @@ function wpilot_ctx_business_stats() {
 
     // ═══ LEARNDASH (LMS) ═══
     if (defined('LEARNDASH_VERSION')) {
-        $courses = get_posts(['post_type' => 'sfwd-courses', 'numberposts' => -1, 'post_status' => 'publish']);
+        $courses = get_posts(['post_type' => 'sfwd-courses', 'numberposts' => 100, 'post_status' => 'publish']);
         $total_enrollments = 0;
         $course_list = [];
         foreach ($courses as $c) {
@@ -842,7 +842,7 @@ function wpilot_ctx_business_stats() {
 
     // ═══ MEMBERSHIP (MemberPress, Paid Memberships Pro) ═══
     if (defined('MEPR_VERSION')) {
-        $memberships = get_posts(['post_type' => 'memberpressproduct', 'numberposts' => -1]);
+        $memberships = get_posts(['post_type' => 'memberpressproduct', 'numberposts' => 100]);
         $stats['membership'] = [
             'plugin' => 'MemberPress',
             'plans' => count($memberships),
@@ -853,11 +853,11 @@ function wpilot_ctx_business_stats() {
     // ═══ CONTACT FORM SUBMISSIONS ═══
     if (defined('WPCF7_VERSION')) {
         // Count CF7 forms
-        $forms = get_posts(['post_type' => 'wpcf7_contact_form', 'numberposts' => -1]);
+        $forms = get_posts(['post_type' => 'wpcf7_contact_form', 'numberposts' => 100]);
         $stats['forms'] = ['plugin' => 'Contact Form 7', 'count' => count($forms), 'names' => array_map(fn($f) => $f->post_title, $forms)];
     }
     if (class_exists('WPForms')) {
-        $forms = get_posts(['post_type' => 'wpforms', 'numberposts' => -1]);
+        $forms = get_posts(['post_type' => 'wpforms', 'numberposts' => 100]);
         $stats['forms'] = ['plugin' => 'WPForms', 'count' => count($forms)];
     }
 

@@ -289,6 +289,13 @@ add_action( 'wp_ajax_ca_restore_backup', function () {
 
 // ── Smart site scan — AI proactively reviews installed plugins ──
 add_action('wp_ajax_wpi_smart_scan', function() {
+    // Check for missing essential plugins during scan
+    if (function_exists('wpilot_run_tool')) {
+        $recs = wpilot_run_tool('recommend_plugins', []);
+        if (!empty($recs['recommendations'])) {
+            $_SESSION['wpilot_recommendations'] = $recs['recommendations'];
+        }
+    }
     check_ajax_referer('ca_nonce','nonce');
     if ( ! wpilot_user_has_access() ) wp_send_json_error('You don\'t have WPilot access. Ask your admin to grant it.', 403);
     if (!wpilot_is_connected()) wp_send_json_error('Not connected');

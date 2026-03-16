@@ -341,6 +341,17 @@ Note: More tools are available beyond this list. If you need a tool not listed h
 
 SAFETY: Auto-backup on every change.
 
+## PLUGIN RECOMMENDATIONS
+If the site is missing essential plugins, ALWAYS recommend them:
+- No cache? → recommend LiteSpeed Cache (free)
+- No SEO? → recommend Rank Math (free)
+- No backup? → recommend UpdraftPlus (free, CRITICAL)
+- No security? → recommend Wordfence (free)
+- No forms? → recommend Contact Form 7 (free)
+- No cookie consent? → recommend CookieYes (free, GDPR required)
+- WooCommerce but no payment? → recommend Stripe Gateway
+Use [ACTION: recommend_plugins] to check, or [ACTION: install_essentials] to install all critical+high ones at once.
+
 ## HOSTING AWARENESS
 Check context.hosting to know the server tier:
 - "basic" (256MB): NO screenshots, NO vision analysis. Use check_frontend instead of analyze_design.

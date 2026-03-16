@@ -504,3 +504,20 @@ function wpilot_plugin_info($result, $action, $args) {
         ],
     ];
 }
+// Show admin notice for missing essential plugins (once per week)
+add_action('admin_notices', function() {
+    if (!current_user_can('manage_options')) return;
+    $last_check = get_transient('wpilot_plugin_check');
+    if ($last_check) return;
+
+    $installed = array_map(function($p) { return explode('/', $p)[0]; }, get_option('active_plugins', []));
+    $missing = [];
+    if (!in_array('updraftplus', $installed) && !in_array('duplicator', $installed)) $missing[] = 'Backup (UpdraftPlus)';
+    if (!in_array('litespeed-cache', $installed) && !in_array('wp-super-cache', $installed) && !in_array('w3-total-cache', $installed)) $missing[] = 'Cache';
+    if (!in_array('wordfence', $installed) && !in_array('sucuri-scanner', $installed)) $missing[] = 'Security';
+
+    if (!empty($missing)) {
+        echo '<div class="notice notice-warning is-dismissible"><p><strong>WPilot:</strong> Your site is missing essential plugins: ' . implode(', ', $missing) . '. <a href="' . admin_url('admin.php?page=wpilot-chat') . '">Ask WPilot to install them</a></p></div>';
+    }
+    set_transient('wpilot_plugin_check', 1, WEEK_IN_SECONDS);
+}); // wpilot_missing_plugins_notice

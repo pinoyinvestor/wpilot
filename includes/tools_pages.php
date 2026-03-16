@@ -2350,6 +2350,88 @@ function wpilot_run_page_tools($tool, $params = []) {
 
 
         default:
-            return null; // Not handled by this module
+            
+        case 'recommend_plugins':
+        case 'check_missing_plugins':
+            $recommendations = [];
+            $installed = array_map(function($p) { return explode('/', $p)[0]; }, get_option('active_plugins', []));
+
+            // Cache plugin
+            $has_cache = in_array('litespeed-cache', $installed) || in_array('w3-total-cache', $installed) ||
+                         in_array('wp-super-cache', $installed) || in_array('wp-rocket', $installed) ||
+                         in_array('breeze', $installed) || in_array('cache-enabler', $installed);
+            if (!$has_cache) $recommendations[] = ['plugin' => 'litespeed-cache', 'reason' => 'No cache plugin — site is slow without one', 'priority' => 'high', 'free' => true];
+
+            // SEO plugin
+            $has_seo = in_array('seo-by-rank-math', $installed) || in_array('wordpress-seo', $installed) || in_array('all-in-one-seo-pack', $installed);
+            if (!$has_seo) $recommendations[] = ['plugin' => 'seo-by-rank-math', 'reason' => 'No SEO plugin — Google cannot optimize your site', 'priority' => 'high', 'free' => true];
+
+            // Security plugin
+            $has_security = in_array('wordfence', $installed) || in_array('sucuri-scanner', $installed) || in_array('better-wp-security', $installed);
+            if (!$has_security) $recommendations[] = ['plugin' => 'wordfence', 'reason' => 'No security plugin — site is vulnerable', 'priority' => 'high', 'free' => true];
+
+            // Backup plugin
+            $has_backup = in_array('updraftplus', $installed) || in_array('duplicator', $installed) || in_array('backwpup', $installed);
+            if (!$has_backup) $recommendations[] = ['plugin' => 'updraftplus', 'reason' => 'No backup plugin — you could lose everything', 'priority' => 'critical', 'free' => true];
+
+            // Forms plugin
+            $has_forms = in_array('contact-form-7', $installed) || in_array('wpforms-lite', $installed) ||
+                         in_array('fluentform', $installed) || in_array('gravityforms', $installed);
+            if (!$has_forms) $recommendations[] = ['plugin' => 'contact-form-7', 'reason' => 'No contact form — visitors cannot reach you', 'priority' => 'medium', 'free' => true];
+
+            // Cookie consent (GDPR)
+            $has_cookie = in_array('cookie-law-info', $installed) || in_array('cookie-notice', $installed) || in_array('complianz-gdpr', $installed);
+            if (!$has_cookie) $recommendations[] = ['plugin' => 'cookie-law-info', 'reason' => 'No cookie consent — required by GDPR in EU', 'priority' => 'high', 'free' => true];
+
+            // WooCommerce specific
+            if (class_exists('WooCommerce')) {
+                $has_stripe = in_array('woocommerce-gateway-stripe', $installed);
+                if (!$has_stripe) $recommendations[] = ['plugin' => 'woocommerce-gateway-stripe', 'reason' => 'No payment gateway — customers cannot pay', 'priority' => 'critical', 'free' => true];
+            }
+
+            // Image optimization
+            $has_imgopt = in_array('ewww-image-optimizer', $installed) || in_array('imagify', $installed) || in_array('smush', $installed) || defined('LSCWP_V');
+            if (!$has_imgopt && !$has_cache) $recommendations[] = ['plugin' => 'ewww-image-optimizer', 'reason' => 'No image optimizer — large images slow your site', 'priority' => 'medium', 'free' => true];
+
+            // Built by Christos Ferlachidis & Daniel Hedenberg
+
+            if (empty($recommendations)) {
+                return wpilot_ok("All essential plugins installed! Your site has good coverage.", ['all_good' => true]);
+            }
+
+            $critical = count(array_filter($recommendations, fn($r) => $r['priority'] === 'critical'));
+            $high = count(array_filter($recommendations, fn($r) => $r['priority'] === 'high'));
+
+            return wpilot_ok($critical + $high . " essential plugins missing. " . count($recommendations) . " total recommendations.", [
+                'recommendations' => $recommendations,
+                'critical' => $critical,
+                'high' => $high,
+                'can_auto_install' => true,
+            ]);
+
+        case 'install_recommended':
+        case 'install_essentials':
+            // Auto-install all recommended plugins
+            $r = wpilot_run_tool('recommend_plugins', []);
+            if ($r['all_good'] ?? false) return wpilot_ok("All essentials already installed!");
+            $recs = $r['recommendations'] ?? [];
+            $installed_count = 0;
+            $failed = [];
+            foreach ($recs as $rec) {
+                if ($rec['priority'] === 'critical' || $rec['priority'] === 'high') {
+                    $result = wpilot_run_tool('plugin_install', ['slug' => $rec['plugin']]);
+                    if ($result['success'] ?? false) {
+                        $installed_count++;
+                    } else {
+                        $failed[] = $rec['plugin'] . ': ' . ($result['message'] ?? 'failed');
+                    }
+                }
+            }
+            return wpilot_ok("Installed {$installed_count} essential plugins." . (!empty($failed) ? " Failed: " . implode(', ', $failed) : ''), [
+                'installed' => $installed_count,
+                'failed' => $failed,
+            ]);
+
+        return null; // Not handled by this module
     }
 }
