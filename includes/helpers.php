@@ -48,7 +48,11 @@ add_action( 'wp_head', function() {
     // JSON-LD Schema markup
     $schema = get_post_meta( $post_id, '_wpi_schema_markup', true );
     if ( $schema ) {
-        echo '<script type="application/ld+json">' . $schema . '</script>' . "\n";
+        // SECURITY: Validate JSON and re-encode to prevent XSS injection
+        $schema_decoded = json_decode($schema, true);
+        if (is_array($schema_decoded)) {
+            echo '<script type="application/ld+json">' . wp_json_encode($schema_decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+        }
     }
 
     // Open Graph — required tags always output, custom overrides applied

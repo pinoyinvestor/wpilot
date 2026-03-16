@@ -3,6 +3,11 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ── Dispatch tool calls ────────────────────────────────────────
 function wpilot_run_tool( $tool, $params = [] ) {
+    // Safety: write crash flag before executing (removed after success)
+    $crash_file = WP_CONTENT_DIR . '/wpilot-crash-flag.txt';
+    file_put_contents($crash_file, json_encode(['tool' => $tool, 'time' => date('Y-m-d H:i:s')]));
+    // Register cleanup on successful completion
+    register_shutdown_function(function() use ($crash_file) { @unlink($crash_file); });
     switch ( $tool ) {
 
         /* ── Pages & Posts ──────────────────────────────────── */
@@ -3088,6 +3093,12 @@ function wpilot_run_tool( $tool, $params = [] ) {
             $wp_root = realpath(ABSPATH);
             if (!$real || strpos($real, $wp_root) !== 0) return wpilot_err('File not found or outside WordPress directory.');
             if (!is_file($real)) return wpilot_err('Not a file: ' . $path);
+            // SECURITY: Block reading sensitive files that contain credentials
+            $blocked_read = ['wp-config.php', '.htaccess', '.htpasswd', 'wp-settings.php', '.env', 'debug.log'];
+            if (in_array(basename($real), $blocked_read)) return wpilot_err('Cannot read sensitive configuration files for security.');
+            // Block files that may contain secrets
+            $path_lower = strtolower($real);
+            if (preg_match('/(password|credential|\.key|\.pem|\.crt)/', $path_lower)) return wpilot_err('Cannot read files that may contain sensitive data.');
             $size = filesize($real);
             if ($size > 500000) return wpilot_err('File too large (' . round($size/1024) . ' KB). Max 500KB.');
             $content = file_get_contents($real);
@@ -3108,8 +3119,13 @@ function wpilot_run_tool( $tool, $params = [] ) {
             $wp_root = realpath(ABSPATH);
             if (!$real || strpos($real, $wp_root) !== 0) return wpilot_err('Path outside WordPress directory.');
             $basename = basename($path);
-            if (in_array($basename, ['wp-config.php', '.htaccess', 'wp-settings.php'])) {
+            if (in_array($basename, ['wp-config.php', '.htaccess', '.htpasswd', 'wp-settings.php', '.env'])) {
                 return wpilot_err('Cannot modify core WordPress config files for security.');
+            }
+            // SECURITY: Block writing to sensitive directories
+            $blocked_dirs = ['/wpilot/', '/mu-plugins/wpilot-', '/wp-admin/includes/', '/wp-includes/'];
+            foreach ($blocked_dirs as $bd) {
+                if (strpos($path, $bd) !== false) return wpilot_err('Cannot write to protected directory.');
             }
             if (file_exists($path)) {
                 $backup_dir = WP_CONTENT_DIR . '/wpilot-backups/files/' . date('Y-m-d');
@@ -3201,11 +3217,20 @@ function wpilot_run_tool( $tool, $params = [] ) {
             if (empty($query)) return wpilot_err('SQL query required.');
             global $wpdb;
             $query_upper = strtoupper(trim($query));
-            $blocked = ['DROP ', 'TRUNCATE ', 'ALTER ', 'CREATE TABLE', 'GRANT ', 'REVOKE '];
+            // SECURITY: Block dangerous SQL patterns (check anywhere in query, not just start)
+            $blocked = ['DROP ', 'TRUNCATE ', 'ALTER ', 'CREATE TABLE', 'GRANT ', 'REVOKE ', 'LOAD ', 'INTO OUTFILE', 'INTO DUMPFILE', 'SLEEP(', 'BENCHMARK(', 'LOAD_FILE('];
             foreach ($blocked as $b) {
-                if (strpos($query_upper, $b) === 0) return wpilot_err("Blocked: {$b} queries not allowed.");
+                if (strpos($query_upper, $b) !== false) return wpilot_err("Blocked: dangerous SQL pattern detected.");
             }
+            // Block stacked queries
+            if (substr_count($query, ';') > 0) return wpilot_err("Multiple statements not allowed.");
+            // Block UNION-based injection
+            if (preg_match('/UNION\s+(ALL\s+)?SELECT/i', $query)) return wpilot_err("UNION SELECT not allowed.");
             $query = str_replace(['{prefix}', '{wp_}'], $wpdb->prefix, $query);
+            // SECURITY: Only allow queries against known WP tables
+            if (!preg_match('/(?:FROM|TABLE|INTO|UPDATE)\s+[`]?(' . preg_quote($wpdb->prefix, '/') . '\w+)[`]?/i', $query) && strpos($query_upper, 'SHOW') !== 0 && strpos($query_upper, 'DESCRIBE') !== 0) {
+                return wpilot_err("Query must reference tables with the WordPress prefix ({$wpdb->prefix}).");
+            }
             if (strpos($query_upper, 'SELECT') === 0 || strpos($query_upper, 'SHOW') === 0 || strpos($query_upper, 'DESCRIBE') === 0) {
                 $results = $wpdb->get_results($query, ARRAY_A);
                 if ($wpdb->last_error) return wpilot_err("SQL error: " . $wpdb->last_error);
@@ -3226,8 +3251,8 @@ function wpilot_run_tool( $tool, $params = [] ) {
         case 'run_command':
             $cmd = $params['command'] ?? $params['cmd'] ?? '';
             if (empty($cmd)) return wpilot_err('WP-CLI command required. Example: command="post list --post_type=page"');
-            if (preg_match('/[;&|`$()]/', $cmd)) return wpilot_err('Shell operators not allowed in WP-CLI commands.');
-            $blocked_cmds = ['db export', 'db import', 'db reset', 'db drop', 'core download', 'eval-file', 'shell', 'eval '];
+            if (preg_match('/[;&|`$()\\{}]/', $cmd)) return wpilot_err('Shell operators not allowed in WP-CLI commands.');
+            $blocked_cmds = ['db export', 'db import', 'db reset', 'db drop', 'db query', 'core download', 'config set', 'config delete', 'package install', 'super-admin', 'shell', 'eval-file', 'eval '];
             foreach ($blocked_cmds as $bc) {
                 if (strpos($cmd, $bc) !== false) return wpilot_err("Blocked command: {$bc}");
             }
@@ -6788,6 +6813,83 @@ case 'seo_redirect_check':
                 'colors' => $colors, 'technologies' => $comp['technologies'] ?? [],
                 'headings' => $comp['headings'] ?? [], 'text_preview' => $comp['text_preview'] ?? '',
             ]);
+
+        
+        // ═══ RECOVERY & SAFETY ═══
+        case 'recovery_status':
+        case 'safety_check':
+            $crash_file = WP_CONTENT_DIR . '/wpilot-crash-flag.txt';
+            $safe_mode_file = WP_CONTENT_DIR . '/wpilot-safe-mode.txt';
+            $log_file = WP_CONTENT_DIR . '/wpilot-recovery.log';
+            $status = [
+                'crash_flag' => file_exists($crash_file),
+                'safe_mode' => file_exists($safe_mode_file),
+                'safe_mode_data' => file_exists($safe_mode_file) ? json_decode(file_get_contents($safe_mode_file), true) : null,
+                'recovery_url' => admin_url('?wpilot-recover=1'),
+                'recovery_token_set' => !empty(get_option('wpilot_recovery_token', '')),
+            ];
+            if (file_exists($log_file)) {
+                $lines = file($log_file);
+                $status['recent_log'] = implode('', array_slice($lines, -10));
+            }
+            global $wpdb;
+            $table = $wpdb->prefix . 'wpilot_backups';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") === $table) {
+                $status['total_backups'] = intval($wpdb->get_var("SELECT COUNT(*) FROM {$table}"));
+                $status['unrestored'] = intval($wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE restored = 0"));
+            }
+            return wpilot_ok('Recovery system status.', $status);
+
+        case 'undo_last':
+        case 'rollback_last':
+            global $wpdb;
+            $table = $wpdb->prefix . 'wpilot_backups';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) return wpilot_err('Backup table not found.');
+            $last = $wpdb->get_row("SELECT * FROM {$table} WHERE restored = 0 ORDER BY id DESC LIMIT 1");
+            if (!$last) return wpilot_ok('Nothing to undo — no recent changes.');
+            $data = json_decode($last->data_before, true);
+            $restored = false;
+            if ($last->target_type === 'page' && !empty($data['post_content'])) {
+                wp_update_post(['ID' => $last->target_id, 'post_content' => $data['post_content']]);
+                if (!empty($data['_elementor_data'])) update_post_meta($last->target_id, '_elementor_data', $data['_elementor_data']);
+                $restored = true;
+            } elseif ($last->target_type === 'css' && isset($data['css'])) {
+                wp_update_custom_css_post($data['css']);
+                $restored = true;
+            } elseif ($last->target_type === 'option') {
+                update_option($last->target_id, $data['value'] ?? $data);
+                $restored = true;
+            }
+            if ($restored) {
+                $wpdb->update($table, ['restored' => 1], ['id' => $last->id]);
+                return wpilot_ok("Rolled back: {$last->target_type} #{$last->target_id} (backup #{$last->id}).");
+            }
+            return wpilot_err('Could not restore backup #' . $last->id);
+
+        case 'undo_all':
+        case 'rollback_all':
+            global $wpdb;
+            $table = $wpdb->prefix . 'wpilot_backups';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) return wpilot_err('Backup table not found.');
+            $backups = $wpdb->get_results("SELECT * FROM {$table} WHERE restored = 0 ORDER BY id DESC");
+            $count = 0;
+            foreach ($backups as $b) {
+                $data = json_decode($b->data_before, true);
+                if ($b->target_type === 'page' && !empty($data['post_content'])) {
+                    wp_update_post(['ID' => $b->target_id, 'post_content' => $data['post_content']]);
+                    $count++;
+                } elseif ($b->target_type === 'css' && isset($data['css'])) {
+                    wp_update_custom_css_post($data['css']);
+                    $count++;
+                }
+                $wpdb->update($table, ['restored' => 1], ['id' => $b->id]);
+            }
+            return wpilot_ok("Rolled back {$count} changes.", ['total_restored' => $count]);
+
+        case 'reset_safe_mode':
+            @unlink(WP_CONTENT_DIR . '/wpilot-safe-mode.txt');
+            @unlink(WP_CONTENT_DIR . '/wpilot-crash-flag.txt');
+            return wpilot_ok('Safe mode reset. WPilot will load normally.');
 
         default:
             // Route to plugin-specific tools (Amelia, WooCommerce, LearnDash, etc.)

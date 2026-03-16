@@ -1,11 +1,15 @@
 <?php
 /**
  * WPilot Debug Page
- * Access: yoursite.com/wp-content/plugins/wpilot/wpilot-debug.php
+ * SECURITY: Direct URL access blocked. Must be loaded through WordPress.
  */
-require_once dirname(dirname(dirname(dirname(__FILE__)))) . '/wp-load.php';
+// SECURITY: Block direct access
+if (!defined('ABSPATH')) {
+    http_response_code(403);
+    die('Direct access forbidden.');
+}
 if (!current_user_can('manage_options')) {
-    wp_die('Admin access required. <a href="' . wp_login_url($_SERVER['REQUEST_URI']) . '">Log in</a>');
+    wp_die('Admin access required.');
 }
 
 $r = [];

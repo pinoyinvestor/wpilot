@@ -373,3 +373,33 @@ add_action('wp_ajax_wpi_get_roles', function() {
     }
     wp_send_json_success($result);
 });
+
+// ── Send feedback to Weblease (security audit: added missing handler) ──
+add_action('wp_ajax_wpi_send_feedback', function() {
+    check_ajax_referer('ca_nonce', 'nonce');
+    if ( ! wpilot_user_has_access() ) wp_send_json_error('Unauthorized.', 403);
+
+    $message = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
+    $type = sanitize_text_field(wp_unslash($_POST['type'] ?? 'feedback'));
+    if (empty($message)) wp_send_json_error('Empty message.');
+
+    // Rate limit: 5 per hour
+    $transient_key = 'wpi_feedback_' . get_current_user_id();
+    $count = (int) get_transient($transient_key);
+    if ($count >= 5) wp_send_json_error('Rate limit: max 5 feedback per hour.');
+    set_transient($transient_key, $count + 1, HOUR_IN_SECONDS);
+
+    wp_remote_post('https://weblease.se/plugin/feedback', [
+        'timeout' => 10,
+        'blocking' => false,
+        'headers' => ['Content-Type' => 'application/json'],
+        'body' => wp_json_encode([
+            'site_url' => get_site_url(),
+            'type' => $type,
+            'message' => substr($message, 0, 2000),
+            'version' => CA_VERSION,
+        ]),
+    ]);
+
+    wp_send_json_success(['message' => 'Feedback sent. Thank you!']);
+});

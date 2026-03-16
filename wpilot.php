@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:           2.1.0
+ * Version:      2.0.1
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -13,6 +13,22 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// ── Safe Mode: skip loading if crashed 3+ times ──
+$safe_mode_file = WP_CONTENT_DIR . '/wpilot-safe-mode.txt';
+if (file_exists($safe_mode_file)) {
+    $sm = json_decode(file_get_contents($safe_mode_file), true);
+    if (($sm['crashes'] ?? 0) >= 3 && strtotime($sm['last_crash'] ?? '') > time() - 600) {
+        // Don't load WPilot — safe mode active
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-error"><p><strong>WPilot Safe Mode:</strong> Plugin disabled due to repeated crashes. <a href="' . admin_url('?wpilot-recover=1') . '">Open Recovery</a></p></div>';
+        });
+        return; // Stop loading the plugin
+    }
+    // Auto-reset after 10 minutes
+    @unlink($safe_mode_file);
+}
+
 
 // ── PHP version guard ─────────────────────────────────────────
 if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
@@ -29,7 +45,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( "CA_VERSION", "2.1.0" );
+define( 'CA_VERSION',    '2.0.1' );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
@@ -302,9 +318,11 @@ add_action('rest_api_init', function() {
             $webhooks = get_option('wpilot_webhooks', []);
             if (!isset($webhooks[$slug])) return new WP_REST_Response(['error' => 'Not found'], 404);
             $wh = $webhooks[$slug];
-            // Verify secret if provided
+            // SECURITY: Always require secret for webhooks (timing-safe comparison)
             $secret = $request->get_header('X-Webhook-Secret') ?? $request->get_param('secret');
-            if (!empty($wh['secret']) && $secret !== $wh['secret']) return new WP_REST_Response(['error' => 'Invalid secret'], 403);
+            if (empty($wh['secret']) || empty($secret) || !hash_equals($wh['secret'], (string)$secret)) {
+                return new WP_REST_Response(['error' => 'Invalid or missing secret'], 403);
+            }
             // Increment counter
             $webhooks[$slug]['calls'] = ($wh['calls'] ?? 0) + 1;
             $webhooks[$slug]['last_call'] = date('Y-m-d H:i:s');
