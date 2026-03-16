@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:      2.0.1
+ * Version:           2.2.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -433,3 +433,74 @@ add_action('wpilot_daily_cleanup', function() {
     $csvs = glob(wp_upload_dir()['basedir'] . '/wpilot-*.csv');
     foreach ($csvs as $c) { if (filemtime($c) < time() - 604800) @unlink($c); }
 });
+// ═══ AUTO-UPDATE FROM WEBLEASE.SE ═══
+add_filter('pre_set_site_transient_update_plugins', 'wpilot_check_for_updates');
+function wpilot_check_for_updates($transient) {
+    if (empty($transient->checked)) return $transient;
+
+    $response = wp_remote_get('https://weblease.se/plugin/update-check', [
+        'timeout' => 10,
+        'headers' => ['Accept' => 'application/json'],
+    ]);
+
+    if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        return $transient;
+    }
+
+    $update = json_decode(wp_remote_retrieve_body($response));
+    if (!$update || empty($update->version)) return $transient;
+
+    $plugin_file = 'wpilot/wpilot.php';
+    $current_version = $transient->checked[$plugin_file] ?? CA_VERSION;
+
+    if (version_compare($update->version, $current_version, '>')) {
+        $transient->response[$plugin_file] = (object) [
+            'slug'        => 'wpilot',
+            'plugin'      => $plugin_file,
+            'new_version' => $update->version,
+            'url'         => 'https://weblease.se/wpilot',
+            'package'     => $update->download_url,
+            'tested'      => $update->tested ?? '',
+            'requires'    => $update->requires ?? '6.0',
+            'requires_php' => $update->requires_php ?? '7.4',
+        ];
+    }
+
+    return $transient;
+}
+
+// Show plugin details in the "View Details" modal
+add_filter('plugins_api', 'wpilot_plugin_info', 20, 3);
+function wpilot_plugin_info($result, $action, $args) {
+    if ($action !== 'plugin_information' || ($args->slug ?? '') !== 'wpilot') {
+        return $result;
+    }
+
+    $response = wp_remote_get('https://weblease.se/plugin/update-check', ['timeout' => 10]);
+    if (is_wp_error($response)) return $result;
+
+    $update = json_decode(wp_remote_retrieve_body($response));
+    if (!$update) return $result;
+
+    return (object) [
+        'name'          => 'WPilot — AI WordPress Assistant',
+        'slug'          => 'wpilot',
+        'version'       => $update->version,
+        'author'        => '<a href="https://weblease.se">Weblease</a>',
+        'author_profile' => 'https://weblease.se',
+        'homepage'      => 'https://weblease.se/wpilot',
+        'download_link' => $update->download_url,
+        'requires'      => $update->requires ?? '6.0',
+        'tested'        => $update->tested ?? '',
+        'requires_php'  => $update->requires_php ?? '7.4',
+        'sections'      => [
+            'description'  => $update->sections->description ?? '',
+            'installation' => $update->sections->installation ?? '',
+            'changelog'    => $update->changelog ?? '',
+        ],
+        'banners' => [
+            'high' => $update->banner_high ?? '',
+            'low'  => $update->banner_low ?? '',
+        ],
+    ];
+}
