@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:           2.2.0
+ * Version:      2.0.1
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -45,7 +45,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( "CA_VERSION", "2.2.0" );
+define( 'CA_VERSION',    '2.0.1' );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
@@ -73,6 +73,7 @@ define( 'CA_MODEL',      'claude-sonnet-4-6' );
 // ── Always load (lightweight — hooks and helpers) ─────────────
 $_wpilot_core = [
     'includes/helpers.php',
+    'includes/crypto.php',
     'includes/i18n.php',
     'includes/license.php',
     'includes/tracking.php',
@@ -212,7 +213,11 @@ add_action( 'template_redirect', function() {
 
 // ── Activation ────────────────────────────────────────────────
 register_activation_hook( __FILE__, function () {
-    wpilot_load_heavy(); // Ensure backup.php + brain.php are available
+    wpilot_load_heavy();
+    // Explicitly load modules needed for activation
+    require_once CA_PATH . "includes/brain.php";
+    require_once CA_PATH . "includes/collector.php";
+    require_once CA_PATH . "includes/shadow.php";
     add_option( 'wpilot_theme',               'dark' );
     add_option( 'wpilot_auto_approve',        'no' );
     add_option( 'wpilot_prompts_used',        0 );

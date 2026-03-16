@@ -18,8 +18,8 @@ function wpilot_parse_actions( $text ) {
             $actions[] = [
                 'tool'        => trim( $match[1] ),
                 'label'       => trim( $match[2] ),
-                'description' => trim( $match[3] ),
-                'icon'        => trim( $match[4] ),
+                'description' => trim( $match[3] ?? "" ),
+                'icon'        => trim( $match[4] ?? "" ),
                 'params'      => [],
             ];
         }

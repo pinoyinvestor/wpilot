@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ── Send message to Claude ─────────────────────────────────────
 function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history = [] ) {
-    $api_key = get_option( 'ca_api_key', '' );
+    $api_key = function_exists('wpilot_get_claude_key') ? wpilot_get_claude_key() : get_option( 'ca_api_key', '' );
     if ( empty( $api_key ) ) return new WP_Error( 'no_key', 'No API key configured. Go to Settings.' );
 
     $messages = wpilot_build_messages( $message, $context, $history );
