@@ -117,7 +117,7 @@ function wpilot_take_screenshot( $url, $options = [] ) {
  * Analyze a screenshot using Claude Vision API
  */
 function wpilot_analyze_screenshot( $screenshot_path, $analysis_type = 'design', $context = '' ) {
-    $api_key = get_option( 'ca_api_key', '' );
+    $api_key = function_exists('wpilot_get_claude_key') ? wpilot_get_claude_key() : get_option( 'ca_api_key', '' );
     if ( empty($api_key) ) return new WP_Error('no_key', 'No API key configured.');
 
     if (!file_exists($screenshot_path)) {
@@ -236,7 +236,7 @@ Example: [ACTION: append_custom_css | Fix hero section spacing - padding too sma
  * Compare before/after screenshots with Claude Vision
  */
 function wpilot_compare_screenshots( $before_path, $after_path ) {
-    $api_key = get_option( 'ca_api_key', '' );
+    $api_key = function_exists('wpilot_get_claude_key') ? wpilot_get_claude_key() : get_option( 'ca_api_key', '' );
     if ( empty($api_key) ) return new WP_Error('no_key', 'No API key.');
 
     if (!file_exists($before_path) || !file_exists($after_path)) {

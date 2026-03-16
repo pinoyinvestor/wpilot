@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ── Core helpers — wrapped with function_exists to avoid conflicts ──
 if ( ! function_exists( 'wpilot_is_connected' ) ) {
-    function wpilot_is_connected() { return ! empty( get_option( 'ca_api_key', '' ) ); }
+    function wpilot_is_connected() { $k = get_option('ca_api_key', ''); return ! empty($k); }
 }
 if ( ! function_exists( 'wpilot_theme' ) ) {
     function wpilot_theme() { return get_option( 'wpilot_theme', 'dark' ); }

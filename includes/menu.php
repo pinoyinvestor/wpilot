@@ -19,6 +19,7 @@ add_action( 'admin_menu', function () {
         [ CA_SLUG.'-license',    'License',         'wpilot_page_license'      ],
         [ CA_SLUG.'-restore',    'Restore History', 'wpilot_page_restore'      ],
         [ CA_SLUG.'-activity',   'Activity Log',    'wpilot_page_activity'     ],
+        [ CA_SLUG.'-feedback',   'Feedback',        'wpilot_page_feedback'     ],
     ];
     foreach ( $pages as [$slug,$title,$cb] ) {
         add_submenu_page( CA_SLUG, $title.' — WPilot', $title, 'manage_options', $slug, $cb );
@@ -828,7 +829,7 @@ function wpilot_page_guide() {
 // SETTINGS
 // ══════════════════════════════════════════════════════════════
 function wpilot_page_settings() {
-    $key    = get_option('ca_api_key','');
+    $key = function_exists('wpilot_get_claude_key') ? wpilot_get_claude_key() : get_option('ca_api_key','');
     $masked = $key ? substr($key,0,12).'••••'.substr($key,-4) : '';
     $conn   = wpilot_is_connected();
     ob_start(); ?>
@@ -2127,4 +2128,153 @@ function wpilot_page_training() {
     });
     </script>
     <?php
+}
+
+// ══════════════════════════════════════════════════════════════
+// FEEDBACK
+// ══════════════════════════════════════════════════════════════
+function wpilot_page_feedback() {
+    $feedbacks = get_option('wpilot_feedbacks', []);
+    $admin_email = get_option('admin_email');
+    ob_start(); ?>
+
+    <div class="ca-grid ca-grid-2" style="gap:24px;">
+
+      <!-- Submit Feedback -->
+      <div class="ca-card" style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:28px;">
+        <h3 style="margin:0 0 20px;font-size:17px;font-weight:600;color:#EEF2FF;">Send Feedback</h3>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:13px;color:#8B9DC3;margin-bottom:6px;">Type</label>
+          <select id="wpi-fb-type" style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#EEF2FF;font-size:14px;">
+            <option value="feedback">General Feedback</option>
+            <option value="bug">Bug Report</option>
+            <option value="feature">Feature Request</option>
+            <option value="praise">Praise</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:13px;color:#8B9DC3;margin-bottom:6px;">Rating</label>
+          <div id="wpi-fb-stars" style="display:flex;gap:6px;cursor:pointer;">
+            <?php for ($i = 1; $i <= 5; $i++): ?>
+              <span class="wpi-star" data-val="<?= $i ?>" style="font-size:28px;color:rgba(255,255,255,0.15);transition:color .15s;">&#9733;</span>
+            <?php endfor; ?>
+          </div>
+          <input type="hidden" id="wpi-fb-rating" value="0">
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:13px;color:#8B9DC3;margin-bottom:6px;">Message</label>
+          <textarea id="wpi-fb-message" rows="5" placeholder="Tell us what you think..." style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#EEF2FF;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <label style="display:block;font-size:13px;color:#8B9DC3;margin-bottom:6px;">Email (for replies)</label>
+          <input type="email" id="wpi-fb-email" value="<?= esc_attr($admin_email) ?>" style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#EEF2FF;font-size:14px;">
+        </div>
+
+        <button id="wpi-fb-submit" class="ca-btn ca-btn-primary" style="width:100%;padding:12px;font-size:15px;font-weight:600;border-radius:10px;">
+          Send Feedback
+        </button>
+        <div id="wpi-fb-status" style="margin-top:12px;font-size:13px;text-align:center;"></div>
+      </div>
+
+      <!-- Previous Feedbacks -->
+      <div class="ca-card" style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:28px;">
+        <h3 style="margin:0 0 20px;font-size:17px;font-weight:600;color:#EEF2FF;">Your Feedbacks</h3>
+        <div id="wpi-fb-list" style="display:flex;flex-direction:column;gap:14px;max-height:520px;overflow-y:auto;">
+          <?php if (empty($feedbacks)): ?>
+            <p style="color:#5E6E91;font-size:14px;">No feedback sent yet.</p>
+          <?php else:
+            $sorted = $feedbacks;
+            uasort($sorted, fn($a,$b) => strtotime($b['date']) - strtotime($a['date']));
+            $type_colors = ['bug'=>'#EF4444','feature'=>'#3B82F6','feedback'=>'#6B7280','praise'=>'#22C55E'];
+            $type_labels = ['bug'=>'Bug','feature'=>'Feature','feedback'=>'Feedback','praise'=>'Praise'];
+            foreach ($sorted as $fid => $fb):
+              $tc = $type_colors[$fb['type']] ?? '#6B7280';
+              $tl = $type_labels[$fb['type']] ?? ucfirst($fb['type']);
+          ?>
+            <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;color:<?= $tc ?>;background:<?= $tc ?>15;border:1px solid <?= $tc ?>30;"><?= esc_html($tl) ?></span>
+                <?php if ($fb['rating'] > 0): ?>
+                  <span style="color:#FBBF24;font-size:13px;"><?= str_repeat('&#9733;', $fb['rating']) ?><?= str_repeat('&#9734;', 5 - $fb['rating']) ?></span>
+                <?php endif; ?>
+                <span style="margin-left:auto;color:#5E6E91;font-size:12px;"><?= esc_html($fb['date']) ?></span>
+              </div>
+              <p style="color:#C8D4E6;font-size:14px;margin:0 0 4px;line-height:1.5;"><?= esc_html($fb['message']) ?></p>
+              <?php if (!empty($fb['reply'])): ?>
+                <div style="margin-top:10px;padding:12px;background:rgba(79,126,255,0.08);border:1px solid rgba(79,126,255,0.2);border-radius:10px;">
+                  <p style="font-size:11px;font-weight:600;color:#4F7EFF;margin:0 0 4px;">Reply from WPilot Team</p>
+                  <p style="color:#A8BFEE;font-size:13px;margin:0;line-height:1.5;"><?= esc_html($fb['reply']) ?></p>
+                </div>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; endif; ?>
+        </div>
+      </div>
+
+    </div>
+
+    <script>
+    jQuery(function($) {
+        var nonce = typeof CA !== 'undefined' ? CA.nonce : '<?= wp_create_nonce('ca_nonce') ?>';
+        var ajaxurl = typeof CA !== 'undefined' ? CA.ajax_url : ajaxurl;
+        var rating = 0;
+
+        // Star rating
+        $('#wpi-fb-stars .wpi-star').on('mouseenter', function() {
+            var v = $(this).data('val');
+            $('#wpi-fb-stars .wpi-star').each(function() {
+                $(this).css('color', $(this).data('val') <= v ? '#FBBF24' : 'rgba(255,255,255,0.15)');
+            });
+        }).on('mouseleave', function() {
+            $('#wpi-fb-stars .wpi-star').each(function() {
+                $(this).css('color', $(this).data('val') <= rating ? '#FBBF24' : 'rgba(255,255,255,0.15)');
+            });
+        }).on('click', function() {
+            rating = $(this).data('val');
+            $('#wpi-fb-rating').val(rating);
+            $('#wpi-fb-stars .wpi-star').each(function() {
+                $(this).css('color', $(this).data('val') <= rating ? '#FBBF24' : 'rgba(255,255,255,0.15)');
+            });
+        });
+
+        // Submit feedback
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+        $('#wpi-fb-submit').on('click', function() {
+            var $btn = $(this);
+            var msg = $('#wpi-fb-message').val().trim();
+            if (!msg) { $('#wpi-fb-status').css('color','#EF4444').text('Please enter a message.'); return; }
+            $btn.prop('disabled', true).text('Sending...');
+            $.post(ajaxurl, {
+                action: 'wpi_send_feedback',
+                nonce: nonce,
+                type: $('#wpi-fb-type').val(),
+                message: msg,
+                rating: rating,
+                email: $('#wpi-fb-email').val()
+            }, function(r) {
+                $btn.prop('disabled', false).text('Send Feedback');
+                if (r.success) {
+                    $('#wpi-fb-status').css('color','#22C55E').text(r.data.message);
+                    $('#wpi-fb-message').val('');
+                    rating = 0;
+                    $('#wpi-fb-rating').val(0);
+                    $('#wpi-fb-stars .wpi-star').css('color','rgba(255,255,255,0.15)');
+                    // Reload after short delay to show new feedback
+                    setTimeout(function() { location.reload(); }, 1500);
+                } else {
+                    $('#wpi-fb-status').css('color','#EF4444').text(r.data || 'Failed to send.');
+                }
+            }).fail(function() {
+                $btn.prop('disabled', false).text('Send Feedback');
+                $('#wpi-fb-status').css('color','#EF4444').text('Network error.');
+            });
+        });
+    });
+    </script>
+    <?php
+    wpilot_wrap('Feedback', '&#128172;', ob_get_clean());
 }

@@ -18,7 +18,7 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
         'body' => wp_json_encode( [
             'model'      => CA_MODEL,
             'max_tokens' => (function_exists('wpilot_memory_ok') && !wpilot_memory_ok(64)) ? 2048 : 4096,
-            'system'     => wpilot_system_prompt( $mode ),
+            'system'     => wpilot_system_prompt( $mode, $message ),
             'messages'   => $messages,
         ] ),
     ] );
@@ -68,8 +68,116 @@ function wpilot_build_messages( $message, $context = [], $history = [] ) {
     return $messages;
 }
 
+// ── Smart tool selection — only send relevant tools ────────────
+function wpilot_relevant_tools( $message, $mode = 'chat' ) {
+    $msg = strtolower( $message );
+    $tools = [];
+
+    // Always include core tools
+    $tools['core'] = "Pages: create_page, update_page_content, list_pages, get_page, delete_post, create_html_page, check_frontend";
+
+    // Mode-based inclusions
+    if ( $mode === 'build' || $mode === 'analyze' ) {
+        $tools['design']    = "Design: update_custom_css, append_custom_css, edit_text, edit_button, edit_colors, edit_font, add_animation, create_section, create_grid, hover_effects, glassmorphism, gradient_text, premium_buttons, responsive_fix, responsive_grid, responsive_text";
+        $tools['templates'] = "Templates: list_templates, apply_template, use_template";
+        $tools['vision']    = "Vision: screenshot, analyze_design, responsive_check, check_visual_bugs, compare_before_after";
+        $tools['header']    = "Header/Footer: build_header, create_custom_header, build_footer, create_custom_footer, build_mobile_menu";
+        $tools['html']      = "HTML: inject_html, create_section, create_grid, create_table";
+        $tools['css']       = "CSS: update_custom_css, append_custom_css, add_css_variable, add_css_class";
+    }
+
+    if ( $mode === 'analyze' ) {
+        $tools['seo']       = "SEO: seo_audit, bulk_fix_seo, update_meta_desc, add_schema_markup, seo_check_page, seo_generate_meta, seo_broken_links, research_keywords";
+        $tools['perf']      = "Performance: pagespeed_test, enable_lazy_load, cache_configure, fix_render_blocking, minify_assets, database_cleanup";
+        $tools['security']  = "Security: security_audit, add_security_headers, disable_xmlrpc, block_ip, configure_wordfence, failed_logins";
+        $tools['plugins']   = "Plugins: plugin_install, activate_plugin, deactivate_plugin, list_plugins, update_plugins";
+    }
+
+    if ( $mode === 'seo' ) {
+        $tools['seo'] = "SEO: update_meta_desc, update_seo_title, update_focus_keyword, seo_audit, bulk_fix_seo, fix_heading_structure, create_robots_txt, add_schema_markup, set_open_graph, seo_check_page, seo_generate_meta, seo_internal_links, seo_keyword_check, seo_broken_links, seo_redirect_check, research_keywords";
+    }
+
+    if ( $mode === 'woo' ) {
+        $tools['woo'] = "WooCommerce: woo_create_product, woo_update_product, woo_set_sale, woo_remove_sale, woo_dashboard, woo_recent_orders, woo_best_sellers, create_coupon, update_product_price, update_product_desc, create_product_category, woo_enable_payment, woo_configure_stripe, woo_configure_email, woo_setup_checkout, woo_set_tax_rate, woo_update_shipping_zone, woo_update_store_settings, woo_manage_stock, list_orders, export_products, woo_low_stock_report, woo_create_api_key, sales_report, inventory_report";
+        $tools['coupons'] = "Coupons: create_advanced_coupon, list_coupons, coupon_usage, bulk_create_coupons";
+        $tools['shipping'] = "Shipping: shipping_zones, create_shipping_label, postnord_track, track_shipment";
+    }
+
+    if ( $mode === 'plugins' ) {
+        $tools['plugins'] = "Plugins: plugin_install, activate_plugin, deactivate_plugin, list_plugins, update_plugins, configure_updraftplus, configure_litespeed, configure_rankmath, configure_wordfence, configure_polylang";
+    }
+
+    // Keyword-based detection from the user's message
+    $patterns = [
+        '/produkt|product|shop|butik|woo|pris|price|order|coupon|kupong|frakt|shipping|lager|stock|kassa|checkout|varukorg|cart/u'
+            => ['woo' => "WooCommerce: woo_create_product, woo_update_product, woo_set_sale, create_coupon, list_orders, woo_dashboard, sales_report, inventory_report, woo_create_api_key, shipping_zones, create_shipping_label, design_checkout, design_cart, design_shop, design_product_page"],
+        '/seo|meta\s?desc|sitemap|robots\.txt|schema|keyword|ranking|google|sökmot|search\s?engine/u'
+            => ['seo' => "SEO: seo_audit, bulk_fix_seo, update_meta_desc, add_schema_markup, seo_check_page, seo_generate_meta, research_keywords, seo_broken_links, fix_heading_structure, create_robots_txt, set_open_graph"],
+        '/säkerhet|secur|hack|ssl|firewall|block|virus|malware|lösenord|password|xmlrpc|brute|vulnerab/u'
+            => ['security' => "Security: security_audit, security_scan, add_security_headers, disable_xmlrpc, block_ip, configure_wordfence, failed_logins, full_security_check, security_enable_2fa"],
+        '/design|css|style|färg|color|font|animation|hover|glass|3d|responsive|mobil|tablet|header|footer|meny|menu|snygg|pretty|layout|makeover/u'
+            => ['design' => "Design: update_custom_css, append_custom_css, edit_text, edit_button, edit_icon, edit_colors, edit_font, add_animation, hover_effects, glassmorphism, gradient_text, premium_buttons, responsive_fix, responsive_grid, responsive_text, build_header, build_footer, build_mobile_menu, design_all, premium_makeover, add_3d_effect, create_3d_card",
+                'vision' => "Vision: screenshot, analyze_design, responsive_check, check_visual_bugs"],
+        '/bild|image|media|foto|photo|upload|logo|webp|compress|favicon/u'
+            => ['media' => "Media: upload_image, set_featured_image, compress_images, convert_all_images_webp, upload_logo, set_favicon, update_image_alt, bulk_fix_alt_text"],
+        '/prestanda|performance|speed|snabb|cache|lazy|minif|databas|database|pagespeed|slow|långsam/u'
+            => ['perf' => "Performance: pagespeed_test, enable_lazy_load, cache_configure, fix_render_blocking, minify_assets, database_cleanup, configure_litespeed, site_health_check"],
+        '/email|e-post|mejl|newsletter|nyhetsbrev|smtp|subscriber|prenumer/u'
+            => ['email' => "Email: send_email, smtp_configure, create_subscribe_form, send_newsletter_to_all, create_email_template, collect_emails, create_discount_popup, newsletter_send, newsletter_list_subscribers"],
+        '/plugin|install|aktivera|activate|uppdater|update\s?plugin/u'
+            => ['plugins' => "Plugins: plugin_install, activate_plugin, deactivate_plugin, list_plugins, update_plugins"],
+        '/användare|user|role|roll|login|registrer/u'
+            => ['users' => "Users: create_user, list_users, change_user_role, create_role, list_roles, design_login_page, customize_admin"],
+        '/fil|file|kod|code|php|javascript|theme|tema|function|sql|wp.?cli|snippet/u'
+            => ['dev' => "Dev: read_file, write_file, edit_file, edit_theme_file, list_files, db_query, wp_cli, add_javascript, add_php_snippet, list_snippets, remove_snippet, run_chain"],
+        '/api|stripe|google|facebook|mailchimp|pixel|analytics|webhook|connect|koppl|tiktok|snapchat|pinterest/u'
+            => ['api' => "API: api_call, connect_stripe, connect_google_analytics, connect_facebook_pixel, connect_mailchimp, connect_google_maps, create_webhook, save_api_key, connect_tiktok_pixel, connect_snapchat_pixel, connect_pinterest_tag"],
+        '/export|ladda ner|download|csv|excel|backup/u'
+            => ['export' => "Export: download_orders, download_customers, download_products, export_form_data, collect_emails, export_full_site, backup_now"],
+        '/bokning|booking|kalender|calendar|event|tid|appointment/u'
+            => ['booking' => "Booking: create_booking_page, list_bookings, confirm_booking, create_event, list_events, create_calendar_page"],
+        '/kupong|coupon|rabatt|discount|erbjudande|offer/u'
+            => ['coupons' => "Coupons: create_advanced_coupon, list_coupons, coupon_usage, bulk_create_coupons, create_discount_popup"],
+        '/blogg|blog|artikel|article|skriv|write|translate|översätt|content|inlägg|post(?!nord)/u'
+            => ['content' => "Content: write_blog_post, rewrite_content, translate_content, create_post, update_post, schedule_post, create_category, create_tag"],
+        '/integritet|privacy|gdpr|villkor|terms|legal|cookie/u'
+            => ['legal' => "Legal: privacy_policy_generate, terms_generate"],
+        '/social|facebook|instagram|twitter|linkedin|dela|share/u'
+            => ['social' => "Social: add_social_links, add_social_share_buttons, add_social_feed, embed_social, add_open_graph, setup_social_sharing"],
+        '/karta|map|location|plats|butik.?lokal|store.?locat/u'
+            => ['maps' => "Maps: create_store_locator, connect_google_maps, add_map, embed_map"],
+        '/visa|show|kolla|look|screenshot|how does it|hur ser|granska|review/u'
+            => ['vision' => "Vision: screenshot, analyze_design, responsive_check, check_visual_bugs, compare_before_after, multi_device_screenshot"],
+        '/error|fel|broken|trasig|vit\s?sida|white\s?screen|debug|log|problem/u'
+            => ['debug' => "Debug: check_frontend, view_debug_log, site_health_check, list_snippets, read_log, error_log"],
+        '/meny|menu|navigat/u'
+            => ['menus' => "Menus: create_menu, add_menu_item, create_mega_menu"],
+        '/inställning|setting|namn|name|tagline|permalänk|permalink/u'
+            => ['settings' => "Settings: update_blogname, update_tagline, update_option, update_permalink_structure"],
+    ];
+
+    foreach ( $patterns as $pattern => $tool_groups ) {
+        if ( preg_match( $pattern, $msg ) ) {
+            foreach ( $tool_groups as $key => $value ) {
+                $tools[$key] = $value;
+            }
+        }
+    }
+
+    // Always add check/verify tools
+    $tools['check'] = "Check: check_frontend, analyze_design, server_info, site_health_check";
+
+    // If nothing specific matched beyond core + check, include a broader general set
+    if ( count( $tools ) <= 2 ) {
+        $tools['general'] = "General: list_pages, list_plugins, list_users, woo_dashboard, seo_audit, security_audit, check_frontend, server_info, design_all, screenshot";
+    }
+
+    return implode( " | ", $tools );
+}
+
 // ── System prompt ──────────────────────────────────────────────
-function wpilot_system_prompt( $mode = 'chat' ) {
+// Built by Christos Ferlachidis & Daniel Hedenberg
+function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     $builder  = wpilot_detect_builder();
     $bname    = ucfirst( $builder );
     $woo      = class_exists( 'WooCommerce' ) ? 'WooCommerce is active on this site.' : 'WooCommerce is not installed.';
@@ -80,72 +188,8 @@ function wpilot_system_prompt( $mode = 'chat' ) {
     $lang = wpilot_get_lang();
     $respond_lang = ($lang === 'sv') ? 'Respond in Swedish if the user writes in Swedish.' : 'Respond in the same language as the user.';
 
-    // Grouped tool reference — compact to save tokens
-    $tools_list = "Pages/Posts: create_page, update_page_content, update_post_title, set_homepage, create_post, update_post, delete_post, edit_current_page, generate_full_site, get_page, list_pages, duplicate_page | "
-        . "Menus: create_menu, add_menu_item | "
-        . "CSS: update_custom_css, append_custom_css | "
-        . "SEO: update_meta_desc, update_seo_title, update_focus_keyword, seo_audit, bulk_fix_seo, fix_heading_structure, create_robots_txt, add_schema_markup, set_open_graph | "
-        . "Media: update_image_alt, bulk_fix_alt_text, set_featured_image, upload_image, convert_all_images_webp, convert_image_webp, compress_images | "
-        . "WooCommerce: woo_create_product, woo_update_product, woo_set_sale, woo_remove_sale, woo_dashboard, woo_recent_orders, woo_best_sellers, create_coupon, update_product_price, update_product_desc, create_product_category, woo_enable_payment, woo_configure_stripe, woo_configure_email, woo_setup_checkout, woo_set_tax_rate, woo_update_shipping_zone, woo_update_store_settings, woo_manage_stock, list_orders, export_products, woo_low_stock_report | "
-        . "Users: create_user, change_user_role, update_user_meta, list_users, delete_user | "
-        . "Plugins: activate_plugin, deactivate_plugin, delete_plugin, plugin_install, plugin_activate, plugin_update_option, list_plugins, update_plugins | "
-        . "Themes: install_theme, activate_theme, list_themes | "
-        . "Settings: update_blogname, update_tagline, update_option, update_permalink_structure, save_instruction | "
-        . "Content: write_blog_post, rewrite_content, translate_content, schedule_post, create_category, create_tag, list_categories, search_replace | "
-        . "Builder: builder_create_page, builder_update_section, builder_add_widget, builder_update_css, builder_set_colors, builder_set_fonts | "
-        . "Security: security_scan, fix_security_issue, security_configure, security_enable_firewall, security_enable_2fa, add_security_headers, disable_xmlrpc | "
-        . "Performance: site_health_check, cache_configure, cache_purge, cache_enable, database_cleanup, check_broken_links, pagespeed_test, fix_performance, enable_lazy_load, fix_render_blocking, minify_assets | "
-        . "Email: smtp_configure, smtp_test, newsletter_send, newsletter_list_subscribers, newsletter_configure | "
-        . "Email Pro: send_email, send_test_email, create_email_template, list_email_templates, send_bulk_email, email_log | "
-        . "Booking: create_booking_page, list_bookings, confirm_booking, cancel_booking, booking_settings | "
-        . "WooCommerce Extra: woo_create_category_with_image, woo_bulk_update_prices, woo_create_simple_product, woo_shipping_calculator, woo_payment_methods, woo_tax_summary, woo_order_stats, woo_product_search, woo_duplicate_product, woo_set_product_gallery | "
-        . "SEO Pro: seo_check_page, seo_generate_meta, seo_internal_links, seo_keyword_check, seo_broken_links, seo_redirect_check | "
-        . "Admin: customize_admin, customize_login, maintenance_mode | "
-        . "Page Design: design_checkout, design_login_page, style_login, design_emails, design_header, style_header, design_footer, design_shop, design_product_page, design_cart, design_account, design_all, premium_makeover, detect_builder | "
-        . "Header/Footer: build_header, create_custom_header, build_footer, create_custom_footer, build_mobile_menu, activate_custom_header, activate_custom_footer, create_mega_menu | "
-        . "Code: add_head_code, add_php_snippet, list_snippets, remove_snippet | "
-        . "Legal: privacy_policy_generate, terms_generate | "
-        . "Premium: hover_effects, gradient_text, glassmorphism, parallax_section, scroll_animations, premium_buttons, card_layout, text_effects, image_effects, dark_mode, loading_animation, page_transition, marquee_text, count_up | "
-        . "Responsive: responsive_fix, responsive_grid, responsive_text | "
-        . "UX: smooth_scroll, sticky_header, custom_cursor | "
-        . "Other: create_404_page, create_redirect, list_redirects, delete_redirect, list_comments, approve_comment, delete_comment, spam_comment, bulk_approve_comments, bulk_delete_spam, add_php_snippet, remove_snippet, create_html_page, check_frontend, backup_configure, backup_now, analyze_website, set_favicon, accessibility_check, export_site, view_debug_log | "
-        . "Vision: screenshot, take_screenshot, analyze_design, visual_review, check_visual_bugs, compare_before_after, screenshot_before, responsive_check, multi_device_screenshot | "
-        . "Editing: edit_section, edit_element, edit_text, edit_button, edit_icon, edit_colors, change_colors, edit_font, change_font, add_animation, get_page_elements | "
-        . "Templates: list_templates, apply_template, use_template | "
-        . "Workflows: build_landing_page, full_site_audit, ai_self_test, training_stats, export_training_data | "
-        . "Files: read_file, write_file, edit_file, list_files, edit_theme_file, edit_theme | "
-        . "Database: db_query, database_query | "
-        . "CLI: wp_cli, run_command | "
-        . "Chains: run_chain, action_chain, multi_action | "
-        . "Schedule: schedule_action, list_scheduled, cancel_scheduled | "
-        . "Calendar: create_event, list_events, delete_event, create_calendar_page | "
-        . "Downloads: download_site, export_full_site, download_orders, download_customers, download_products, export_all_products, export_form_data, collect_emails, get_all_emails | "
-        . "Shipping: shipping_zones, list_shipping_zones, create_shipping_label, shipping_label, postnord_track, track_shipment | "
-        . "Customer Data: get_customer, customer_details, get_form_entries, form_submissions | "
-        . "Maps: create_store_locator, store_map | "
-        . "Analytics Pro: setup_analytics, add_tracking, remove_tracking, list_tracking | "
-        . "Ads: connect_google_ads, setup_google_ads | "
-        . "Social: add_social_links, get_social_links, add_social_share_buttons, add_social_feed, embed_social, add_open_graph, setup_social_sharing | "
-        . "Logo: upload_logo, set_logo, remove_logo, get_logo | "
-        . "Research: research_url, fetch_url, compare_website, competitor_analysis, research_keywords, copy_design_from, design_inspiration | "
-        . "Pixels: connect_tiktok_pixel, connect_snapchat_pixel, connect_pinterest_tag | "
-        . "Newsletter Pro: create_subscribe_form, add_subscribe_button, list_subscribers, send_newsletter_to_all, create_discount_popup, exit_intent_popup | "
-        . "Coupons: create_advanced_coupon, update_coupon, delete_coupon, list_coupons, coupon_usage, coupon_stats, bulk_create_coupons | "
-        . "Logs: read_log, error_log | "
-        . "API: api_call, http_request, save_api_key, list_api_keys, delete_api_key, create_webhook, list_webhooks, delete_webhook | "
-        . "Integrations: connect_stripe, connect_google_analytics, connect_facebook_pixel, connect_mailchimp, mailchimp_add_subscriber, connect_google_maps, add_map, embed_map, connect_recaptcha, connect_custom_api | "
-        . "WooCommerce Pro: woo_create_api_key, woo_list_api_keys, print_order, order_receipt, sales_report, revenue_report, customer_stats, inventory_report, stock_report | "
-        . "Security Pro: block_ip, unblock_ip, list_blocked_ips, failed_logins, security_audit, full_security_check, configure_wordfence | "
-        . "Plugin Config: configure_updraftplus, setup_backups, configure_litespeed, setup_cache, configure_rankmath, setup_seo_plugin, configure_polylang, translate_page"
-        . "Buttons: create_button | "
-        . "CSS Tools: add_css_variable, add_css_class, remove_css, css_reset, get_css | "
-        . "HTML Tools: inject_html, create_section, create_grid, create_table | "
-        . "Icons: add_icon, icon_list, load_icons | "
-        . "Sliders: create_slider, create_testimonial_slider | "
-        . "3D Effects: add_3d_effect, create_3d_card | "
-        . "JavaScript: add_javascript, remove_javascript, add_counter_animation, add_scroll_to_top, add_typed_text | "
-        . "Roles: create_role, delete_role, list_roles, add_capability, set_user_role | "
-        . "Admin Tools: add_admin_notice, customize_admin_bar, add_dashboard_widget, admin_color_scheme | ";
+    // Smart tool selection — only include tools relevant to the user's message
+    $tools_list = wpilot_relevant_tools( $message, $mode );
 
     $prompt = <<<PROMPT
 You are WPilot — an AI team of WordPress experts for "{$site}" ({$url}). {$woo}
@@ -291,7 +335,9 @@ CSS tools: {"css":"body{...}"} — actual code with { }
 ## CONTEXT
 Compressed blueprint every message: pages, products, plugins, menus, theme HTML structure, security, WooCommerce config. Auto-refreshes on changes.
 
-TOOLS: {$tools_list}
+TOOLS (relevant to this request): {$tools_list}
+
+Note: More tools are available beyond this list. If you need a tool not listed here, you can still reference it — the action parser supports all 500+ tools.
 
 SAFETY: Auto-backup on every change.
 

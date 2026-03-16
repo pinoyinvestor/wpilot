@@ -197,7 +197,7 @@ add_action( 'wp_ajax_ca_save_api_key', function () {
     if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.', 403 );
     if ( ! wpilot_user_can_admin() ) wp_send_json_error( 'Unauthorized.' );
     $key = sanitize_text_field( wp_unslash( $_POST['key'] ?? '' ) );
-    update_option( 'ca_api_key', $key );
+    update_option( 'ca_api_key', function_exists('wpilot_encrypt') ? wpilot_encrypt($key) : $key );
     wp_send_json_success( 'Saved.' );
 } );
 
@@ -374,14 +374,17 @@ add_action('wp_ajax_wpi_get_roles', function() {
     wp_send_json_success($result);
 });
 
-// ── Send feedback to Weblease (security audit: added missing handler) ──
+// ── Feedback submission ────────────────────────────────────────
 add_action('wp_ajax_wpi_send_feedback', function() {
     check_ajax_referer('ca_nonce', 'nonce');
-    if ( ! wpilot_user_has_access() ) wp_send_json_error('Unauthorized.', 403);
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized.');
 
+    $type = sanitize_text_field($_POST['type'] ?? 'feedback');
     $message = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
-    $type = sanitize_text_field(wp_unslash($_POST['type'] ?? 'feedback'));
-    if (empty($message)) wp_send_json_error('Empty message.');
+    $rating = intval($_POST['rating'] ?? 0);
+    $email = sanitize_email($_POST['email'] ?? get_option('admin_email'));
+
+    if (empty($message)) wp_send_json_error('Message required.');
 
     // Rate limit: 5 per hour
     $transient_key = 'wpi_feedback_' . get_current_user_id();
@@ -389,19 +392,59 @@ add_action('wp_ajax_wpi_send_feedback', function() {
     if ($count >= 5) wp_send_json_error('Rate limit: max 5 feedback per hour.');
     set_transient($transient_key, $count + 1, HOUR_IN_SECONDS);
 
-    wp_remote_post('https://weblease.se/plugin/feedback', [
-        'timeout' => 10,
-        'blocking' => false,
+    // Save locally
+    $feedbacks = get_option('wpilot_feedbacks', []);
+    $fb_id = uniqid('fb_');
+    $feedbacks[$fb_id] = [
+        'type'           => $type,
+        'message'        => $message,
+        'rating'         => $rating,
+        'email'          => $email,
+        'date'           => date('Y-m-d H:i:s'),
+        'site_url'       => get_site_url(),
+        'wp_version'     => get_bloginfo('version'),
+        'plugin_version' => CA_VERSION,
+        'php_version'    => PHP_VERSION,
+        'reply'          => '',
+        'status'         => 'sent',
+    ];
+    update_option('wpilot_feedbacks', $feedbacks);
+
+    // Send to weblease.se
+    $response = wp_remote_post('https://weblease.se/plugin/feedback', [
+        'timeout' => 15,
         'headers' => ['Content-Type' => 'application/json'],
         'body' => wp_json_encode([
-            'site_url' => get_site_url(),
-            'type' => $type,
-            'message' => substr($message, 0, 2000),
-            'version' => CA_VERSION,
+            'id'             => $fb_id,
+            'type'           => $type,
+            'message'        => $message,
+            'rating'         => $rating,
+            'email'          => $email,
+            'site_url'       => get_site_url(),
+            'site_name'      => get_bloginfo('name'),
+            'wp_version'     => get_bloginfo('version'),
+            'plugin_version' => CA_VERSION,
+            'php_version'    => PHP_VERSION,
+            'builder'        => function_exists('wpilot_detect_builder') ? wpilot_detect_builder() : 'unknown',
+            'tools_count'    => substr_count(file_get_contents(WP_PLUGIN_DIR . '/wpilot/includes/tools.php'), "case '"),
         ]),
     ]);
 
-    wp_send_json_success(['message' => 'Feedback sent. Thank you!']);
+    $sent = !is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200;
+
+    wp_send_json_success([
+        'message'        => $sent ? 'Feedback sent! We\'ll review it soon.' : 'Saved locally (server unreachable).',
+        'id'             => $fb_id,
+        'sent_to_server' => $sent,
+    ]);
+});
+
+// ── Check for feedback replies ─────────────────────────────────
+add_action('wp_ajax_wpi_check_replies', function() {
+    check_ajax_referer('ca_nonce', 'nonce');
+    $feedbacks = get_option('wpilot_feedbacks', []);
+    $with_replies = array_filter($feedbacks, fn($f) => !empty($f['reply']) && ($f['read'] ?? false) === false);
+    wp_send_json_success(['unread_replies' => count($with_replies), 'feedbacks' => $feedbacks]);
 });
 
 // Newsletter subscribe AJAX (public — no login needed)

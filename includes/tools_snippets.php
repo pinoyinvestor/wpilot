@@ -20,6 +20,11 @@ function wpilot_snippet_blocked_fns() {
         'popen' . '(',
         'proc' . '_open(',
         'assert' . '(',
+        'exe' . 'c(',
+        'curl' . '_exec(',
+        'unserialize' . '(',
+        'file_get' . '_contents(\'http',
+        'file_get' . '_contents("http',
     ];
 }
 

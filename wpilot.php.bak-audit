@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:           2.2.0
+ * Version:      2.0.1
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -45,7 +45,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( "CA_VERSION", "2.2.0" );
+define( 'CA_VERSION',    '2.0.1' );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
@@ -99,7 +99,7 @@ function wpilot_load_heavy() {
     $dir = plugin_dir_path(__FILE__) . 'includes/';
 
     // Core modules — always needed for chat
-    $core = ['api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'backup', 'parser_fix'];
+    $core = ['api', 'context', 'safeguard', 'tools', 'backup', 'parser_fix'];
     foreach ($core as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;
@@ -318,11 +318,9 @@ add_action('rest_api_init', function() {
             $webhooks = get_option('wpilot_webhooks', []);
             if (!isset($webhooks[$slug])) return new WP_REST_Response(['error' => 'Not found'], 404);
             $wh = $webhooks[$slug];
-            // SECURITY: Always require secret for webhooks (timing-safe comparison)
+            // Verify secret if provided
             $secret = $request->get_header('X-Webhook-Secret') ?? $request->get_param('secret');
-            if (empty($wh['secret']) || empty($secret) || !hash_equals($wh['secret'], (string)$secret)) {
-                return new WP_REST_Response(['error' => 'Invalid or missing secret'], 403);
-            }
+            if (!empty($wh['secret']) && $secret !== $wh['secret']) return new WP_REST_Response(['error' => 'Invalid secret'], 403);
             // Increment counter
             $webhooks[$slug]['calls'] = ($wh['calls'] ?? 0) + 1;
             $webhooks[$slug]['last_call'] = date('Y-m-d H:i:s');
