@@ -27,6 +27,68 @@ if ( ! function_exists( 'wpilot_ok' ) ) {
 if ( ! function_exists( 'wpilot_err' ) ) {
     function wpilot_err( $msg ) { return ['success' => false, 'message' => $msg]; }
 }
+
+// ── SEO Frontend Output (lightweight — always loaded for all visitors) ──
+// Built by Christos Ferlachidis & Daniel Hedenberg
+
+// Apply custom robots.txt if configured
+add_filter( 'robots_txt', function( $output, $public ) {
+    $custom = get_option( 'wpi_custom_robots_txt', '' );
+    if ( ! empty( $custom ) ) return $custom;
+    return $output;
+}, 10, 2 );
+
+// Output schema markup, Open Graph and Twitter Card tags in <head>
+add_action( 'wp_head', function() {
+    if ( ! is_singular() ) return;
+
+    $post_id = get_the_ID();
+    if ( ! $post_id ) return;
+
+    // JSON-LD Schema markup
+    $schema = get_post_meta( $post_id, '_wpi_schema_markup', true );
+    if ( $schema ) {
+        echo '<script type="application/ld+json">' . $schema . '</script>' . "\n";
+    }
+
+    // Open Graph — required tags always output, custom overrides applied
+    $og_title = get_post_meta( $post_id, '_wpi_og_title', true )
+             ?: get_the_title( $post_id );
+    $og_desc  = get_post_meta( $post_id, '_wpi_og_description', true )
+             ?: get_post_meta( $post_id, '_yoast_wpseo_metadesc', true )
+             ?: get_post_meta( $post_id, 'rank_math_description', true )
+             ?: get_post_meta( $post_id, '_aioseo_description', true );
+    $og_image = get_post_meta( $post_id, '_wpi_og_image', true );
+
+    // Fallback OG image: featured image
+    if ( ! $og_image ) {
+        $thumb_id = get_post_thumbnail_id( $post_id );
+        if ( $thumb_id ) $og_image = wp_get_attachment_url( $thumb_id );
+    }
+
+    // og:type — product for WooCommerce, article for posts, website for pages
+    $post_type = get_post_type( $post_id );
+    if ( $post_type === 'product' ) {
+        $og_type = 'product';
+    } elseif ( $post_type === 'post' ) {
+        $og_type = 'article';
+    } else {
+        $og_type = 'website';
+    }
+
+    echo '<meta property="og:type" content="'      . esc_attr( $og_type )                    . '">' . "\n";
+    echo '<meta property="og:url" content="'       . esc_url( get_permalink( $post_id ) )    . '">' . "\n";
+    echo '<meta property="og:site_name" content="' . esc_attr( get_bloginfo( 'name' ) )      . '">' . "\n";
+    if ( $og_title ) echo '<meta property="og:title" content="'       . esc_attr( $og_title ) . '">' . "\n";
+    if ( $og_desc  ) echo '<meta property="og:description" content="' . esc_attr( $og_desc  ) . '">' . "\n";
+    if ( $og_image ) echo '<meta property="og:image" content="'       . esc_url( $og_image  ) . '">' . "\n";
+
+    // Twitter Card
+    echo '<meta name="twitter:card" content="' . ( $og_image ? 'summary_large_image' : 'summary' ) . '">' . "\n";
+    if ( $og_title ) echo '<meta name="twitter:title" content="'       . esc_attr( $og_title ) . '">' . "\n";
+    if ( $og_desc  ) echo '<meta name="twitter:description" content="' . esc_attr( $og_desc  ) . '">' . "\n";
+    if ( $og_image ) echo '<meta name="twitter:image" content="'       . esc_url( $og_image  ) . '">' . "\n";
+} );
 if ( ! function_exists( 'wpilot_md_to_html' ) ) {
     function wpilot_md_to_html( $text ) {
         $text = htmlspecialchars( $text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
@@ -38,91 +100,6 @@ if ( ! function_exists( 'wpilot_md_to_html' ) ) {
         $text = preg_replace( '/`([^`]+)`/', '<code class="ca-md-code">$1</code>', $text );
         return nl2br( $text );
     }
-}
-
-
-// ── Usage Tracking ─────────────────────────────────────────
-function wpilot_track_usage() {
-    $today = date('Y-m-d');
-    $usage = get_option('wpi_usage_stats', []);
-    if (!isset($usage[$today])) $usage[$today] = ['prompts'=>0, 'tokens_est'=>0];
-    $usage[$today]['prompts']++;
-    $usage[$today]['tokens_est'] += 800; // rough average tokens per request
-    // Keep only last 90 days
-    $cutoff = date('Y-m-d', strtotime('-90 days'));
-    $usage = array_filter($usage, function($k) use ($cutoff) { return $k >= $cutoff; }, ARRAY_FILTER_USE_KEY);
-    update_option('wpi_usage_stats', $usage, false);
-}
-
-function wpilot_get_usage_summary() {
-    $usage = get_option('wpi_usage_stats', []);
-    $today = date('Y-m-d');
-    $week_ago = date('Y-m-d', strtotime('-7 days'));
-    $month_ago = date('Y-m-d', strtotime('-30 days'));
-
-    $today_prompts = $usage[$today]['prompts'] ?? 0;
-    $week_prompts = 0; $month_prompts = 0; $total_prompts = 0;
-    $week_tokens = 0; $month_tokens = 0; $total_tokens = 0;
-
-    foreach ($usage as $date => $data) {
-        $p = $data['prompts'] ?? 0;
-        $t = $data['tokens_est'] ?? 0;
-        $total_prompts += $p;
-        $total_tokens += $t;
-        if ($date >= $week_ago) { $week_prompts += $p; $week_tokens += $t; }
-        if ($date >= $month_ago) { $month_prompts += $p; $month_tokens += $t; }
-    }
-
-    // Use real cost data if available, fall back to estimate
-    $real_cost_month = 0; $real_cost_total = 0;
-    $real_input_month = 0; $real_output_month = 0;
-    $real_input_total = 0; $real_output_total = 0;
-    foreach ($usage as $date => $data) {
-        $c = $data['cost'] ?? 0;
-        $it = $data['input_tokens'] ?? 0;
-        $ot = $data['output_tokens'] ?? 0;
-        $real_cost_total += $c;
-        $real_input_total += $it;
-        $real_output_total += $ot;
-        if ($date >= $month_ago) {
-            $real_cost_month += $c;
-            $real_input_month += $it;
-            $real_output_month += $ot;
-        }
-    }
-    $est_cost_month = $real_cost_month > 0 ? round($real_cost_month, 2) : round($month_prompts * 0.01, 2);
-    $est_cost_total = $real_cost_total > 0 ? round($real_cost_total, 2) : round($total_prompts * 0.01, 2);
-
-    return [
-        'today' => $today_prompts,
-        'week' => $week_prompts,
-        'month' => $month_prompts,
-        'total' => $total_prompts,
-        'tokens_month' => $real_input_month + $real_output_month,
-        'tokens_total' => $real_input_total + $real_output_total,
-        'input_tokens_month' => $real_input_month,
-        'output_tokens_month' => $real_output_month,
-        'cost_month' => $est_cost_month,
-        'cost_total' => $est_cost_total,
-        'daily' => $usage,
-    ];
-}
-
-
-// ── Real Token Tracking from Claude API ────────────────────
-function wpilot_track_tokens($input_tokens, $output_tokens) {
-    $today = date('Y-m-d');
-    $usage = get_option('wpi_usage_stats', []);
-    if (!isset($usage[$today])) $usage[$today] = ['prompts'=>0, 'tokens_est'=>0, 'input_tokens'=>0, 'output_tokens'=>0, 'cost'=>0];
-    $usage[$today]['input_tokens'] = ($usage[$today]['input_tokens'] ?? 0) + $input_tokens;
-    $usage[$today]['output_tokens'] = ($usage[$today]['output_tokens'] ?? 0) + $output_tokens;
-    // Real cost: Sonnet input=$3/MTok, output=$15/MTok
-    $cost = ($input_tokens / 1000000 * 3) + ($output_tokens / 1000000 * 15);
-    $usage[$today]['cost'] = round(($usage[$today]['cost'] ?? 0) + $cost, 4);
-    // Prune entries older than 90 days
-    $cutoff = date('Y-m-d', strtotime('-90 days'));
-    foreach (array_keys($usage) as $d) { if ($d < $cutoff) unset($usage[$d]); }
-    update_option('wpi_usage_stats', $usage, false);
 }
 
 // Admin notice when not connected
@@ -154,7 +131,6 @@ function wpilot_can_use() {
             set_transient('wpi_license_valid', $cached ? 1 : 0, HOUR_IN_SECONDS);
         }
         return (bool)$cached;
-// Built by Christos Ferlachidis & Daniel Hedenberg
     }
     return wpilot_prompts_used() < CA_FREE_LIMIT;
 }

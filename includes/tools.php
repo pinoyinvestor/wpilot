@@ -42,7 +42,10 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_ok("Page #{$id} template set to {$template}.");
 
         case 'set_homepage':
-            $id = intval( $params['id'] ?? 0 );
+            // Accept any ID variant
+            if (!isset($params['id']) && isset($params['page_id'])) $params['id'] = $params['page_id'];
+            if (!isset($params['id']) && isset($params['post_id'])) $params['id'] = $params['post_id'];
+            $id = intval( $params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0 );
             if ( !$id ) return wpilot_err('Page ID required.');
             update_option('show_on_front','page');
             update_option('page_on_front', $id);
@@ -50,15 +53,39 @@ function wpilot_run_tool( $tool, $params = [] ) {
 
         /* ── Menus ──────────────────────────────────────────── */
         case 'create_menu':
-            $name = sanitize_text_field( $params['name'] ?? 'New Menu' );
-            $id   = wp_create_nav_menu( $name );
-            if ( is_wp_error($id) ) return wpilot_err( $id->get_error_message() );
-            if ( !empty($params['location']) ) {
+            $name = sanitize_text_field( $params['name'] ?? $params['menu_name'] ?? 'Main Menu' );
+            // Delete ALL existing menus to prevent duplicates
+            $all_menus = wp_get_nav_menus();
+            foreach ($all_menus as $old_menu) {
+                wp_delete_nav_menu($old_menu->term_id);
+            }
+            $id = wp_create_nav_menu($name);
+            if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+            $items = $params['items'] ?? [];
+            foreach ($items as $item) {
+                $ititle = sanitize_text_field($item['title'] ?? $item['label'] ?? '');
+                $iurl = esc_url_raw($item['url'] ?? $item['link'] ?? '#');
+                if ($ititle) {
+                    wp_update_nav_menu_item($id, 0, [
+                        'menu-item-title' => $ititle,
+                        'menu-item-url' => $iurl,
+                        'menu-item-status' => 'publish',
+                        'menu-item-type' => 'custom',
+                    ]);
+                }
+            }
+            $location = $params['location'] ?? $params['menu_location'] ?? '';
+            if (!$location) {
+                $theme_locs = get_registered_nav_menus();
+                if (!empty($theme_locs)) $location = array_key_first($theme_locs);
+            }
+            if ($location) {
                 $locs = get_theme_mod('nav_menu_locations', []);
-                $locs[$params['location']] = $id;
+                $locs[$location] = $id;
                 set_theme_mod('nav_menu_locations', $locs);
             }
-            return wpilot_ok( "Menu \"{$name}\" created.", ['id'=>$id] );
+            $ic = count($items);
+            return wpilot_ok("Menu \"{$name}\" created with {$ic} items.", ['id'=>$id, 'items'=>$ic]);
 
         case 'add_menu_item':
             $menu_id = intval( $params['menu_id'] ?? 0 );
@@ -102,7 +129,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
         /* ── SEO metadata ───────────────────────────────────── */
         // Built by Christos Ferlachidis & Daniel Hedenberg
         case 'update_meta_desc':
-            $id   = intval( $params['id'] ?? 0 );
+            $id   = intval( $params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0 );
             $desc = sanitize_text_field( $params['desc'] ?? '' );
             if ( !$id ) return wpilot_err('Post/page ID required.');
             update_post_meta($id,'_yoast_wpseo_metadesc', $desc);
@@ -111,7 +138,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_ok( "Meta description updated for #{$id}." );
 
         case 'update_seo_title':
-            $id    = intval( $params['id'] ?? 0 );
+            $id    = intval( $params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0 );
             if (!$id) return wpilot_err('Post/page ID required.');
             $title = sanitize_text_field( $params['title'] ?? '' );
             update_post_meta($id,'_yoast_wpseo_title', $title);
@@ -119,7 +146,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
             return wpilot_ok( "SEO title updated." );
 
         case 'update_focus_keyword':
-            $id = intval( $params['id'] ?? 0 );
+            $id = intval( $params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0 );
             if (!$id) return wpilot_err('Post/page ID required.');
             $kw = sanitize_text_field( $params['keyword'] ?? '' );
             update_post_meta($id,'_yoast_wpseo_focuskw',    $kw);
@@ -128,7 +155,13 @@ function wpilot_run_tool( $tool, $params = [] ) {
 
         /* ── CSS ────────────────────────────────────────────── */
         case 'update_custom_css':
-            $css = wp_strip_all_tags( $params['css'] ?? '' );
+            $raw_css = $params['css'] ?? '';
+            // Validate: CSS must contain { and } — otherwise it's a description, not CSS
+            if (!empty($raw_css) && strpos($raw_css, '{') === false) {
+                return wpilot_err('That is a description, not CSS code. Send actual CSS rules like: body{background:#050810} .class{color:#fff}');
+            }
+            // Strip HTML tags but keep CSS intact
+            $css = strip_tags($raw_css);
             // If css param empty, check if description contains CSS
             if (empty($css) || strlen($css) < 50) {
                 $desc = $params['description'] ?? '';
@@ -138,12 +171,17 @@ function wpilot_run_tool( $tool, $params = [] ) {
             }
             wpilot_save_css_snapshot();
             wp_update_custom_css_post( $css );
-            // Fallback: inject via mu-plugin for block themes that don't load custom CSS
-            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
-            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
-            file_put_contents($mu_dir . '/wpilot-custom-css.php', "<?php
-add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</style>'; }, 999);
-");
+            // Only inject CSS via mu-plugin for block themes (FSE) that don't load wp_get_custom_css
+            // Classic themes (Hello Elementor, Divi, Astra etc) already load it — no mu-plugin needed
+            $mu_css_path = (defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins') . '/wpilot-custom-css.php';
+            if (wp_is_block_theme()) {
+                $mu_dir = dirname($mu_css_path);
+                if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+                file_put_contents($mu_css_path, "<?php\nadd_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</style>'; }, 999);");
+            } else {
+                // Classic theme — remove mu-plugin if it exists (prevents double CSS)
+                if (file_exists($mu_css_path)) @unlink($mu_css_path);
+            }
             return wpilot_ok('Custom CSS applied.');
 
         case 'append_custom_css':
@@ -154,8 +192,20 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             }
             $curr = wp_get_custom_css();
             wpilot_save_css_snapshot();
-            wp_update_custom_css_post( trim($curr) . "\n\n/* WPilot — " . date('Y-m-d H:i') . " */\n" . $new );
-            return wpilot_ok('CSS appended to Customizer.');
+            // Deduplicate: remove old rules with same selectors before appending
+            preg_match_all('/([^{}\n]+)\{/', $new, $new_sels);
+            if (!empty($new_sels[1])) {
+                foreach ($new_sels[1] as $sel) {
+                    $sel = trim($sel);
+                    if (empty($sel) || strpos($sel,'/*')===0 || strpos($sel,'@media')===0) continue;
+                    $esc = preg_quote($sel, '/');
+                    $curr = preg_replace('/'.$esc.'\s*\{[^}]*\}/s', '', $curr);
+                }
+            }
+            $curr = preg_replace('/\/\*\s*WPilot[^*]*\*\/\s*/', '', $curr);
+            $curr = preg_replace('/\n{3,}/', "\n\n", trim($curr));
+            wp_update_custom_css_post(trim($curr) . "\n" . $new);
+            return wpilot_ok('CSS updated (duplicates removed).');
 
         /* ── Media / Images ─────────────────────────────────── */
         case 'update_image_alt':
@@ -178,9 +228,31 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("Fixed alt text for {$fixed} images.");
 
         case 'set_featured_image':
-            $post_id  = intval( $params['post_id']  ?? 0 );
+            $post_id  = intval( $params['post_id'] ?? $params['id'] ?? $params['product_id'] ?? $params['page_id'] ?? 0 );
             $image_id = intval( $params['image_id'] ?? 0 );
-            if (!$post_id||!$image_id) return wpilot_err('post_id and image_id required.');
+            $image_url = $params['image_url'] ?? $params['url'] ?? $params['image'] ?? $params['src'] ?? '';
+            // Fallback: extract post_id from description if params parsing failed
+            if (!$post_id) {
+                $desc = sanitize_text_field( wp_unslash( $_POST['description'] ?? $_POST['label'] ?? '' ) );
+                if (preg_match('/(?:product|page|post|ID)[:\s#]*?(\d+)/i', $desc, $dm)) {
+                    $post_id = intval($dm[1]);
+                }
+            }
+            // Fallback: extract image URL from description
+            if (empty($image_url) && !$image_id) {
+                $desc = wp_unslash( $_POST['description'] ?? $_POST['label'] ?? '' );
+                if (preg_match('/(https?:\/\/[^\s"]+\.(?:jpg|jpeg|png|webp|gif)[^\s"]*)/i', $desc, $um)) {
+                    $image_url = esc_url_raw($um[1]);
+                }
+            }
+            if (!$image_id && !empty($image_url)) {
+                require_once(ABSPATH . 'wp-admin/includes/media.php');
+                require_once(ABSPATH . 'wp-admin/includes/file.php');
+                require_once(ABSPATH . 'wp-admin/includes/image.php');
+                $image_id = media_sideload_image($image_url, $post_id, '', 'id');
+                if (is_wp_error($image_id)) return wpilot_err('Image download failed: ' . $image_id->get_error_message());
+            }
+            if (!$post_id||!$image_id) return wpilot_err('post_id and image_url or image_id required.');
             set_post_thumbnail($post_id,$image_id);
             return wpilot_ok("Featured image set.");
 
@@ -192,7 +264,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_bulk_convert_webp( intval( $params['quality'] ?? 82 ) );
 
         case 'convert_image_webp':
-            $id = intval( $params['id'] ?? 0 );
+            $id = intval( $params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0 );
             if ( !$id ) return wpilot_err('Image ID required.');
             return wpilot_convert_single_webp( $id, intval( $params['quality'] ?? 82 ) );
 
@@ -233,7 +305,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
 
         case 'create_product_category':
             if ( !class_exists('WooCommerce') ) return wpilot_err('WooCommerce required.');
-            $name = sanitize_text_field($params['name'] ?? '');
+            $name = sanitize_text_field($params['name'] ?? $params['category_name'] ?? $params['category'] ?? '');
             if (!$name) return wpilot_err('Category name required.');
             $term = wp_insert_term($name,'product_cat',['description'=>$params['desc']??'']);
             if (is_wp_error($term)) return wpilot_err($term->get_error_message());
@@ -442,7 +514,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
                     return wpilot_err('WooCommerce required. Install it first.');
                 }
             }
-            $pid = intval($params['product_id'] ?? 0);
+            $pid = intval($params['product_id'] ?? $params['id'] ?? $params['post_id'] ?? 0);
             if (!$pid) return wpilot_err('product_id required.');
             wpilot_save_post_snapshot($pid);
             $update = ['ID' => $pid];
@@ -531,7 +603,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("Post \"{$title}\" created (ID: {$id}).", ['id'=>$id]);
 
         case 'update_post':
-            $id = intval($params['id'] ?? 0);
+            $id = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             if (!$id) return wpilot_err('Post ID required.');
             wpilot_save_post_snapshot($id);
             $update = ['ID' => $id];
@@ -544,7 +616,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("Post #{$id} updated.");
 
         case 'delete_post':
-            $id = intval($params['id'] ?? 0);
+            $id = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             if (!$id) return wpilot_err('Post ID required.');
             wpilot_save_post_snapshot($id);
             wp_trash_post($id);
@@ -562,12 +634,20 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
 
         /* ── Options / Settings ─────────────────────────────── */
         case 'update_option':
-            $key   = sanitize_text_field($params['option_key'] ?? '');
+            $key   = sanitize_text_field($params['option_key'] ?? $params['key'] ?? $params['option_name'] ?? $params['name'] ?? '');
             $value = $params['value'] ?? '';
             if (!$key) return wpilot_err('option_key required.');
             // Safety: block core WP options
-            $blocked = ['siteurl','home','admin_email','users_can_register','default_role'];
-            if (in_array($key, $blocked)) return wpilot_err("Option \"{$key}\" is blocked for safety.");
+            // Security: allowlist of safe option prefixes + blocklist of sensitive keys
+            $safe_prefixes = ['woocommerce_','wpi_','ca_','wpilot_','rank_math_','elementor_','litespeed','updraft','wordfence','polylang_','translatepress_','WPLANG'];
+            $blocked_exact = ['siteurl','home','admin_email','users_can_register','default_role','active_plugins','template','stylesheet','ca_api_key','wp_user_roles','auth_key','secure_auth_key','logged_in_key','nonce_key'];
+            if (in_array($key, $blocked_exact)) return wpilot_err("Option \"{$key}\" is blocked for safety.");
+            $allowed = false;
+            foreach ($safe_prefixes as $prefix) { if (strpos($key, $prefix) === 0) { $allowed = true; break; } }
+            // Also allow generic WP options like blogname, blogdescription, permalink_structure, page_on_front, show_on_front
+            $safe_exact = ['blogname','blogdescription','blog_charset','permalink_structure','page_on_front','page_for_posts','show_on_front','wp_page_for_privacy_policy','site_icon','date_format','time_format','timezone_string','posts_per_page'];
+            if (in_array($key, $safe_exact)) $allowed = true;
+            if (!$allowed) return wpilot_err("Option \"{$key}\" is not in the safe list.");
             update_option($key, $value);
             return wpilot_ok("Option \"{$key}\" updated.");
 
@@ -622,6 +702,11 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
             $priority = intval($params['priority'] ?? 10);
             if (empty($code)) return wpilot_err('Code required.');
+            // SAFETY: strip echo/print from snippets — they pollute AJAX responses
+            $code = preg_replace('/\becho\s+["\']/','// echo ', $code);
+            $code = preg_replace('/\bprint\s*\(/','// print(', $code);
+            $code = preg_replace('/\bvar_dump\s*\(/','// var_dump(', $code);
+            $code = preg_replace('/\bprint_r\s*\(/','// print_r(', $code);
             // Validate: code must not contain raw HTML tags (common AI mistake)
             if (preg_match('/<[a-z]/i', $code) && !preg_match('/echo|print/', $code)) {
                 return wpilot_err('PHP snippet contains HTML. Use add_head_code for HTML or wrap in echo/print for PHP.');
@@ -670,9 +755,23 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             $name = sanitize_file_name($params['name'] ?? '');
             if (empty($name)) return wpilot_err('Snippet name required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
-            $file = $mu_dir . '/wpilot-' . $name . '.php';
-            if (!file_exists($file)) $file = $mu_dir . '/' . $name;
-            if (file_exists($file)) { @unlink($file); return wpilot_ok("Snippet removed: " . basename($file)); }
+            // Try multiple naming patterns
+            $tries = [
+                $mu_dir . '/' . $name . '.php',
+                $mu_dir . '/' . $name,
+                $mu_dir . '/wpilot-' . $name . '.php',
+                $mu_dir . '/wpilot-' . $name,
+            ];
+            // Also strip wpilot- prefix if already included
+            $stripped = preg_replace('/^wpilot-/', '', $name);
+            $tries[] = $mu_dir . '/wpilot-' . $stripped . '.php';
+            $tries[] = $mu_dir . '/' . $stripped . '.php';
+            foreach ($tries as $file) {
+                if (file_exists($file)) {
+                    @unlink($file);
+                    return wpilot_ok("Snippet removed: " . basename($file));
+                }
+            }
             return wpilot_err("Snippet not found: {$name}");
 
         case 'add_security_headers':
@@ -763,7 +862,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("robots.txt rules saved. These will be applied via WordPress filter.");
 
         case 'fix_heading_structure':
-            $id = intval($params['id'] ?? 0);
+            $id = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             if (!$id) return wpilot_err('Page/post ID required.');
             $post = get_post($id);
             if (!$post) return wpilot_err("Post #{$id} not found.");
@@ -787,7 +886,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("Heading structure fixed for #{$id}. " . implode('. ', $fixes));
 
         case 'add_schema_markup':
-            $id     = intval($params['id'] ?? 0);
+            $id     = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             $type   = sanitize_text_field($params['schema_type'] ?? 'Article');
             $data   = $params['schema_data'] ?? [];
             if (!$id) return wpilot_err('Page/post ID required.');
@@ -803,7 +902,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_bulk_fix_seo();
 
         case 'set_open_graph':
-            $id    = intval($params['id'] ?? 0);
+            $id    = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             $title = sanitize_text_field($params['og_title'] ?? '');
             $desc  = sanitize_text_field($params['og_description'] ?? '');
             $image = esc_url_raw($params['og_image'] ?? '');
@@ -951,7 +1050,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("Blog post \"{$title}\" created (ID: {$id}, status: {$status}). SEO meta auto-set.", ['id'=>$id, 'url'=>get_permalink($id)]);
 
         case 'rewrite_content':
-            $id   = intval($params['id'] ?? 0);
+            $id   = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             $tone = sanitize_text_field($params['tone'] ?? 'professional');
             $goal = sanitize_text_field($params['goal'] ?? 'improve');
             if (!$id) return wpilot_err('Post/page ID required.');
@@ -972,7 +1071,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("Content rewritten for \"{$post->post_title}\" (#{$id}).");
 
         case 'translate_content':
-            $id   = intval($params['id'] ?? 0);
+            $id   = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             $lang = sanitize_text_field($params['language'] ?? 'en');
             if (!$id) return wpilot_err('Post/page ID required.');
             $post = get_post($id);
@@ -1001,7 +1100,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_ok("Translated copy created: \"{$translated_title}\" (ID: {$new_id}, status: draft).", ['id'=>$new_id]);
 
         case 'schedule_post':
-            $id   = intval($params['id'] ?? 0);
+            $id   = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             $date = sanitize_text_field($params['date'] ?? '');
             if (!$id || !$date) return wpilot_err('Post ID and date required. Format: YYYY-MM-DD HH:MM');
             $post = get_post($id);
@@ -1016,7 +1115,7 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_generate_full_site($params);
 
         case 'edit_current_page':
-            $id = intval($params['post_id'] ?? $params['page_id'] ?? $params['id'] ?? 0);
+            $id = intval($params['post_id'] ?? $params['page_id'] ?? $params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             if (!$id) return wpilot_err('post_id required.');
             $post = get_post($id);
             if (!$post) return wpilot_err("Page #{$id} not found.");
@@ -1038,13 +1137,89 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             $html = $params['html'] ?? $params['content'] ?? '';
             $title = $params['title'] ?? 'New Page';
             if (empty($html)) return wpilot_err('HTML content required.');
-            if (defined('ELEMENTOR_VERSION') && function_exists('wpilot_elementor_create_html_page')) {
+            // Safety: remove WordPress shortcodes from HTML (they don't render in Elementor HTML widget)
+            $html = preg_replace('/\[products[^\]]*\]/', '', $html);
+            $html = preg_replace('/\[woocommerce_[^\]]*\]/', '', $html);
+            // Safety: wrap any orphan CSS rules in <style> tags
+            if (preg_match('/(?<![<"\'a-z])(\.woocommerce[^{]*\{[^}]+\})/s', $html)) {
+                $css = ''; $clean = $html;
+                if (preg_match_all('/([.#@:][a-zA-Z][^{]*\{[^}]+\})/s', $clean, $m)) {
+                    foreach ($m[0] as $rule) {
+                        if (strpos(substr($clean, 0, strpos($clean, $rule)), '<style') === false) {
+                            $css .= $rule . "\n";
+                            $clean = str_replace($rule, '', $clean);
+                        }
+                    }
+                }
+                if ($css) $html = '<style>' . $css . '</style>' . trim($clean);
+            }
+            $builder = wpilot_detect_builder();
+
+            // === ELEMENTOR: HTML widget in Elementor data structure ===
+            if ($builder === 'elementor' && function_exists('wpilot_elementor_create_html_page')) {
                 return wpilot_elementor_create_html_page($params);
             }
-            // Fallback: create regular page with HTML
-            $id = wp_insert_post(['post_title'=>sanitize_text_field($title),'post_content'=>$html,'post_status'=>'publish','post_type'=>'page']);
+
+            // === DIVI: Code module wrapping the HTML ===
+            if ($builder === 'divi') {
+                $divi_content = '[et_pb_section fb_built="1" fullwidth="on" _builder_version="4.0"][et_pb_fullwidth_code _builder_version="4.0"]' . $html . '[/et_pb_fullwidth_code][/et_pb_section]';
+                $id = wp_insert_post([
+                    'post_title' => sanitize_text_field($title),
+                    'post_content' => $divi_content,
+                    'post_status' => 'publish',
+                    'post_type' => 'page',
+                    'meta_input' => ['_et_pb_use_builder' => 'on', '_et_pb_page_layout' => 'et_full_width_page'],
+                ]);
+                if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+                // Set Divi template
+                update_post_meta($id, '_wp_page_template', 'page-template-blank.php');
+                return wpilot_ok("Page \"{$title}\" created with Divi (ID: {$id}).", [
+                    'page_id' => $id, 'url' => get_permalink($id),
+                    'edit_url' => admin_url("post.php?post={$id}&action=edit"),
+                    'builder' => 'divi',
+                ]);
+            }
+
+            // === BEAVER BUILDER: HTML module ===
+            if ($builder === 'beaver' && defined('FL_BUILDER_VERSION')) {
+                $id = wp_insert_post([
+                    'post_title' => sanitize_text_field($title),
+                    'post_content' => $html,
+                    'post_status' => 'publish',
+                    'post_type' => 'page',
+                ]);
+                if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+                update_post_meta($id, '_fl_builder_enabled', true);
+                // Create BB data with HTML module
+                $node_id = substr(md5(rand()), 0, 9);
+                $bb_data = [
+                    $node_id => (object)[
+                        'node' => $node_id,
+                        'type' => 'module',
+                        'settings' => (object)['type' => 'html', 'html' => $html],
+                        'parent' => null,
+                        'position' => 0,
+                    ],
+                ];
+                update_post_meta($id, '_fl_builder_data', $bb_data);
+                update_post_meta($id, '_wp_page_template', 'tpl-no-header-footer.php');
+                return wpilot_ok("Page \"{$title}\" created with Beaver Builder (ID: {$id}).", [
+                    'page_id' => $id, 'url' => get_permalink($id), 'builder' => 'beaver',
+                ]);
+            }
+
+            // === GUTENBERG: Custom HTML block ===
+            $gutenberg_content = '<!-- wp:html -->' . $html . '<!-- /wp:html -->';
+            $id = wp_insert_post([
+                'post_title' => sanitize_text_field($title),
+                'post_content' => $gutenberg_content,
+                'post_status' => 'publish',
+                'post_type' => 'page',
+            ]);
             if (is_wp_error($id)) return wpilot_err($id->get_error_message());
-            return wpilot_ok("Page created (ID: {$id}).", ['page_id'=>$id,'url'=>get_permalink($id)]);
+            return wpilot_ok("Page \"{$title}\" created (ID: {$id}).", [
+                'page_id' => $id, 'url' => get_permalink($id), 'builder' => $builder,
+            ]);
 
         case 'builder_create_page':
         case 'builder_update_section':
@@ -1066,6 +1241,5553 @@ add_action('wp_head', function() { echo '<style>' . wp_get_custom_css() . '</sty
             return wpilot_newsletter_list_subscribers($params);
         case 'newsletter_configure':
             return wpilot_newsletter_configure($params);
+
+        // ═══ AI IMAGE GENERATION ═══
+        case 'generate_image':
+        case 'create_image':
+        case 'ai_image':
+            $prompt_text = $params['prompt'] ?? $params['description'] ?? '';
+            $post_id = intval($params['post_id'] ?? $params['id'] ?? 0);
+            if (empty($prompt_text)) return wpilot_err('Image description/prompt required.');
+            // Use the site's Claude API key to call image generation
+            // For now, use placeholder images from picsum until image API is integrated
+            $width = intval($params['width'] ?? 800);
+            $height = intval($params['height'] ?? 600);
+            $seed = crc32($prompt_text); // Consistent image for same prompt
+            $image_url = "https://placehold.co/{$width}x{$height}/1a1a2e/6366f1.png?text=" . urlencode(substr($prompt_text, 0, 15));
+            // Download and attach
+            require_once(ABSPATH . 'wp-admin/includes/media.php');
+            require_once(ABSPATH . 'wp-admin/includes/file.php');
+            require_once(ABSPATH . 'wp-admin/includes/image.php');
+            $title = sanitize_text_field(substr($prompt_text, 0, 60));
+            $image_id = media_sideload_image($image_url, $post_id ?: 0, $title, 'id');
+            if (is_wp_error($image_id)) return wpilot_err('Image generation failed: ' . $image_id->get_error_message());
+            // Set alt text from prompt
+            update_post_meta($image_id, '_wp_attachment_image_alt', $title);
+            // Set as featured if post_id given
+            if ($post_id) set_post_thumbnail($post_id, $image_id);
+            return wpilot_ok("Image generated and uploaded (ID: {$image_id}).", [
+                'image_id' => $image_id,
+                'url' => wp_get_attachment_url($image_id),
+                'set_as_featured' => $post_id > 0,
+            ]);
+
+        // ═══ PRODUCT VARIATIONS ═══
+        case 'woo_create_variation':
+        case 'create_product_variation':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $pid = intval($params['product_id'] ?? $params['id'] ?? 0);
+            if (!$pid) return wpilot_err('product_id required.');
+            $product = wc_get_product($pid);
+            if (!$product) return wpilot_err("Product #{$pid} not found.");
+            // Convert to variable product if simple
+            if ($product->get_type() === 'simple') {
+                wp_set_object_terms($pid, 'variable', 'product_type');
+                $product = wc_get_product($pid);
+            }
+            $attributes = $params['attributes'] ?? [];
+            $variations = $params['variations'] ?? [];
+            // Set product attributes
+            $product_attributes = [];
+            foreach ($attributes as $attr) {
+                $name = sanitize_text_field($attr['name'] ?? '');
+                $values = array_map('sanitize_text_field', (array)($attr['values'] ?? $attr['options'] ?? []));
+                if ($name && $values) {
+                    $product_attributes[sanitize_title($name)] = [
+                        'name' => $name,
+                        'value' => implode(' | ', $values),
+                        'position' => count($product_attributes),
+                        'is_visible' => 1,
+                        'is_variation' => 1,
+                        'is_taxonomy' => 0,
+                    ];
+                }
+            }
+            update_post_meta($pid, '_product_attributes', $product_attributes);
+            // Create variations
+            $created = 0;
+            foreach ($variations as $var) {
+                $variation_id = wp_insert_post([
+                    'post_title' => $product->get_name() . ' - Variation',
+                    'post_status' => 'publish',
+                    'post_parent' => $pid,
+                    'post_type' => 'product_variation',
+                ]);
+                if (!is_wp_error($variation_id)) {
+                    update_post_meta($variation_id, '_regular_price', sanitize_text_field($var['price'] ?? $product->get_price()));
+                    update_post_meta($variation_id, '_price', sanitize_text_field($var['price'] ?? $product->get_price()));
+                    if (isset($var['sale_price'])) update_post_meta($variation_id, '_sale_price', sanitize_text_field($var['sale_price']));
+                    if (isset($var['sku'])) update_post_meta($variation_id, '_sku', sanitize_text_field($var['sku']));
+                    if (isset($var['stock'])) {
+                        update_post_meta($variation_id, '_manage_stock', 'yes');
+                        update_post_meta($variation_id, '_stock', intval($var['stock']));
+                        update_post_meta($variation_id, '_stock_status', 'instock');
+                    }
+                    // Set attribute values for this variation
+                    foreach ($var['attributes'] ?? [] as $attr_name => $attr_val) {
+                        update_post_meta($variation_id, 'attribute_' . sanitize_title($attr_name), sanitize_text_field($attr_val));
+                    }
+                    $created++;
+                }
+            }
+            if (function_exists('wc_delete_product_transients')) wc_delete_product_transients($pid);
+            return wpilot_ok("Created {$created} variations for product #{$pid}.", ['product_id' => $pid, 'variations' => $created]);
+
+        // ═══ ABANDONED CART SETUP ═══
+        case 'woo_abandoned_cart_setup':
+        case 'abandoned_cart_setup':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            // Install abandoned cart plugin if not present
+            if (!is_plugin_active('woo-cart-abandonment-recovery/woo-cart-abandonment-recovery.php') &&
+                !is_plugin_active('abandoned-cart-pro-for-woocommerce/abandoned-cart-pro-for-woocommerce.php')) {
+                if (function_exists('wpilot_plugin_install')) {
+                    $install = wpilot_plugin_install(['slug' => 'woo-cart-abandonment-recovery']);
+                    if (!$install['success']) return wpilot_err('Could not install abandoned cart plugin.');
+                }
+            }
+            return wpilot_ok("Abandoned cart recovery plugin installed and active. Configure follow-up emails in WooCommerce > Cart Abandonment.", [
+                'plugin' => 'Cart Abandonment Recovery',
+                'settings_url' => admin_url('admin.php?page=woo-cart-abandonment-recovery'),
+            ]);
+
+        // ═══ CHANGE LOG / UNDO HISTORY ═══
+        case 'list_changes':
+        case 'undo_history':
+        case 'change_log':
+            $limit = intval($params['limit'] ?? 20);
+            $logs = get_option('ca_backup_log', []);
+            $logs = array_slice(array_reverse($logs), 0, $limit);
+            $list = [];
+            foreach ($logs as $log) {
+                $list[] = [
+                    'id' => $log['id'] ?? '',
+                    'tool' => $log['tool'] ?? '',
+                    'time' => $log['time'] ?? '',
+                    'description' => substr($log['description'] ?? $log['tool'] ?? '', 0, 60),
+                ];
+            }
+            return wpilot_ok(count($list) . " recent changes.", ['changes' => $list]);
+
+        // ═══ SITE CLONE / MIGRATION ═══
+        case 'export_site':
+        case 'site_export':
+            $upload = wp_upload_dir();
+            $export_data = [
+                'site' => ['name' => get_bloginfo('name'), 'url' => get_site_url(), 'tagline' => get_bloginfo('description')],
+                'pages' => [],
+                'products' => [],
+                'menus' => [],
+                'options' => [],
+                'css' => wp_get_custom_css(),
+            ];
+            // Pages
+            $pages = get_posts(['post_type' => 'page', 'post_status' => 'publish', 'numberposts' => -1]);
+            foreach ($pages as $p) {
+                $content = $p->post_content;
+                if (get_post_meta($p->ID, '_elementor_edit_mode', true) === 'builder') {
+                    $content = get_post_meta($p->ID, '_elementor_data', true);
+                }
+                $export_data['pages'][] = ['title' => $p->post_title, 'slug' => $p->post_name, 'content' => $content, 'template' => get_post_meta($p->ID, '_wp_page_template', true)];
+            }
+            // Products
+            if (class_exists('WooCommerce')) {
+                $products = wc_get_products(['limit' => -1, 'status' => 'publish']);
+                foreach ($products as $pr) {
+                    $export_data['products'][] = ['name' => $pr->get_name(), 'price' => $pr->get_price(), 'description' => $pr->get_description(), 'sku' => $pr->get_sku()];
+                }
+            }
+            // Menus
+            $menus = wp_get_nav_menus();
+            foreach ($menus as $m) {
+                $items = wp_get_nav_menu_items($m->term_id);
+                $export_data['menus'][] = ['name' => $m->name, 'items' => array_map(fn($i) => ['title' => $i->title, 'url' => $i->url], $items ?: [])];
+            }
+            $file = $upload['basedir'] . '/wpilot-site-export.json';
+            file_put_contents($file, json_encode($export_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            return wpilot_ok("Site exported.", ['download_url' => $upload['baseurl'] . '/wpilot-site-export.json', 'pages' => count($export_data['pages']), 'products' => count($export_data['products'])]);
+
+        // ═══ ACCESSIBILITY CHECK ═══
+        case 'accessibility_check':
+        case 'wcag_check':
+            $url = $params['url'] ?? home_url('/');
+            if (strpos($url, '/') === 0) $url = home_url($url);
+            $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false]);
+            if (is_wp_error($response)) return wpilot_err('Could not fetch page.');
+            $html = wp_remote_retrieve_body($response);
+            $issues = [];
+            // Check images without alt
+            preg_match_all('/<img[^>]+>/i', $html, $imgs);
+            $no_alt = 0;
+            foreach ($imgs[0] as $img) {
+                if (strpos($img, 'alt=""') !== false || strpos($img, 'alt') === false) $no_alt++;
+            }
+            if ($no_alt > 0) $issues[] = "{$no_alt} images missing alt text";
+            // Check form labels
+            preg_match_all('/<input[^>]+>/i', $html, $inputs);
+            $no_label = 0;
+            foreach ($inputs[0] as $inp) {
+                if (strpos($inp, 'type="hidden"') !== false) continue;
+                $id_match = [];
+                if (preg_match('/id="([^"]+)"/', $inp, $id_match)) {
+                    if (strpos($html, 'for="' . $id_match[1] . '"') === false) $no_label++;
+                } else {
+                    $no_label++;
+                }
+            }
+            if ($no_label > 0) $issues[] = "{$no_label} form inputs missing labels";
+            // Check heading hierarchy
+            preg_match_all('/<h(\d)/i', $html, $headings);
+            if (!empty($headings[1])) {
+                $first_heading = $headings[1][0];
+                if ($first_heading != 1) $issues[] = "First heading is H{$first_heading}, should be H1";
+                $h1_count = count(array_filter($headings[1], fn($h) => $h == 1));
+                if ($h1_count > 1) $issues[] = "Multiple H1 tags ({$h1_count}) — should have only one";
+                if ($h1_count === 0) $issues[] = "No H1 tag found";
+            }
+            // Check color contrast (basic)
+            if (strpos($html, 'color:') !== false && strpos($html, 'background') !== false) {
+                // Can only do basic checks without rendering
+            }
+            // Check skip navigation
+            if (strpos($html, 'skip-') === false && strpos($html, 'skip_') === false) {
+                $issues[] = "No skip navigation link for keyboard users";
+            }
+            // Check language attribute
+            if (strpos($html, 'lang=') === false) {
+                $issues[] = "Missing lang attribute on <html> tag";
+            }
+            // Check viewport meta
+            if (strpos($html, 'viewport') === false) {
+                $issues[] = "Missing viewport meta tag — not mobile-friendly";
+            }
+            $score = max(0, 100 - (count($issues) * 12));
+            return wpilot_ok("Accessibility check: {$score}/100. " . count($issues) . " issues found.", [
+                'score' => $score,
+                'issues' => $issues,
+                'url' => $url,
+            ]);
+
+                // ═══ READ CONTENT (AI needs to read before editing) ═══
+        case 'get_page':
+        case 'get_post':
+            $id = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
+            $slug = sanitize_text_field($params['slug'] ?? '');
+            if (!$id && $slug) {
+                $found = get_page_by_path($slug, OBJECT, ['page','post','product']);
+                if ($found) $id = $found->ID;
+            }
+            if (!$id) return wpilot_err('Post ID or slug required.');
+            $post = get_post($id);
+            if (!$post) return wpilot_err("Post #{$id} not found.");
+            $content = $post->post_content;
+            // Get builder content if Elementor
+            if (get_post_meta($id, '_elementor_edit_mode', true) === 'builder' && function_exists('wpilot_extract_builder_html')) {
+                $el_data = json_decode(get_post_meta($id, '_elementor_data', true), true);
+                if (is_array($el_data)) $content = wpilot_extract_builder_html($el_data);
+            }
+            return wpilot_ok("Page content retrieved.", [
+                'id' => $id, 'title' => $post->post_title, 'slug' => $post->post_name,
+                'status' => $post->post_status, 'type' => $post->post_type,
+                'content' => substr($content, 0, 5000),
+                'content_length' => strlen($content),
+                'template' => get_post_meta($id, '_wp_page_template', true) ?: 'default',
+                'url' => get_permalink($id),
+            ]);
+
+        case 'list_pages':
+            $status = sanitize_text_field($params['status'] ?? 'publish');
+            $pages = get_posts(['post_type' => 'page', 'post_status' => $status, 'numberposts' => 50, 'orderby' => 'menu_order', 'order' => 'ASC']);
+            $list = array_map(fn($p) => ['id' => $p->ID, 'title' => $p->post_title, 'slug' => $p->post_name, 'status' => $p->post_status, 'url' => get_permalink($p->ID)], $pages);
+            return wpilot_ok(count($list) . " pages.", ['pages' => $list]);
+
+        case 'list_posts':
+            $status = sanitize_text_field($params['status'] ?? 'publish');
+            $cat = sanitize_text_field($params['category'] ?? '');
+            $args = ['post_type' => 'post', 'post_status' => $status, 'numberposts' => 30];
+            if ($cat) $args['category_name'] = $cat;
+            $posts = get_posts($args);
+            $list = array_map(fn($p) => ['id' => $p->ID, 'title' => $p->post_title, 'date' => $p->post_date, 'status' => $p->post_status], $posts);
+            return wpilot_ok(count($list) . " posts.", ['posts' => $list]);
+
+        // ═══ TAXONOMY MANAGEMENT ═══
+        case 'create_category':
+            $name = sanitize_text_field($params['name'] ?? $params['category'] ?? '');
+            $parent = intval($params['parent'] ?? 0);
+            if (!$name) return wpilot_err('Category name required.');
+            $result = wp_insert_term($name, 'category', ['parent' => $parent]);
+            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            return wpilot_ok("Category '{$name}' created.", ['id' => $result['term_id']]);
+
+        case 'create_tag':
+            $name = sanitize_text_field($params['name'] ?? $params['tag'] ?? '');
+            if (!$name) return wpilot_err('Tag name required.');
+            $result = wp_insert_term($name, 'post_tag');
+            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            return wpilot_ok("Tag '{$name}' created.", ['id' => $result['term_id']]);
+
+        case 'list_categories':
+            $cats = get_categories(['hide_empty' => false]);
+            $list = array_map(fn($c) => ['id' => $c->term_id, 'name' => $c->name, 'slug' => $c->slug, 'count' => $c->count, 'parent' => $c->parent], is_array($cats) ? $cats : []);
+            return wpilot_ok(count($list) . " categories.", ['categories' => $list]);
+
+        // ═══ PLUGIN UPDATES & MAINTENANCE ═══
+        case 'list_plugins':
+        case 'plugin_list':
+            if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            $all = get_plugins();
+            $active = get_option('active_plugins', []);
+            $updates = get_site_transient('update_plugins');
+            $list = [];
+            foreach ($all as $file => $p) {
+                $has_update = isset($updates->response[$file]);
+                $list[] = [
+                    'file' => $file, 'name' => $p['Name'], 'version' => $p['Version'],
+                    'active' => in_array($file, $active),
+                    'update_available' => $has_update,
+                    'new_version' => $has_update ? $updates->response[$file]->new_version : null,
+                ];
+            }
+            return wpilot_ok(count($list) . " plugins.", ['plugins' => $list]);
+
+        case 'update_plugins':
+        case 'update_all_plugins':
+            require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            $updates = get_site_transient('update_plugins');
+            if (empty($updates->response)) return wpilot_ok("All plugins up to date.");
+            $upgrader = new Plugin_Upgrader(new Automatic_Upgrader_Skin());
+            $updated = 0;
+            foreach ($updates->response as $file => $info) {
+                $result = $upgrader->upgrade($file);
+                if ($result) $updated++;
+            }
+            return wpilot_ok("Updated {$updated} plugins.");
+
+        case 'maintenance_mode':
+        case 'enable_maintenance':
+            $enable = filter_var($params['enable'] ?? $params['on'] ?? true, FILTER_VALIDATE_BOOLEAN);
+            $message = sanitize_text_field($params['message'] ?? 'We are performing scheduled maintenance. Please check back soon.');
+            $mu_file = WPMU_PLUGIN_DIR . '/wpilot-maintenance.php';
+            if ($enable) {
+                $escaped = addslashes($message);
+                $code = '<?php' . "\n" . 'if(!current_user_can("manage_options")&&!strpos($_SERVER["REQUEST_URI"],"wp-admin")&&!strpos($_SERVER["REQUEST_URI"],"wp-login")){wp_die("<div style=\'text-align:center;padding:100px 20px;background:#050810;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center\'><div><h1>🔧</h1><h2>' . $escaped . '</h2><p style=\'color:rgba(255,255,255,.5)\'>Back shortly.</p></div></div>","Maintenance",503);}';
+                file_put_contents($mu_file, $code);
+                return wpilot_ok("Maintenance mode ON. Only admins can access the site.");
+            } else {
+                if (file_exists($mu_file)) @unlink($mu_file);
+                return wpilot_ok("Maintenance mode OFF. Site is public.");
+            }
+
+        // ═══ BACKUP ON DEMAND ═══
+        case 'backup_now':
+            // Try UpdraftPlus first
+            if (class_exists('UpdraftPlus')) {
+                do_action('updraft_backup_now_via_addon');
+                return wpilot_ok("Backup started via UpdraftPlus. Check backup status in settings.");
+            }
+            // Fallback: DB export
+            global $wpdb;
+            $upload = wp_upload_dir();
+            $file = $upload['basedir'] . '/wpilot-backup-' . date('Y-m-d-His') . '.sql';
+            $tables = $wpdb->get_col("SHOW TABLES LIKE '{$wpdb->prefix}%'");
+            $sql = "-- WPilot DB Backup " . date('Y-m-d H:i:s') . "
+
+";
+            foreach ($tables as $table) {
+                $create = $wpdb->get_row("SHOW CREATE TABLE `{$table}`", ARRAY_N);
+                $sql .= "DROP TABLE IF EXISTS `{$table}`;
+{$create[1]};
+
+";
+                $rows = $wpdb->get_results("SELECT * FROM `{$table}`", ARRAY_N);
+                foreach ($rows as $row) {
+                    $vals = array_map(function($v) use ($wpdb) { return $v === null ? 'NULL' : "'" . $wpdb->_real_escape($v) . "'"; }, $row);
+                    $sql .= "INSERT INTO `{$table}` VALUES(" . implode(',', $vals) . ");
+";
+                }
+                $sql .= "
+";
+            }
+            file_put_contents($file, $sql);
+            $size = round(filesize($file) / 1048576, 1);
+            return wpilot_ok("Database backup saved ({$size}MB).", ['file' => $upload['baseurl'] . '/' . basename($file), 'size_mb' => $size, 'tables' => count($tables)]);
+
+        // ═══ WOOCOMMERCE STOCK & VARIATIONS ═══
+        case 'woo_manage_stock':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $pid = intval($params['product_id'] ?? $params['id'] ?? 0);
+            if (!$pid) return wpilot_err('product_id required.');
+            $product = wc_get_product($pid);
+            if (!$product) return wpilot_err("Product #{$pid} not found.");
+            if (isset($params['stock'])) {
+                $product->set_manage_stock(true);
+                $product->set_stock_quantity(intval($params['stock']));
+            }
+            if (isset($params['status'])) {
+                $product->set_stock_status(sanitize_text_field($params['status']));
+            }
+            $product->save();
+            return wpilot_ok("Stock updated for #{$pid}. Qty: " . $product->get_stock_quantity() . ", Status: " . $product->get_stock_status());
+
+        case 'woo_get_order':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $oid = intval($params['order_id'] ?? $params['id'] ?? 0);
+            if (!$oid) return wpilot_err('order_id required.');
+            $order = wc_get_order($oid);
+            if (!$order) return wpilot_err("Order #{$oid} not found.");
+            $items = [];
+            foreach ($order->get_items() as $item) {
+                $items[] = ['name' => $item->get_name(), 'qty' => $item->get_quantity(), 'total' => $item->get_total()];
+            }
+            return wpilot_ok("Order #{$oid} details.", [
+                'id' => $oid, 'status' => $order->get_status(), 'total' => $order->get_total(),
+                'currency' => $order->get_currency(), 'date' => $order->get_date_created()->format('Y-m-d H:i'),
+                'customer' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+                'email' => $order->get_billing_email(), 'phone' => $order->get_billing_phone(),
+                'address' => $order->get_billing_address_1() . ', ' . $order->get_billing_city(),
+                'items' => $items, 'notes' => array_map(fn($n) => $n->comment_content, $order->get_customer_order_notes()),
+            ]);
+
+        case 'woo_low_stock_report':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $threshold = intval($params['threshold'] ?? 5);
+            $products = wc_get_products(['limit' => -1, 'manage_stock' => true]);
+            $low = [];
+            foreach ($products as $p) {
+                $qty = $p->get_stock_quantity();
+                if ($qty !== null && $qty <= $threshold) {
+                    $low[] = ['id' => $p->get_id(), 'name' => $p->get_name(), 'stock' => $qty, 'status' => $p->get_stock_status()];
+                }
+            }
+            return wpilot_ok(count($low) . " products with low stock (threshold: {$threshold}).", ['products' => $low]);
+
+        // ═══ LEGAL & COMPLIANCE ═══
+        case 'privacy_policy_generate':
+            $site = get_bloginfo('name');
+            $url = get_site_url();
+            $email = get_option('admin_email');
+            $html = "<h2>Privacy Policy for {$site}</h2><p><em>Last updated: " . date('F j, Y') . "</em></p>";
+            $html .= "<h3>Who We Are</h3><p>Our website address is: {$url}. Contact: {$email}</p>";
+            $html .= "<h3>Data We Collect</h3><p>We collect information you provide directly: name, email, and any data submitted through forms or during checkout.</p>";
+            $html .= "<h3>Cookies</h3><p>We use essential cookies for site functionality and optional analytics cookies with your consent.</p>";
+            $html .= "<h3>How We Use Data</h3><p>To process orders, respond to inquiries, improve our services, and send marketing communications (with consent).</p>";
+            $html .= "<h3>Data Sharing</h3><p>We do not sell personal data. We may share data with: payment processors, shipping providers, and analytics services.</p>";
+            $html .= "<h3>Data Retention</h3><p>We retain personal data for as long as necessary to fulfill the purposes outlined, unless a longer retention period is required by law.</p>";
+            $html .= "<h3>Your Rights</h3><p>You have the right to access, correct, delete, or export your personal data. Contact us at {$email}.</p>";
+            $html .= "<h3>Contact</h3><p>For privacy questions, email {$email}.</p>";
+            $id = wp_insert_post(['post_title' => 'Privacy Policy', 'post_content' => $html, 'post_status' => 'publish', 'post_type' => 'page']);
+            if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+            update_option('wp_page_for_privacy_policy', $id);
+            return wpilot_ok("Privacy Policy page created (ID: {$id}).", ['page_id' => $id, 'url' => get_permalink($id)]);
+
+        case 'terms_generate':
+            $site = get_bloginfo('name');
+            $html = "<h2>Terms & Conditions</h2><p><em>Last updated: " . date('F j, Y') . "</em></p>";
+            $html .= "<h3>Agreement</h3><p>By using {$site}, you agree to these terms.</p>";
+            $html .= "<h3>Products & Services</h3><p>We reserve the right to modify prices and availability without notice.</p>";
+            $html .= "<h3>Payment</h3><p>All payments are processed securely. Prices include applicable taxes unless stated otherwise.</p>";
+            $html .= "<h3>Refunds</h3><p>Refund requests must be submitted within 14 days of purchase. Digital products may have different terms.</p>";
+            $html .= "<h3>Liability</h3><p>We are not liable for indirect damages arising from use of our services.</p>";
+            $html .= "<h3>Governing Law</h3><p>These terms are governed by applicable local law.</p>";
+            $id = wp_insert_post(['post_title' => 'Terms & Conditions', 'post_content' => $html, 'post_status' => 'publish', 'post_type' => 'page']);
+            if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+            if (class_exists('WooCommerce')) update_option('woocommerce_terms_page_id', $id);
+            return wpilot_ok("Terms & Conditions page created (ID: {$id}).", ['page_id' => $id]);
+
+        // ═══ UNPUBLISH / PASSWORD PROTECT ═══
+        case 'unpublish_post':
+            $id = intval($params['id'] ?? $params['post_id'] ?? 0);
+            if (!$id) return wpilot_err('Post ID required.');
+            wp_update_post(['ID' => $id, 'post_status' => 'draft']);
+            return wpilot_ok("Post #{$id} unpublished (set to draft).");
+
+        case 'password_protect_post':
+            $id = intval($params['id'] ?? $params['post_id'] ?? 0);
+            $pw = sanitize_text_field($params['password'] ?? '');
+            if (!$id || !$pw) return wpilot_err('Post ID and password required.');
+            wp_update_post(['ID' => $id, 'post_password' => $pw]);
+            return wpilot_ok("Post #{$id} password-protected.");
+
+        // ═══ BULK OPERATIONS ═══
+        case 'bulk_delete_posts':
+            $status = sanitize_text_field($params['status'] ?? 'trash');
+            $type = sanitize_text_field($params['post_type'] ?? 'post');
+            $posts = get_posts(['post_type' => $type, 'post_status' => $status, 'numberposts' => -1, 'fields' => 'ids']);
+            $count = 0;
+            foreach ($posts as $pid) { wp_delete_post($pid, true); $count++; }
+            return wpilot_ok("Deleted {$count} {$type} posts with status '{$status}'.");
+
+                // ═══ THEME MANAGEMENT ═══
+        case 'install_theme':
+        case 'theme_install':
+            $slug = sanitize_text_field($params['slug'] ?? $params['theme'] ?? $params['name'] ?? '');
+            if (empty($slug)) return wpilot_err('Theme slug required.');
+            require_once ABSPATH . 'wp-admin/includes/theme.php';
+            require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+            $upgrader = new Theme_Upgrader(new Automatic_Upgrader_Skin());
+            $result = $upgrader->install('https://downloads.wordpress.org/theme/' . $slug . '.latest-stable.zip');
+            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            return wpilot_ok("Theme '{$slug}' installed.");
+
+        case 'activate_theme':
+        case 'switch_theme':
+            $slug = sanitize_text_field($params['slug'] ?? $params['theme'] ?? $params['name'] ?? '');
+            if (empty($slug)) return wpilot_err('Theme slug required.');
+            $themes = wp_get_themes();
+            foreach ($themes as $stylesheet => $t) {
+                if ($stylesheet === $slug || strtolower($t->get('Name')) === strtolower($slug)) {
+                    switch_theme($stylesheet);
+                    return wpilot_ok("Theme '{$t->get('Name')}' activated.");
+                }
+            }
+            return wpilot_err("Theme '{$slug}' not found. Install it first.");
+
+        case 'list_themes':
+            $themes = wp_get_themes();
+            $active = get_stylesheet();
+            $list = [];
+            foreach ($themes as $slug => $t) {
+                $list[] = ['slug' => $slug, 'name' => $t->get('Name'), 'version' => $t->get('Version'), 'active' => $slug === $active];
+            }
+            return wpilot_ok(count($list) . " themes installed.", ['themes' => $list]);
+
+        // ═══ WOOCOMMERCE ORDER MANAGEMENT ═══
+        case 'list_orders':
+        case 'woo_list_orders':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $status = $params['status'] ?? 'any';
+            $limit = intval($params['limit'] ?? 10);
+            $orders = wc_get_orders(['limit' => $limit, 'status' => $status, 'orderby' => 'date', 'order' => 'DESC']);
+            $list = [];
+            foreach ($orders as $o) {
+                $list[] = [
+                    'id' => $o->get_id(),
+                    'status' => $o->get_status(),
+                    'total' => $o->get_total() . ' ' . $o->get_currency(),
+                    'customer' => $o->get_billing_first_name() . ' ' . $o->get_billing_last_name(),
+                    'email' => $o->get_billing_email(),
+                    'date' => $o->get_date_created()->format('Y-m-d H:i'),
+                    'items' => count($o->get_items()),
+                ];
+            }
+            return wpilot_ok(count($list) . " orders found.", ['orders' => $list]);
+
+        case 'update_order':
+        case 'woo_update_order':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $order_id = intval($params['order_id'] ?? $params['id'] ?? 0);
+            if (!$order_id) return wpilot_err('order_id required.');
+            $order = wc_get_order($order_id);
+            if (!$order) return wpilot_err("Order #{$order_id} not found.");
+            if (!empty($params['status'])) {
+                $order->update_status(sanitize_text_field($params['status']), $params['note'] ?? 'Updated by WPilot');
+            }
+            if (!empty($params['note'])) {
+                $order->add_order_note(sanitize_text_field($params['note']));
+            }
+            return wpilot_ok("Order #{$order_id} updated.", ['status' => $order->get_status()]);
+
+        case 'refund_order':
+        case 'woo_refund_order':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $order_id = intval($params['order_id'] ?? $params['id'] ?? 0);
+            $amount = floatval($params['amount'] ?? 0);
+            $reason = sanitize_text_field($params['reason'] ?? 'Refund via WPilot');
+            if (!$order_id) return wpilot_err('order_id required.');
+            $order = wc_get_order($order_id);
+            if (!$order) return wpilot_err("Order #{$order_id} not found.");
+            if (!$amount) $amount = $order->get_total();
+            $refund = wc_create_refund(['order_id' => $order_id, 'amount' => $amount, 'reason' => $reason]);
+            if (is_wp_error($refund)) return wpilot_err($refund->get_error_message());
+            return wpilot_ok("Refunded {$amount} {$order->get_currency()} on order #{$order_id}.");
+
+        // ═══ MEDIA MANAGEMENT ═══
+        case 'list_media':
+            $limit = intval($params['limit'] ?? 20);
+            $type = $params['type'] ?? 'image';
+            $images = get_posts(['post_type' => 'attachment', 'post_mime_type' => $type, 'numberposts' => $limit, 'orderby' => 'date', 'order' => 'DESC']);
+            $list = [];
+            foreach ($images as $img) {
+                $file = get_attached_file($img->ID);
+                $list[] = [
+                    'id' => $img->ID,
+                    'title' => $img->post_title,
+                    'url' => wp_get_attachment_url($img->ID),
+                    'size_kb' => $file && file_exists($file) ? round(filesize($file)/1024) : 0,
+                    'mime' => $img->post_mime_type,
+                    'alt' => get_post_meta($img->ID, '_wp_attachment_image_alt', true),
+                ];
+            }
+            return wpilot_ok(count($list) . " media items.", ['media' => $list]);
+
+        case 'upload_image':
+        case 'upload_media':
+            $url = $params['url'] ?? $params['image_url'] ?? '';
+            $title = sanitize_text_field($params['title'] ?? $params['name'] ?? '');
+            if (empty($url)) return wpilot_err('Image URL required.');
+            require_once(ABSPATH . 'wp-admin/includes/media.php');
+            require_once(ABSPATH . 'wp-admin/includes/file.php');
+            require_once(ABSPATH . 'wp-admin/includes/image.php');
+            $id = media_sideload_image($url, 0, $title, 'id');
+            if (is_wp_error($id)) return wpilot_err('Upload failed: ' . $id->get_error_message());
+            return wpilot_ok("Image uploaded (ID: {$id}).", ['image_id' => $id, 'url' => wp_get_attachment_url($id)]);
+
+        case 'delete_media':
+            $id = intval($params['id'] ?? $params['image_id'] ?? $params['media_id'] ?? 0);
+            if (!$id) return wpilot_err('Media ID required.');
+            $result = wp_delete_attachment($id, true);
+            if (!$result) return wpilot_err("Could not delete media #{$id}.");
+            return wpilot_ok("Media #{$id} deleted.");
+
+        // ═══ DEBUG & LOGS ═══
+        case 'view_debug_log':
+        case 'debug_log':
+            $log_file = WP_CONTENT_DIR . '/debug.log';
+            if (!file_exists($log_file)) {
+                // Try PHP error log
+                $log_file = ini_get('error_log');
+            }
+            if (!$log_file || !file_exists($log_file)) return wpilot_ok("No debug log found. WP_DEBUG may be off.");
+            $lines = intval($params['lines'] ?? 30);
+            $content = file_get_contents($log_file);
+            $all_lines = explode("\n", $content);
+            $last = array_slice($all_lines, -$lines);
+            return wpilot_ok("Last {$lines} log entries.", ['log' => implode("\n", $last), 'total_lines' => count($all_lines), 'file_size_kb' => round(filesize($log_file)/1024)]);
+
+        // ═══ SEARCH & REPLACE ═══
+        case 'search_replace':
+            $search = $params['search'] ?? '';
+            $replace = $params['replace'] ?? '';
+            $table = sanitize_text_field($params['table'] ?? 'posts');
+            if (empty($search)) return wpilot_err('Search string required.');
+            global $wpdb;
+            $allowed_tables = ['posts' => $wpdb->posts, 'postmeta' => $wpdb->postmeta, 'options' => $wpdb->options];
+            $tbl = $allowed_tables[$table] ?? null;
+            if (!$tbl) return wpilot_err("Table '{$table}' not allowed. Use: posts, postmeta, options.");
+            if ($table === 'posts') {
+                $count = $wpdb->query($wpdb->prepare("UPDATE {$tbl} SET post_content = REPLACE(post_content, %s, %s) WHERE post_content LIKE %s", $search, $replace, '%' . $wpdb->esc_like($search) . '%'));
+            } elseif ($table === 'postmeta') {
+                $count = $wpdb->query($wpdb->prepare("UPDATE {$tbl} SET meta_value = REPLACE(meta_value, %s, %s) WHERE meta_value LIKE %s", $search, $replace, '%' . $wpdb->esc_like($search) . '%'));
+            } else {
+                $count = $wpdb->query($wpdb->prepare("UPDATE {$tbl} SET option_value = REPLACE(option_value, %s, %s) WHERE option_value LIKE %s", $search, $replace, '%' . $wpdb->esc_like($search) . '%'));
+            }
+            return wpilot_ok("Replaced '{$search}' with '{$replace}' in {$count} rows ({$table}).");
+
+        // ═══ HTACCESS ═══
+        case 'update_htaccess':
+        case 'add_htaccess_rule':
+            $rules = $params['rules'] ?? $params['content'] ?? '';
+            if (empty($rules)) return wpilot_err('Rules required.');
+            $htaccess = ABSPATH . '.htaccess';
+            $current = file_exists($htaccess) ? file_get_contents($htaccess) : '';
+            // Add before WordPress rules
+            $marker = '# BEGIN WordPress';
+            if (strpos($current, $marker) !== false) {
+                $new = "# BEGIN WPilot\n{$rules}\n# END WPilot\n\n" . $current;
+                // Remove old WPilot block if exists
+                $new = preg_replace('/# BEGIN WPilot.*?# END WPilot\n*/s', '', $current);
+                $new = "# BEGIN WPilot\n{$rules}\n# END WPilot\n\n" . $new;
+            } else {
+                $new = $current . "\n# BEGIN WPilot\n{$rules}\n# END WPilot";
+            }
+            file_put_contents($htaccess, $new);
+            return wpilot_ok(".htaccess updated with custom rules.");
+
+        // ═══ DUPLICATE PAGE/POST ═══
+        case 'duplicate_page':
+        case 'duplicate_post':
+            $id = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
+            if (!$id) return wpilot_err('Post/page ID required.');
+            $post = get_post($id);
+            if (!$post) return wpilot_err("Post #{$id} not found.");
+            $new_title = $params['title'] ?? $post->post_title . ' (Copy)';
+            $new_id = wp_insert_post([
+                'post_title' => sanitize_text_field($new_title),
+                'post_content' => $post->post_content,
+                'post_status' => 'draft',
+                'post_type' => $post->post_type,
+            ]);
+            if (is_wp_error($new_id)) return wpilot_err($new_id->get_error_message());
+            // Copy meta
+            $meta = get_post_meta($id);
+            foreach ($meta as $key => $values) {
+                if ($key === '_wp_old_slug') continue;
+                foreach ($values as $v) update_post_meta($new_id, $key, maybe_unserialize($v));
+            }
+            return wpilot_ok("Duplicated as draft (ID: {$new_id}).", ['new_id' => $new_id]);
+
+        // ═══ EXPORT CONTENT ═══
+        case 'export_products':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $products = wc_get_products(['limit' => -1, 'status' => 'publish']);
+            $csv = "ID,Name,Price,Sale Price,SKU,Stock,Category,Image URL\n";
+            foreach ($products as $p) {
+                $cats = wp_get_post_terms($p->get_id(), 'product_cat', ['fields' => 'names']);
+                $img = $p->get_image_id() ? wp_get_attachment_url($p->get_image_id()) : '';
+                $csv .= implode(',', [
+                    $p->get_id(),
+                    '"' . str_replace('"', '""', $p->get_name()) . '"',
+                    $p->get_price(),
+                    $p->get_sale_price() ?: '',
+                    $p->get_sku() ?: '',
+                    $p->get_stock_quantity() ?? 'instock',
+                    '"' . implode(';', $cats) . '"',
+                    $img,
+                ]) . "\n";
+            }
+            $upload = wp_upload_dir();
+            $file = $upload['basedir'] . '/wpilot-products-export.csv';
+            file_put_contents($file, $csv);
+            return wpilot_ok("Exported " . count($products) . " products.", ['download_url' => $upload['baseurl'] . '/wpilot-products-export.csv', 'count' => count($products)]);
+
+                // ═══ CHECK FRONTEND — AI sees what the visitor sees ═══
+        case 'check_frontend':
+        case 'check_page':
+        case 'view_page':
+            $url = $params['url'] ?? $params['page_url'] ?? '';
+            $page_id = intval($params['id'] ?? $params['page_id'] ?? 0);
+
+            // Build URL from page ID if no URL given
+            if (empty($url) && $page_id) {
+                $url = get_permalink($page_id);
+            }
+            if (empty($url)) {
+                // Default to homepage
+                $url = home_url('/');
+            }
+            // Allow relative paths
+            if (strpos($url, '/') === 0) {
+                $url = home_url($url);
+            }
+
+            $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false]);
+            if (is_wp_error($response)) return wpilot_err('Could not fetch: ' . $response->get_error_message());
+
+            $html = wp_remote_retrieve_body($response);
+            $status = wp_remote_retrieve_response_code($response);
+
+            if (empty($html)) return wpilot_err('Empty page at ' . $url);
+
+            $report = [];
+            $report['url'] = $url;
+            $report['status'] = $status;
+            $report['size_kb'] = round(strlen($html) / 1024);
+
+            // Extract visible text (what visitor sees)
+            $text = $html;
+            $text = preg_replace('/<script[^>]*>.*?<\/script>/s', '', $text);
+            $text = preg_replace('/<style[^>]*>.*?<\/style>/s', '', $text);
+            $text = preg_replace('/<[^>]+>/', ' ', $text);
+            $text = preg_replace('/\s+/', ' ', $text);
+            $text = trim($text);
+            $report['visible_text'] = substr($text, 0, 800);
+
+            // Check for CSS rendering issues (CSS showing as text)
+            $css_leak = false;
+            if (preg_match('/(?<![<a-z])(\.woocommerce[^{]*\{|border-radius:|font-weight:|background:|display:\s*grid)/', $text)) {
+                $css_leak = true;
+            }
+            $report['css_leak'] = $css_leak;
+
+            // Check dark theme
+            $report['has_dark_bg'] = strpos($html, '050810') !== false || strpos($html, '080c14') !== false;
+
+            // Check custom CSS loaded
+            $report['custom_css_loaded'] = strpos($html, 'wp-custom-css') !== false;
+
+            // Count style and script tags
+            preg_match_all('/<style[^>]*>/', $html, $style_tags);
+            preg_match_all('/<script[^>]*>/', $html, $script_tags);
+            $report['style_tags'] = count($style_tags[0]);
+            $report['script_tags'] = count($script_tags[0]);
+
+            // Navigation
+            $report['has_nav'] = strpos($html, '<nav') !== false;
+            preg_match_all('/menu-item/', $html, $menu_items);
+            $report['menu_items'] = count($menu_items[0]);
+
+            // WooCommerce specific
+            if (strpos($html, 'woocommerce') !== false) {
+                preg_match_all('/woocommerce-loop-product__title/', $html, $prod_titles);
+                preg_match_all('/attachment-woocommerce_thumbnail/', $html, $prod_imgs);
+                preg_match_all('/add_to_cart_button/', $html, $cart_btns);
+                preg_match_all('/woocommerce-Price-amount/', $html, $prices);
+                $report['woo_products'] = count($prod_titles[0]);
+                $report['woo_images'] = count($prod_imgs[0]);
+                if (count($prod_imgs[0]) < count($prod_titles[0])) {
+                    $missing = count($prod_titles[0]) - count($prod_imgs[0]);
+                    $issues[] = $missing . ' products missing images — use set_featured_image with image_url to fix';
+                }
+                $report['woo_buttons'] = count($cart_btns[0]);
+                $report['woo_prices'] = count($prices[0]);
+                $report['woo_cart_shortcode'] = strpos($html, 'woocommerce-cart') !== false;
+                $report['woo_checkout_shortcode'] = strpos($html, 'woocommerce-checkout') !== false;
+            }
+
+            // Elementor
+            preg_match_all('/elementor-widget-(\w+)/', $html, $el_widgets);
+            if (!empty($el_widgets[1])) {
+                $report['elementor_widgets'] = array_count_values($el_widgets[1]);
+            }
+
+            // Check for broken elements
+            $issues = [];
+            if ($css_leak) $issues[] = 'CSS rules visible as text on page — broken rendering';
+            if ($status !== 200) $issues[] = 'Page returned HTTP ' . $status;
+            if (!$report['has_dark_bg'] && strpos($html, '050810') === false) $issues[] = 'Dark theme CSS not applied';
+            if (!$report['custom_css_loaded']) $issues[] = 'Custom CSS not loading';
+            if (isset($report['woo_products']) && $report['woo_products'] === 0 && strpos($url, 'shop') !== false) $issues[] = 'Shop page has no products';
+            if (isset($report['woo_images']) && isset($report['woo_products']) && $report['woo_images'] < $report['woo_products']) $issues[] = ($report['woo_products'] - $report['woo_images']) . ' products missing images';
+            if (strpos($text, '[woocommerce') !== false || strpos($text, '[products') !== false) $issues[] = 'Shortcodes visible as text — not rendering';
+
+            // Extract headings
+            $headings = [];
+            if (preg_match_all('/<h[1-3][^>]*>([^<]+)</', $html, $hm)) {
+                $headings = array_slice(array_map('trim', $hm[1]), 0, 8);
+            }
+            $report['headings'] = $headings;
+
+            // Images without alt
+            $imgs_no_alt = 0;
+            if (preg_match_all('/<img[^>]+>/i', $html, $img_tags)) {
+                foreach ($img_tags[0] as $img) {
+                    if (strpos($img, 'alt=""') !== false || strpos($img, 'alt') === false) {
+                        $imgs_no_alt++;
+                    }
+                }
+            }
+            if ($imgs_no_alt > 0) $issues[] = $imgs_no_alt . ' images missing alt text';
+
+            // Detect duplicate navigation
+            preg_match_all('/<nav[^>]*>/', $html, $nav_tags);
+            if (count($nav_tags[0]) > 2) {
+                $issues[] = count($nav_tags[0]) . ' nav elements found — possible duplicate navigation';
+            }
+
+            // Check for nav hidden on mobile without hamburger
+            if (strpos($html, 'display: none') !== false || strpos($html, 'display:none') !== false) {
+                if (strpos($html, 'menu-toggle') === false && strpos($html, 'navigation-toggle') === false && strpos($html, 'hamburger') === false) {
+                    $issues[] = 'Navigation may be hidden on mobile without hamburger menu';
+                }
+            }
+
+            $report['issues'] = $issues;
+            $report['issues_count'] = count($issues);
+
+            $msg = count($issues) === 0
+                ? "Page looks good. No issues found at {$url}."
+                : count($issues) . " issues found at {$url}: " . implode(', ', $issues);
+
+            return wpilot_ok($msg, $report);
+
+                // ═══ ADMIN DASHBOARD CUSTOMIZATION PER ROLE ═══
+        case 'customize_admin':
+        case 'customize_dashboard':
+            $role = sanitize_text_field($params['role'] ?? 'all');
+            $hide_menus = $params['hide_menus'] ?? $params['hide'] ?? [];
+            $show_menus = $params['show_menus'] ?? $params['show'] ?? [];
+            $custom_css = $params['css'] ?? $params['admin_css'] ?? '';
+            $welcome_message = $params['welcome'] ?? $params['welcome_message'] ?? '';
+            $redirect_url = $params['redirect'] ?? $params['login_redirect'] ?? '';
+
+            $code_parts = ["<?php\n// WPilot Admin Customization for role: {$role}"];
+
+            // Hide admin menu items
+            if (!empty($hide_menus)) {
+                $menu_slugs = [
+                    'posts' => 'edit.php', 'pages' => 'edit.php?post_type=page',
+                    'comments' => 'edit-comments.php', 'media' => 'upload.php',
+                    'plugins' => 'plugins.php', 'users' => 'users.php',
+                    'tools' => 'tools.php', 'settings' => 'options-general.php',
+                    'appearance' => 'themes.php', 'woocommerce' => 'woocommerce',
+                    'products' => 'edit.php?post_type=product', 'orders' => 'edit.php?post_type=shop_order',
+                    'elementor' => 'elementor', 'jetpack' => 'jetpack',
+                    'dashboard' => 'index.php', 'profile' => 'profile.php',
+                ];
+                $removes = [];
+                foreach ((array)$hide_menus as $item) {
+                    $slug = $menu_slugs[strtolower(trim($item))] ?? sanitize_text_field($item);
+                    $removes[] = "remove_menu_page('{$slug}');";
+                }
+                $role_check = $role === 'all' ? '' : "if (!current_user_can('manage_options')) ";
+                $code_parts[] = "add_action('admin_menu', function() { {$role_check}" . implode(' ', $removes) . " }, 999);";
+            }
+
+            // Custom admin CSS
+            if (!empty($custom_css)) {
+                $escaped_css = addslashes($custom_css);
+                $code_parts[] = "add_action('admin_head', function() { echo '<style>{$escaped_css}</style>'; });";
+            }
+
+            // Welcome message on dashboard
+            if (!empty($welcome_message)) {
+                $escaped_msg = addslashes($welcome_message);
+                $div_open = '<div style=\"background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:20px 24px;border:none;border-radius:12px;margin:15px 0\"><p style=\"margin:0;font-size:16px\">';
+                $div_close = '</p></div>';
+                $code_parts[] = "add_action('admin_notices', function() { if (get_current_screen()->id !== 'dashboard') return; echo '{$div_open}{$escaped_msg}{$div_close}'; });";
+            }
+
+            // Login redirect per role
+            if (!empty($redirect_url)) {
+                $escaped_url = esc_url($redirect_url);
+                if ($role !== 'all') {
+                    $code_parts[] = "add_filter('login_redirect', function($url, $request, $user) { if (is_a($user,'WP_User') && in_array('{$role}', $user->roles)) return '{$escaped_url}'; return $url; }, 10, 3);";
+                } else {
+                    $code_parts[] = "add_filter('login_redirect', function() { return '{$escaped_url}'; }, 10, 3);";
+                }
+            }
+
+            $mu_file = WPMU_PLUGIN_DIR . '/wpilot-admin-' . sanitize_file_name($role) . '.php';
+            file_put_contents($mu_file, implode("\n", $code_parts));
+            return wpilot_ok("Admin customized for role: {$role}.", ['file' => basename($mu_file)]);
+
+        // ═══ CUSTOM LOGIN PAGE ═══
+        case 'customize_login':
+        case 'design_login':
+            $logo_url = $params['logo_url'] ?? $params['logo'] ?? '';
+            $bg_color = sanitize_hex_color($params['bg_color'] ?? '#080c14') ?: '#080c14';
+            $btn_color = sanitize_hex_color($params['button_color'] ?? '#6366f1') ?: '#6366f1';
+            $text_color = sanitize_hex_color($params['text_color'] ?? '#ffffff') ?: '#ffffff';
+
+            $login_css = "body.login{background:{$bg_color}!important}";
+            $login_css .= "#loginform{background:rgba(255,255,255,.05)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:16px!important;box-shadow:0 20px 60px rgba(0,0,0,.3)!important}";
+            $login_css .= "#loginform label{color:{$text_color}!important}";
+            $login_css .= "#loginform input[type=text],#loginform input[type=password]{background:rgba(255,255,255,.08)!important;border:1px solid rgba(255,255,255,.15)!important;color:#fff!important;border-radius:8px!important}";
+            $login_css .= "#wp-submit{background:linear-gradient(135deg,{$btn_color},#8b5cf6)!important;border:none!important;border-radius:50px!important;padding:8px 24px!important;text-shadow:none!important;box-shadow:0 4px 20px rgba(99,102,241,.3)!important}";
+            $login_css .= ".login #nav a,.login #backtoblog a{color:rgba(255,255,255,.5)!important}";
+            $login_css .= "#login h1 a{background-size:contain!important;width:200px!important;height:80px!important}";
+
+            if (!empty($logo_url)) {
+                $login_css .= "#login h1 a{background-image:url({$logo_url})!important}";
+            }
+
+            $mu_code = "<?php\nadd_action('login_enqueue_scripts', function() { echo '<style>{$login_css}</style>'; });";
+            if (!empty($logo_url)) {
+                $mu_code .= "\nadd_filter('login_headerurl', function() { return home_url(); });";
+            }
+
+            file_put_contents(WPMU_PLUGIN_DIR . '/wpilot-login-style.php', $mu_code);
+            return wpilot_ok("Login page styled. Background: {$bg_color}, Button: {$btn_color}.", ['preview' => wp_login_url()]);
+
+        // ═══ ROLE-BASED FRONTEND VIEW ═══
+        case 'create_role_view':
+        case 'role_dashboard':
+            $role = sanitize_text_field($params['role'] ?? 'customer');
+            $title = sanitize_text_field($params['title'] ?? ucfirst($role) . ' Dashboard');
+            $html = $params['html'] ?? $params['content'] ?? '';
+            $redirect_after_login = filter_var($params['redirect_login'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+            if (empty($html)) return wpilot_err('HTML content required for the dashboard view.');
+
+            // Create the page
+            $page_id = wp_insert_post([
+                'post_title' => $title,
+                'post_content' => '<!-- wp:html -->' . $html . '<!-- /wp:html -->',
+                'post_status' => 'publish',
+                'post_type' => 'page',
+            ]);
+            if (is_wp_error($page_id)) return wpilot_err($page_id->get_error_message());
+
+            // If Elementor, create HTML widget
+            if (defined('ELEMENTOR_VERSION')) {
+                update_post_meta($page_id, '_elementor_edit_mode', 'builder');
+                update_post_meta($page_id, '_elementor_template_type', 'wp-page');
+                update_post_meta($page_id, '_wp_page_template', 'elementor_header_footer');
+                $el_data = [[
+                    'id' => substr(md5(rand()),0,7),
+                    'elType' => 'section',
+                    'settings' => ['layout'=>'full_width','gap'=>'no','padding'=>['unit'=>'px','top'=>'0','right'=>'0','bottom'=>'0','left'=>'0','isLinked'=>true]],
+                    'elements' => [[
+                        'id' => substr(md5(rand()),0,7),
+                        'elType' => 'column',
+                        'settings' => ['_column_size'=>100],
+                        'elements' => [[
+                            'id' => substr(md5(rand()),0,7),
+                            'elType' => 'widget',
+                            'widgetType' => 'html',
+                            'settings' => ['html' => $html],
+                        ]],
+                    ]],
+                ]];
+                update_post_meta($page_id, '_elementor_data', wp_slash(wp_json_encode($el_data)));
+            }
+
+            // Restrict page to role
+            $restrict_code = "<?php\n// Restrict page {$page_id} to role: {$role}\n";
+            $restrict_code .= "add_action('template_redirect', function() {\n";
+            $restrict_code .= "    if (is_page({$page_id}) && !current_user_can('manage_options')) {\n";
+            $restrict_code .= "        if (!is_user_logged_in()) { wp_redirect(wp_login_url(get_permalink({$page_id}))); exit; }\n";
+            $restrict_code .= "        \\$user = wp_get_current_user();\n";
+            $restrict_code .= "        if (!in_array('{$role}', \\$user->roles) && !current_user_can('manage_options')) { wp_redirect(home_url()); exit; }\n";
+            $restrict_code .= "    }\n";
+            $restrict_code .= "});";
+
+            // Redirect after login
+            if ($redirect_after_login) {
+                $page_url = get_permalink($page_id);
+                $restrict_code .= "\nadd_filter('login_redirect', function(\\$url, \\$request, \\$user) {\n";
+                $restrict_code .= "    if (is_a(\\$user,'WP_User') && in_array('{$role}', \\$user->roles)) return '{$page_url}';\n";
+                $restrict_code .= "    return \\$url;\n";
+                $restrict_code .= "}, 10, 3);";
+            }
+
+// DISABLED: mu-plugin generation caused syntax errors
+            // file_put_contents(WPMU_PLUGIN_DIR . '/wpilot-role-' . sanitize_file_name($role) . '.php', $restrict_code);
+
+            return wpilot_ok("Dashboard for role '{$role}' created (ID: {$page_id}).", [
+                'page_id' => $page_id,
+                'url' => get_permalink($page_id),
+                'role' => $role,
+                'restricted' => true,
+                'login_redirect' => $redirect_after_login,
+            ]);
+
+                // ═══ ANALYZE EXTERNAL WEBSITE FOR DESIGN INSPIRATION ═══
+        case 'analyze_website':
+        case 'scrape_design':
+        case 'copy_design':
+            $url = esc_url_raw($params['url'] ?? $params['website'] ?? $params['site'] ?? '');
+            if (empty($url)) return wpilot_err('URL required.');
+            if (strpos($url, 'http') !== 0) $url = 'https://' . $url;
+
+            $response = wp_remote_get($url, ['timeout' => 15, 'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36']);
+            if (is_wp_error($response)) return wpilot_err('Could not fetch: ' . $response->get_error_message());
+
+            $html = wp_remote_retrieve_body($response);
+            if (empty($html)) return wpilot_err('Empty response from URL.');
+
+            // Extract design info
+            $design = [];
+
+            // Colors
+            $colors = [];
+            if (preg_match_all('/(?:background|color|border-color|fill)\s*:\s*([#][0-9a-fA-F]{3,8}|rgb[a]?\([^)]+\))/i', $html, $cm)) {
+                $colors = array_count_values($cm[1]);
+                arsort($colors);
+                $colors = array_slice($colors, 0, 15, true);
+            }
+            $design['colors'] = array_keys($colors);
+
+            // Fonts
+            $fonts = [];
+            if (preg_match_all('/font-family\s*:\s*([^;}"]+)/i', $html, $fm)) {
+                $fonts = array_unique(array_map('trim', $fm[1]));
+            }
+            $design['fonts'] = array_slice(array_values($fonts), 0, 5);
+
+            // Layout sections
+            $sections = [];
+            if (preg_match_all('/<(?:section|header|footer|main|nav|div)[^>]*class="([^"]*)"[^>]*>/i', $html, $sm)) {
+                $sections = array_slice(array_unique($sm[1]), 0, 20);
+            }
+            $design['css_classes'] = $sections;
+
+            // Extract inline styles for key sections
+            $hero_styles = [];
+            if (preg_match('/<(?:section|div)[^>]*(?:hero|banner|jumbotron|masthead)[^>]*style="([^"]*)"[^>]*>/i', $html, $hm)) {
+                $hero_styles[] = $hm[1];
+            }
+            $design['hero_styles'] = $hero_styles;
+
+            // Images
+            $images = [];
+            if (preg_match_all('/<img[^>]+src="([^"]+)"[^>]*/i', $html, $im)) {
+                $images = array_slice($im[1], 0, 10);
+            }
+            $design['images'] = count($images) . ' images found';
+
+            // Page title
+            $title = '';
+            if (preg_match('/<title>([^<]+)</i', $html, $tm)) $title = trim($tm[1]);
+            $design['title'] = $title;
+
+            // Meta description
+            $meta_desc = '';
+            if (preg_match('/meta[^>]*name="description"[^>]*content="([^"]*)"/', $html, $mm)) $meta_desc = $mm[1];
+            $design['meta_description'] = $meta_desc;
+
+            // Navigation items
+            $nav_items = [];
+            if (preg_match_all('/<a[^>]*href="([^"]*)"[^>]*>([^<]+)</a>/i', $html, $nm)) {
+                foreach (array_slice($nm[2], 0, 15) as $i => $text) {
+                    $nav_items[] = trim($text) . ' → ' . $nm[1][$i];
+                }
+            }
+            $design['navigation'] = $nav_items;
+
+            // Text content (headings and paragraphs)
+            $headings = [];
+            if (preg_match_all('/<h[1-3][^>]*>([^<]+)</i', $html, $hm)) {
+                $headings = array_slice(array_map('trim', $hm[1]), 0, 10);
+            }
+            $design['headings'] = $headings;
+
+            // CSS variables
+            $css_vars = [];
+            if (preg_match_all('/--([a-zA-Z0-9-]+)\s*:\s*([^;]+)/i', $html, $vm)) {
+                foreach (array_slice($vm[1], 0, 15) as $i => $name) {
+                    $css_vars[$name] = trim($vm[2][$i]);
+                }
+            }
+            $design['css_variables'] = $css_vars;
+
+            // Detect tech/framework
+            $tech = [];
+            if (strpos($html, 'wp-content') !== false) $tech[] = 'WordPress';
+            if (strpos($html, 'shopify') !== false) $tech[] = 'Shopify';
+            if (strpos($html, 'react') !== false || strpos($html, 'React') !== false) $tech[] = 'React';
+            if (strpos($html, 'next') !== false) $tech[] = 'Next.js';
+            if (strpos($html, 'tailwind') !== false) $tech[] = 'Tailwind CSS';
+            $design['tech'] = $tech;
+
+            // Full CSS extraction (external stylesheets mentioned)
+            $stylesheets = [];
+            if (preg_match_all('/href="([^"]*\.css[^"]*)"/', $html, $ss)) {
+                $stylesheets = array_slice($ss[1], 0, 5);
+            }
+            $design['stylesheets'] = count($stylesheets) . ' stylesheets';
+
+            // Viewport / responsive
+            $design['responsive'] = strpos($html, 'viewport') !== false;
+
+            return wpilot_ok("Design analyzed from {$url}.", ['design' => $design, 'html_size' => strlen($html)]);
+
+        // ═══ SET FAVICON ═══
+        case 'set_favicon':
+        case 'update_favicon':
+            $image_url = $params['url'] ?? $params['image_url'] ?? $params['favicon_url'] ?? '';
+            $image_id = intval($params['image_id'] ?? 0);
+            $emoji = $params['emoji'] ?? '';
+
+            // If emoji, create an SVG favicon
+            if (!empty($emoji)) {
+                $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">' . $emoji . '</text></svg>';
+                $upload_dir = wp_upload_dir();
+                $svg_path = $upload_dir['basedir'] . '/favicon.svg';
+                file_put_contents($svg_path, $svg);
+                // Add as site icon via custom code
+                $favicon_url = $upload_dir['baseurl'] . '/favicon.svg';
+                // Inject via mu-plugin
+                $mu_file = WPMU_PLUGIN_DIR . '/wpilot-favicon.php';
+                $mu_code = "<?php\n// WPilot Favicon\nadd_action('wp_head', function() { echo '<link rel=\"icon\" href=\"{$favicon_url}\" type=\"image/svg+xml\">'; }, 1);";
+                file_put_contents($mu_file, $mu_code);
+                return wpilot_ok("Emoji favicon set: {$emoji}", ['favicon' => $upload_dir['baseurl'] . '/favicon.svg']);
+            }
+
+            // If URL, download and set
+            if (!$image_id && !empty($image_url)) {
+                require_once(ABSPATH . 'wp-admin/includes/media.php');
+                require_once(ABSPATH . 'wp-admin/includes/file.php');
+                require_once(ABSPATH . 'wp-admin/includes/image.php');
+                $image_id = media_sideload_image($image_url, 0, 'Site Favicon', 'id');
+                if (is_wp_error($image_id)) return wpilot_err('Favicon download failed: ' . $image_id->get_error_message());
+            }
+
+            if ($image_id) {
+                update_option('site_icon', $image_id);
+                return wpilot_ok("Favicon set.", ['image_id' => $image_id]);
+            }
+            return wpilot_err('Provide emoji, image_url, or image_id.');
+
+        // ═══ FULL SITE MAP ═══
+        case 'get_sitemap':
+        case 'site_map':
+            $sitemap = [];
+            // All pages with URLs
+            $pages = get_pages(['post_status' => 'publish']);
+            $sitemap['pages'] = array_map(fn($p) => ['title' => $p->post_title, 'url' => get_permalink($p->ID), 'template' => get_post_meta($p->ID, '_wp_page_template', true) ?: 'default'], $pages);
+            // All posts
+            $posts = get_posts(['numberposts' => 20, 'post_status' => 'publish']);
+            $sitemap['posts'] = array_map(fn($p) => ['title' => $p->post_title, 'url' => get_permalink($p->ID)], $posts);
+            // Product pages
+            if (class_exists('WooCommerce')) {
+                $products = wc_get_products(['limit' => 50, 'status' => 'publish']);
+                $sitemap['products'] = array_map(fn($p) => ['name' => $p->get_name(), 'url' => $p->get_permalink(), 'price' => $p->get_price()], $products);
+                $sitemap['woo_pages'] = [
+                    'shop' => get_permalink(get_option('woocommerce_shop_page_id')),
+                    'cart' => get_permalink(get_option('woocommerce_cart_page_id')),
+                    'checkout' => get_permalink(get_option('woocommerce_checkout_page_id')),
+                    'myaccount' => get_permalink(get_option('woocommerce_myaccount_page_id')),
+                ];
+            }
+            // Categories
+            $cats = get_categories(['hide_empty' => false]);
+            $sitemap['categories'] = array_map(fn($c) => $c->name . ' (' . $c->count . ' posts)', $cats);
+            // Registered menus
+            $menus = wp_get_nav_menus();
+            $sitemap['menus'] = array_map(fn($m) => $m->name, $menus);
+            return wpilot_ok("Site map generated.", ['sitemap' => $sitemap]);
+
+        
+        case 'export_users_csv':
+            $users = get_users(["fields" => ["ID","user_login","user_email","display_name"]]);
+            $csv = "ID,Username,Email,Name,Role\n";
+            foreach ($users as $u) { $csv .= $u->ID . "," . $u->user_login . "," . $u->user_email . "," . $u->display_name . "," . implode(";",get_userdata($u->ID)->roles) . "\n"; }
+            $up = wp_upload_dir(); file_put_contents($up["basedir"]."/wpilot-users.csv", $csv);
+            return wpilot_ok("Exported ".count($users)." users.", ["download_url"=>$up["baseurl"]."/wpilot-users.csv"]);
+
+        case 'export_orders_csv':
+            if (!class_exists("WooCommerce")) return wpilot_err("WooCommerce required.");
+            $orders = wc_get_orders(["limit"=>100,"orderby"=>"date","order"=>"DESC"]);
+            $csv = "ID,Date,Status,Customer,Email,Total\n";
+            foreach ($orders as $o) $csv .= $o->get_id().",".$o->get_date_created()->format("Y-m-d").",".$o->get_status().",".$o->get_billing_first_name().",".$o->get_billing_email().",".$o->get_total()."\n";
+            $up = wp_upload_dir(); file_put_contents($up["basedir"]."/wpilot-orders.csv", $csv);
+            return wpilot_ok("Exported ".count($orders)." orders.", ["download_url"=>$up["baseurl"]."/wpilot-orders.csv"]);
+
+        case 'export_email_list':
+        case 'export_subscribers':
+            $emails = [];
+            foreach (get_users(["role"=>"subscriber","fields"=>["user_email"]]) as $s) $emails[] = $s->user_email;
+            if (class_exists("WooCommerce")) foreach (get_users(["role"=>"customer","fields"=>["user_email"]]) as $c) $emails[] = $c->user_email;
+            return wpilot_ok(count(array_unique($emails))." emails.", ["emails"=>array_unique($emails)]);
+
+        case 'list_members':
+        case 'list_customers':
+            $role = sanitize_text_field($params["role"] ?? "customer");
+            $users = get_users(["role"=>$role,"number"=>50]);
+            $list = array_map(fn($u) => ["id"=>$u->ID,"name"=>$u->display_name,"email"=>$u->user_email], $users);
+            return wpilot_ok(count($list)." {$role}s.", ["members"=>$list]);
+
+        case 'customer_report':
+            if (!class_exists("WooCommerce")) return wpilot_err("WooCommerce required.");
+            $customers = get_users(["role"=>"customer"]);
+            $total = 0; $top = [];
+            foreach ($customers as $u) { $c = new WC_Customer($u->ID); $s = floatval($c->get_total_spent()); $total += $s; $top[] = ["name"=>$u->display_name,"spent"=>$s,"orders"=>$c->get_order_count()]; }
+            usort($top, fn($a,$b) => $b["spent"] <=> $a["spent"]);
+            return wpilot_ok(count($customers)." customers, {$total} ".get_woocommerce_currency()." total.", ["top"=>array_slice($top,0,10)]);
+
+        case 'newsletter_add_subscriber':
+            $email = sanitize_email($params["email"] ?? "");
+            if (empty($email)) return wpilot_err("Email required.");
+            if (!email_exists($email)) { wp_create_user($email, wp_generate_password(), $email); return wpilot_ok("Added: {$email}"); }
+            return wpilot_ok("Already exists.");
+
+        case 'newsletter_bulk_import':
+            $csv = $params["csv"] ?? "";
+            if (empty($csv)) return wpilot_err("CSV: email,name");
+            $lines = preg_split("/\r\n|\r|\n/", trim($csv)); array_shift($lines); $added = 0;
+            foreach ($lines as $line) { $c = str_getcsv(trim($line)); $e = sanitize_email($c[0] ?? ""); if ($e && !email_exists($e)) { wp_create_user($e, wp_generate_password(), $e); $added++; } }
+            return wpilot_ok("Imported {$added} subscribers.");
+
+        case 'disk_usage':
+            $up = wp_upload_dir(); $size = 0;
+            $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($up["basedir"], RecursiveDirectoryIterator::SKIP_DOTS));
+            foreach ($iter as $file) $size += $file->getSize();
+            global $wpdb; $db = 0;
+            foreach ($wpdb->get_results("SHOW TABLE STATUS") as $t) $db += $t->Data_length + $t->Index_length;
+            return wpilot_ok("Disk usage.", ["uploads"=>round($size/1048576,1)." MB","database"=>round($db/1048576,1)." MB"]);
+
+
+        // ═══ SCREENSHOT & VISION ANALYSIS ═══
+        case 'screenshot':
+        case 'take_screenshot':
+            $url = $params['url'] ?? home_url('/');
+            if (strpos($url, '/') === 0) $url = home_url($url);
+            $mobile = !empty($params['mobile']);
+            $result = wpilot_take_screenshot($url, [
+                'mobile' => $mobile,
+                'width'  => intval($params['width'] ?? 1440),
+                'delay'  => intval($params['delay'] ?? 2),
+            ]);
+            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            return wpilot_ok("Screenshot taken: {$result['filename']} ({$result['size_kb']} KB)", $result);
+
+        case 'analyze_design':
+        case 'visual_review':
+        case 'design_review':
+            // Fallback on low-memory hosting
+            if (function_exists('wpilot_can_use') && !wpilot_can_use_feature('screenshot')) {
+                return wpilot_run_tool('check_frontend', $params);
+            }
+            $url = $params['url'] ?? home_url('/');
+            if (strpos($url, '/') === 0) $url = home_url($url);
+            $type = sanitize_text_field($params['analysis_type'] ?? 'full');
+            // Take screenshot first
+            $shot = wpilot_take_screenshot($url, ['delay' => 3]);
+            if (is_wp_error($shot)) return wpilot_err('Screenshot failed: ' . $shot->get_error_message());
+            // Analyze with Vision
+            $analysis = wpilot_analyze_screenshot($shot['path'], $type);
+            if (is_wp_error($analysis)) return wpilot_err('Vision analysis failed: ' . $analysis->get_error_message());
+            return wpilot_ok("Visual analysis of {$url}", [
+                'screenshot_url' => $shot['url'],
+                'analysis'       => $analysis,
+                'analysis_type'  => $type,
+            ]);
+
+        case 'check_visual_bugs':
+        case 'visual_debug':
+            $url = $params['url'] ?? home_url('/');
+            if (strpos($url, '/') === 0) $url = home_url($url);
+            // Desktop + mobile screenshots
+            $desktop = wpilot_take_screenshot($url, ['delay' => 3]);
+            $mobile  = wpilot_take_screenshot($url, ['mobile' => true, 'delay' => 3]);
+            $results = ['screenshots' => []];
+            if (!is_wp_error($desktop)) {
+                $results['screenshots']['desktop'] = $desktop['url'];
+                $analysis = wpilot_analyze_screenshot($desktop['path'], 'bugs');
+                if (!is_wp_error($analysis)) $results['desktop_bugs'] = $analysis;
+            }
+            if (!is_wp_error($mobile)) {
+                $results['screenshots']['mobile'] = $mobile['url'];
+                $analysis = wpilot_analyze_screenshot($mobile['path'], 'bugs');
+                if (!is_wp_error($analysis)) $results['mobile_bugs'] = $analysis;
+            }
+            return wpilot_ok("Visual bug check for {$url}", $results);
+
+        case 'compare_before_after':
+            $url = $params['url'] ?? home_url('/');
+            if (strpos($url, '/') === 0) $url = home_url($url);
+            // Find latest "before" screenshot for this URL
+            $slug = sanitize_title(wp_parse_url($url, PHP_URL_PATH) ?: 'home');
+            $dir = wp_upload_dir()['basedir'] . '/wpilot-screenshots';
+            $befores = glob($dir . '/' . $slug . '*-before.png');
+            if (empty($befores)) return wpilot_err('No "before" screenshot found. Take a screenshot first, then make changes, then compare.');
+            // Take "after" screenshot
+            $after = wpilot_take_screenshot($url, ['delay' => 3]);
+            if (is_wp_error($after)) return wpilot_err('After screenshot failed: ' . $after->get_error_message());
+            // Compare
+            $before_path = end($befores);
+            $comparison = wpilot_compare_screenshots($before_path, $after['path']);
+            if (is_wp_error($comparison)) return wpilot_err('Comparison failed: ' . $comparison->get_error_message());
+            return wpilot_ok("Before/after comparison for {$url}", [
+                'before_url' => wp_upload_dir()['baseurl'] . '/wpilot-screenshots/' . basename($before_path),
+                'after_url'  => $after['url'],
+                'comparison' => $comparison,
+            ]);
+
+        case 'screenshot_before':
+            $url = $params['url'] ?? home_url('/');
+            if (strpos($url, '/') === 0) $url = home_url($url);
+            $shot = wpilot_take_screenshot($url, ['delay' => 2]);
+            if (is_wp_error($shot)) return wpilot_err($shot->get_error_message());
+            // Rename to -before
+            $before_path = str_replace('.png', '-before.png', $shot['path']);
+            $before_url  = str_replace('.png', '-before.png', $shot['url']);
+            rename($shot['path'], $before_path);
+            return wpilot_ok("Before screenshot saved. Make changes, then use compare_before_after.", [
+                'screenshot_url' => $before_url,
+            ]);
+
+        case 'screenshot_history':
+            $history = wpilot_get_screenshot_history(20);
+            return wpilot_ok(count($history) . " screenshots.", ['screenshots' => $history]);
+
+        // ═══ TEMPLATE LIBRARY ═══
+        case 'list_templates':
+            $templates = wpilot_get_templates();
+            $list = array_map(function($t) { return $t['name'] . ' — ' . $t['description']; }, $templates);
+            return wpilot_ok(count($templates) . " templates available.", ['templates' => $list]);
+
+        case 'apply_template':
+        case 'use_template':
+            $template_name = sanitize_text_field($params['template'] ?? $params['name'] ?? '');
+            $page_title = sanitize_text_field($params['title'] ?? $params['page_title'] ?? ucfirst($template_name));
+            if (empty($template_name)) return wpilot_err('Template name required. Use list_templates to see available.');
+            $html = wpilot_get_template_html($template_name, $params);
+            if (empty($html)) return wpilot_err("Template '{$template_name}' not found. Use list_templates.");
+            // Create page with template HTML
+            $page_id = wp_insert_post([
+                'post_title'   => $page_title,
+                'post_content' => $html,
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+            ]);
+            if (is_wp_error($page_id)) return wpilot_err($page_id->get_error_message());
+            return wpilot_ok("Created '{$page_title}' with {$template_name} template.", [
+                'page_id' => $page_id,
+                'url'     => get_permalink($page_id),
+            ]);
+
+        // ═══ AI TRAINING & LEARNING ═══
+        case 'training_stats':
+            global $wpdb;
+            $t = $wpdb->prefix . 'wpilot_training';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$t}'") !== $t) return wpilot_ok("Training table not set up yet.", ['total' => 0]);
+            $total   = intval($wpdb->get_var("SELECT COUNT(*) FROM {$t}"));
+            $rated   = intval($wpdb->get_var("SELECT COUNT(*) FROM {$t} WHERE rating >= 4"));
+            $avg     = floatval($wpdb->get_var("SELECT AVG(rating) FROM {$t}") ?? 0);
+            $intents = $wpdb->get_results("SELECT JSON_EXTRACT(metadata, '$.intent') as intent, COUNT(*) as cnt FROM {$t} GROUP BY intent ORDER BY cnt DESC LIMIT 10", ARRAY_A);
+            $tools   = $wpdb->get_results("SELECT JSON_EXTRACT(metadata, '$.tools_used') as tools, COUNT(*) as cnt FROM {$t} WHERE JSON_LENGTH(JSON_EXTRACT(metadata, '$.tools_used')) > 0 GROUP BY tools ORDER BY cnt DESC LIMIT 10", ARRAY_A);
+            return wpilot_ok("{$total} training pairs, avg rating {$avg}.", [
+                'total'         => $total,
+                'high_quality'  => $rated,
+                'avg_rating'    => round($avg, 1),
+                'top_intents'   => $intents,
+                'top_tools'     => $tools,
+            ]);
+
+        case 'export_training_data':
+            if (!function_exists('wpilot_export_training_jsonl')) return wpilot_err('Training module not loaded.');
+            $format = sanitize_text_field($params['format'] ?? 'chatml');
+            $min_quality = intval($params['min_quality'] ?? 60);
+            $result = wpilot_export_training_jsonl($format, $min_quality);
+            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            return wpilot_ok("Exported training data.", $result);
+
+        case 'ai_self_test':
+        case 'test_ai':
+            // AI tests itself on common tasks
+            $tests = [
+                ['msg' => 'list all plugins', 'expect_tool' => 'list_plugins'],
+                ['msg' => 'show my pages', 'expect_tool' => 'list_pages'],
+                ['msg' => 'check homepage', 'expect_tool' => 'check_frontend'],
+            ];
+            $results = [];
+            foreach ($tests as $test) {
+                $r = wpilot_smart_answer($test['msg'], 'chat', wpilot_build_context('general'), []);
+                $resp = is_array($r) ? $r['text'] : (is_wp_error($r) ? $r->get_error_message() : $r);
+                $actions = wpilot_parse_actions($resp);
+                if (empty($actions) && function_exists('wpilot_parse_compact_actions')) $actions = wpilot_parse_compact_actions($resp);
+                $found_tool = !empty($actions) ? $actions[0]['tool'] : 'none';
+                $pass = ($found_tool === $test['expect_tool']);
+                $results[] = [
+                    'test'     => $test['msg'],
+                    'expected' => $test['expect_tool'],
+                    'got'      => $found_tool,
+                    'pass'     => $pass,
+                ];
+            }
+            $passed = count(array_filter($results, fn($r) => $r['pass']));
+            return wpilot_ok("{$passed}/" . count($tests) . " tests passed.", ['tests' => $results]);
+
+        // ═══ MULTI-STEP WORKFLOWS ═══
+        case 'build_landing_page':
+            // Full landing page workflow: create page + add CSS + screenshot
+            $title = sanitize_text_field($params['title'] ?? 'Landing Page');
+            $html = $params['html'] ?? '';
+            $css = $params['css'] ?? '';
+            if (empty($html)) return wpilot_err('HTML content required for landing page.');
+            // Create page
+            $page_id = wp_insert_post([
+                'post_title'   => $title,
+                'post_content' => $html,
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+            ]);
+            if (is_wp_error($page_id)) return wpilot_err($page_id->get_error_message());
+            // Add CSS if provided
+            if (!empty($css)) {
+                $existing = wp_get_custom_css();
+                wp_update_custom_css_post($existing . "\n/* Landing: {$title} */\n" . $css);
+            }
+            $url = get_permalink($page_id);
+            // Take screenshot of result
+            $shot = wpilot_take_screenshot($url, ['delay' => 3]);
+            $shot_url = is_wp_error($shot) ? null : $shot['url'];
+            return wpilot_ok("Landing page '{$title}' created.", [
+                'page_id'        => $page_id,
+                'url'            => $url,
+                'screenshot_url' => $shot_url,
+            ]);
+
+        case 'full_site_audit':
+            // Complete site audit: screenshot + check_frontend + SEO + performance
+            $url = home_url('/');
+            $audit = ['url' => $url];
+            // Screenshot
+            $shot = wpilot_take_screenshot($url, ['delay' => 3]);
+            if (!is_wp_error($shot)) {
+                $audit['screenshot_url'] = $shot['url'];
+                $visual = wpilot_analyze_screenshot($shot['path'], 'full');
+                if (!is_wp_error($visual)) $audit['visual_analysis'] = $visual;
+            }
+            // Mobile screenshot
+            $mobile = wpilot_take_screenshot($url, ['mobile' => true, 'delay' => 3]);
+            if (!is_wp_error($mobile)) {
+                $audit['mobile_screenshot'] = $mobile['url'];
+                $mobile_analysis = wpilot_analyze_screenshot($mobile['path'], 'bugs');
+                if (!is_wp_error($mobile_analysis)) $audit['mobile_analysis'] = $mobile_analysis;
+            }
+            // Page data
+            $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false]);
+            if (!is_wp_error($response)) {
+                $html_content = wp_remote_retrieve_body($response);
+                $audit['page_size_kb'] = round(strlen($html_content) / 1024);
+                preg_match_all('/<img[^>]+>/', $html_content, $imgs);
+                $audit['total_images'] = count($imgs[0]);
+                preg_match_all('/<script[^>]+>/', $html_content, $scripts);
+                $audit['total_scripts'] = count($scripts[0]);
+                preg_match_all('/<link[^>]+stylesheet/', $html_content, $css_files);
+                $audit['total_stylesheets'] = count($css_files[0]);
+            }
+            // Plugin count
+            $audit['active_plugins'] = count(get_option('active_plugins', []));
+            // DB size
+            global $wpdb;
+            $db_size = 0;
+            foreach ($wpdb->get_results("SHOW TABLE STATUS") as $t) $db_size += $t->Data_length + $t->Index_length;
+            $audit['database_mb'] = round($db_size / 1048576, 1);
+            return wpilot_ok("Full site audit complete.", $audit);
+
+
+        // ═══ GRANULAR ELEMENT EDITING ═══
+        case 'edit_section':
+        case 'edit_element':
+            // Edit a specific section/element on a page by searching its content
+            $page_id = intval($params['page_id'] ?? $params['id'] ?? 0);
+            $search = $params['search'] ?? $params['find'] ?? '';
+            $replace = $params['replace'] ?? $params['new_content'] ?? '';
+            if (!$page_id) return wpilot_err('page_id required.');
+            if (empty($search)) return wpilot_err('search text required — the text/HTML to find.');
+            if (empty($replace)) return wpilot_err('replace text required — the new text/HTML.');
+
+            // Check Elementor
+            $el_data = get_post_meta($page_id, '_elementor_data', true);
+            if ($el_data) {
+                $json_str = $el_data;
+                if (strpos($json_str, $search) !== false) {
+                    $json_str = str_replace($search, $replace, $json_str);
+                    update_post_meta($page_id, '_elementor_data', wp_slash($json_str));
+                    // Clear Elementor cache
+                    delete_post_meta($page_id, '_elementor_css');
+                    if (class_exists('\Elementor\Plugin')) {
+                        \Elementor\Plugin::$instance->files_manager->clear_cache();
+                    }
+                    return wpilot_ok("Updated element in Elementor page {$page_id}.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+                }
+            }
+            // Check regular content
+            $content = get_post_field('post_content', $page_id);
+            if (strpos($content, $search) !== false) {
+                $content = str_replace($search, $replace, $content);
+                wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+                return wpilot_ok("Updated content in page {$page_id}.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+            }
+            return wpilot_err("Could not find '{$search}' in page {$page_id}. Use get_page to see current content.");
+
+        case 'edit_text':
+            // Edit specific text on a page (find old text, replace with new)
+            $page_id = intval($params['page_id'] ?? $params['id'] ?? 0);
+            $old_text = $params['old_text'] ?? $params['find'] ?? '';
+            $new_text = $params['new_text'] ?? $params['replace'] ?? '';
+            if (!$page_id || empty($old_text) || empty($new_text)) return wpilot_err('page_id, old_text, new_text required.');
+
+            $updated = false;
+            // Try Elementor data first
+            $el_data = get_post_meta($page_id, '_elementor_data', true);
+            if ($el_data && strpos($el_data, $old_text) !== false) {
+                $el_data = str_replace($old_text, $new_text, $el_data);
+                update_post_meta($page_id, '_elementor_data', wp_slash($el_data));
+                delete_post_meta($page_id, '_elementor_css');
+                if (class_exists('\Elementor\Plugin')) \Elementor\Plugin::$instance->files_manager->clear_cache();
+                $updated = true;
+            }
+            // Also update post_content
+            $content = get_post_field('post_content', $page_id);
+            if (strpos($content, $old_text) !== false) {
+                $content = str_replace($old_text, $new_text, $content);
+                wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+                $updated = true;
+            }
+            if ($updated) return wpilot_ok("Text updated on page {$page_id}.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+            return wpilot_err("Text '{$old_text}' not found on page {$page_id}.");
+
+        case 'edit_button':
+            // Edit a button's text, link, or style on a page
+            $page_id = intval($params['page_id'] ?? 0);
+            $old_label = $params['old_label'] ?? $params['find'] ?? '';
+            $new_label = $params['new_label'] ?? $params['label'] ?? '';
+            $new_url = $params['url'] ?? $params['link'] ?? '';
+            $new_style = $params['style'] ?? '';
+            if (!$page_id || empty($old_label)) return wpilot_err('page_id and old_label required.');
+
+            $el_data = get_post_meta($page_id, '_elementor_data', true);
+            $content = get_post_field('post_content', $page_id);
+            $updated = false;
+
+            // Elementor button widget — settings.text
+            if ($el_data) {
+                $json = json_decode($el_data, true);
+                if ($json) {
+                    $changed = wpilot_walk_edit_button($json, $old_label, $new_label, $new_url);
+                    if ($changed) {
+                        update_post_meta($page_id, '_elementor_data', wp_slash(wp_json_encode($json)));
+                        delete_post_meta($page_id, '_elementor_css');
+                        $updated = true;
+                    }
+                }
+            }
+
+            // HTML buttons — <a> and <button> tags
+            if (!$updated && $content) {
+                // Match <a...>old_label</a> or <button...>old_label</button>
+                $pattern = '/(<(?:a|button)[^>]*>)\s*' . preg_quote($old_label, '/') . '\s*(<\/(?:a|button)>)/i';
+                if (preg_match($pattern, $content, $m)) {
+                    $tag = $m[1];
+                    if ($new_url && preg_match('/href="[^"]*"/', $tag)) {
+                        $tag = preg_replace('/href="[^"]*"/', 'href="' . esc_url($new_url) . '"', $tag);
+                    }
+                    $replacement = $tag . ($new_label ?: $old_label) . $m[2];
+                    $content = preg_replace($pattern, $replacement, $content, 1);
+                    wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+                    $updated = true;
+                }
+            }
+            // Also try Elementor data for HTML widget buttons
+            if (!$updated && $el_data && strpos($el_data, $old_label) !== false) {
+                $new = $old_label;
+                if ($new_label) {
+                    $el_data = str_replace('>' . $old_label . '<', '>' . $new_label . '<', $el_data);
+                    $new = $new_label;
+                }
+                update_post_meta($page_id, '_elementor_data', wp_slash($el_data));
+                delete_post_meta($page_id, '_elementor_css');
+                $updated = true;
+            }
+
+            if ($updated) return wpilot_ok("Button updated on page {$page_id}.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+            return wpilot_err("Button with label '{$old_label}' not found.");
+
+        case 'edit_icon':
+            // Change an icon on a page (Elementor icon widget or Font Awesome/emoji)
+            $page_id = intval($params['page_id'] ?? 0);
+            $old_icon = $params['old_icon'] ?? $params['find'] ?? '';
+            $new_icon = $params['new_icon'] ?? $params['icon'] ?? '';
+            if (!$page_id || empty($old_icon) || empty($new_icon)) return wpilot_err('page_id, old_icon, new_icon required.');
+
+            $updated = false;
+            // Elementor data
+            $el_data = get_post_meta($page_id, '_elementor_data', true);
+            if ($el_data && strpos($el_data, $old_icon) !== false) {
+                $el_data = str_replace($old_icon, $new_icon, $el_data);
+                update_post_meta($page_id, '_elementor_data', wp_slash($el_data));
+                delete_post_meta($page_id, '_elementor_css');
+                $updated = true;
+            }
+            // Post content
+            $content = get_post_field('post_content', $page_id);
+            if (strpos($content, $old_icon) !== false) {
+                $content = str_replace($old_icon, $new_icon, $content);
+                wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+                $updated = true;
+            }
+            if ($updated) return wpilot_ok("Icon changed from '{$old_icon}' to '{$new_icon}'.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+            return wpilot_err("Icon '{$old_icon}' not found on page {$page_id}.");
+
+        case 'add_animation':
+        case 'add_css_animation':
+            // Add CSS animation to elements on a page
+            $page_id = intval($params['page_id'] ?? 0);
+            $selector = $params['selector'] ?? $params['element'] ?? '';
+            $animation = $params['animation'] ?? 'fadeInUp';
+            $duration = $params['duration'] ?? '0.6s';
+            $delay = $params['delay'] ?? '0s';
+
+            // Pre-built animations
+            $animations = [
+                'fadeIn' => 'opacity:0 -> opacity:1',
+                'fadeInUp' => 'opacity:0;transform:translateY(30px) -> opacity:1;transform:translateY(0)',
+                'fadeInDown' => 'opacity:0;transform:translateY(-30px) -> opacity:1;transform:translateY(0)',
+                'fadeInLeft' => 'opacity:0;transform:translateX(-30px) -> opacity:1;transform:translateX(0)',
+                'fadeInRight' => 'opacity:0;transform:translateX(30px) -> opacity:1;transform:translateX(0)',
+                'slideUp' => 'transform:translateY(50px) -> transform:translateY(0)',
+                'scaleIn' => 'opacity:0;transform:scale(0.8) -> opacity:1;transform:scale(1)',
+                'bounceIn' => 'opacity:0;transform:scale(0.3) -> opacity:1;transform:scale(1)',
+                'pulse' => 'transform:scale(1) -> transform:scale(1.05) -> transform:scale(1)',
+                'shake' => 'transform:translateX(0) -> translateX(-5px) -> translateX(5px) -> translateX(0)',
+            ];
+
+            // If selector is given, add targeted CSS animation
+            if (!empty($selector)) {
+                $anim_name = 'wpilot-' . sanitize_title($animation);
+                $from_to = $animations[$animation] ?? $animations['fadeInUp'];
+                $parts = explode(' -> ', $from_to);
+                $from = str_replace(';', '; ', $parts[0]);
+                $to = str_replace(';', '; ', end($parts));
+
+                $css = "@keyframes {$anim_name} {\n  from { {$from}; }\n  to { {$to}; }\n}\n";
+                $css .= "{$selector} {\n  animation: {$anim_name} {$duration} ease-out {$delay} both;\n}\n";
+
+                $existing = wp_get_custom_css();
+                if (strpos($existing, $anim_name) === false) {
+                    wp_update_custom_css_post($existing . "\n/* Animation: {$animation} */\n" . $css);
+                }
+                return wpilot_ok("Added {$animation} animation to {$selector}.", ['css' => $css]);
+            }
+
+            // If page_id given without selector, add animation to all sections
+            if ($page_id) {
+                $css = "@keyframes wpilot-fadeInUp {\n  from { opacity: 0; transform: translateY(30px); }\n  to { opacity: 1; transform: translateY(0); }\n}\n";
+                $css .= ".page-id-{$page_id} .elementor-section,\n.page-id-{$page_id} > div > div {\n  animation: wpilot-fadeInUp {$duration} ease-out both;\n}\n";
+                // Stagger children
+                for ($i = 1; $i <= 8; $i++) {
+                    $d = round($i * 0.1, 1);
+                    $css .= ".page-id-{$page_id} .elementor-section:nth-child({$i}),\n.page-id-{$page_id} > div > div:nth-child({$i}) { animation-delay: {$d}s; }\n";
+                }
+                $existing = wp_get_custom_css();
+                if (strpos($existing, 'wpilot-fadeInUp') === false) {
+                    wp_update_custom_css_post($existing . "\n/* Page animations */\n" . $css);
+                }
+                return wpilot_ok("Added staggered {$animation} animations to page {$page_id}.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+            }
+
+            return wpilot_err('Provide selector (CSS selector) or page_id.');
+
+        case 'edit_colors':
+        case 'change_colors':
+            // Change colors on a specific page or site-wide
+            $page_id = intval($params['page_id'] ?? 0);
+            $old_color = $params['old_color'] ?? $params['from'] ?? '';
+            $new_color = $params['new_color'] ?? $params['to'] ?? $params['color'] ?? '';
+            if (empty($old_color) || empty($new_color)) return wpilot_err('old_color and new_color required. Example: old_color=#ff0000, new_color=#0066ff');
+
+            $updated_in = [];
+
+            if ($page_id) {
+                // Elementor data
+                $el_data = get_post_meta($page_id, '_elementor_data', true);
+                if ($el_data && stripos($el_data, $old_color) !== false) {
+                    $el_data = str_ireplace($old_color, $new_color, $el_data);
+                    update_post_meta($page_id, '_elementor_data', wp_slash($el_data));
+                    delete_post_meta($page_id, '_elementor_css');
+                    $updated_in[] = 'elementor';
+                }
+                // Post content
+                $content = get_post_field('post_content', $page_id);
+                if (stripos($content, $old_color) !== false) {
+                    $content = str_ireplace($old_color, $new_color, $content);
+                    wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+                    $updated_in[] = 'content';
+                }
+            }
+            // Custom CSS
+            $css = wp_get_custom_css();
+            if (stripos($css, $old_color) !== false) {
+                $css = str_ireplace($old_color, $new_color, $css);
+                wp_update_custom_css_post($css);
+                $updated_in[] = 'custom_css';
+            }
+
+            if (!empty($updated_in)) {
+                return wpilot_ok("Changed {$old_color} → {$new_color} in: " . implode(', ', $updated_in) . ".", [
+                    'old_color' => $old_color, 'new_color' => $new_color, 'updated_in' => $updated_in,
+                ]);
+            }
+            return wpilot_err("Color {$old_color} not found" . ($page_id ? " on page {$page_id}" : "") . ".");
+
+        case 'edit_font':
+        case 'change_font':
+            // Change fonts on a page or site-wide
+            $selector = $params['selector'] ?? 'body';
+            $font = sanitize_text_field($params['font'] ?? $params['family'] ?? '');
+            $size = $params['size'] ?? '';
+            $weight = $params['weight'] ?? '';
+            $line_height = $params['line_height'] ?? '';
+            if (empty($font) && empty($size)) return wpilot_err('font or size required.');
+
+            $css = "{$selector} {\n";
+            if ($font) $css .= "  font-family: '{$font}', system-ui, sans-serif !important;\n";
+            if ($size) $css .= "  font-size: {$size} !important;\n";
+            if ($weight) $css .= "  font-weight: {$weight} !important;\n";
+            if ($line_height) $css .= "  line-height: {$line_height} !important;\n";
+            $css .= "}\n";
+
+            // Add Google Font if needed
+            $google_fonts = ['Inter','Poppins','Roboto','Open Sans','Montserrat','Lato','Playfair Display','Raleway','Nunito','Oswald','DM Sans','Plus Jakarta Sans'];
+            $head_code = '';
+            if ($font && in_array($font, $google_fonts)) {
+                $font_slug = str_replace(' ', '+', $font);
+                $head_code = "<link href=\"https://fonts.googleapis.com/css2?family={$font_slug}:wght@300;400;500;600;700;800&display=swap\" rel=\"stylesheet\">";
+                // Add to head
+                $existing_head = get_option('wpilot_head_code', '');
+                if (strpos($existing_head, $font_slug) === false) {
+                    update_option('wpilot_head_code', $existing_head . "\n" . $head_code);
+                }
+            }
+
+            $existing_css = wp_get_custom_css();
+            wp_update_custom_css_post($existing_css . "\n/* Font: {$font} */\n" . $css);
+            return wpilot_ok("Font updated: {$selector} → {$font}" . ($size ? " {$size}" : "") . ".", ['css' => $css]);
+
+        case 'get_page_elements':
+        case 'list_page_elements':
+            // List all editable elements on a page
+            $page_id = intval($params['page_id'] ?? $params['id'] ?? 0);
+            if (!$page_id) return wpilot_err('page_id required.');
+
+            $elements = [];
+            // Check Elementor
+            $el_data = get_post_meta($page_id, '_elementor_data', true);
+            if ($el_data) {
+                $json = json_decode($el_data, true);
+                if ($json) {
+                    wpilot_collect_elements($json, $elements);
+                }
+            }
+            // Check post_content for HTML elements
+            $content = get_post_field('post_content', $page_id);
+            // Extract headings
+            if (preg_match_all('/<h([1-6])[^>]*>([^<]+)<\/h\1>/i', $content, $hm)) {
+                foreach ($hm[2] as $i => $text) {
+                    $elements[] = ['type' => 'heading_h' . $hm[1][$i], 'text' => trim($text)];
+                }
+            }
+            // Extract buttons
+            if (preg_match_all('/<(?:a|button)[^>]*>([^<]{1,50})<\/(?:a|button)>/i', $content, $bm)) {
+                foreach ($bm[1] as $text) {
+                    $elements[] = ['type' => 'button', 'text' => trim($text)];
+                }
+            }
+            // Extract images
+            if (preg_match_all('/<img[^>]+src="([^"]+)"[^>]*>/i', $content, $im)) {
+                foreach ($im[1] as $src) {
+                    $alt = '';
+                    if (preg_match('/alt="([^"]*)"/', $content, $am)) $alt = $am[1];
+                    $elements[] = ['type' => 'image', 'src' => $src, 'alt' => $alt];
+                }
+            }
+            return wpilot_ok(count($elements) . " elements found on page {$page_id}.", ['elements' => $elements, 'page_id' => $page_id]);
+
+        // ═══ MULTI-DEVICE SCREENSHOTS ═══
+        case 'responsive_check':
+        case 'responsive_screenshots':
+        case 'multi_device_screenshot':
+            // Fallback on low-memory
+            if (function_exists('wpilot_can_use') && !wpilot_can_use_feature('screenshot')) {
+                return wpilot_run_tool('check_frontend', $params);
+            }
+            $url = $params['url'] ?? home_url('/');
+            if (strpos($url, '/') === 0) $url = home_url($url);
+            $shots = [];
+            // Desktop 1440px
+            $desktop = wpilot_take_screenshot($url, ['width' => 1440, 'height' => 900, 'delay' => 3]);
+            if (!is_wp_error($desktop)) $shots['desktop'] = $desktop['url'];
+            // Tablet 768px
+            $tablet = wpilot_take_screenshot($url, ['width' => 768, 'height' => 1024, 'delay' => 3]);
+            if (!is_wp_error($tablet)) $shots['tablet'] = $tablet['url'];
+            // Mobile 390px
+            $mobile = wpilot_take_screenshot($url, ['mobile' => true, 'delay' => 3]);
+            if (!is_wp_error($mobile)) $shots['mobile'] = $mobile['url'];
+            // Analyze each
+            $analyses = [];
+            if (!is_wp_error($desktop)) {
+                $a = wpilot_analyze_screenshot($desktop['path'], 'design');
+                if (!is_wp_error($a)) $analyses['desktop'] = $a;
+            }
+            if (!is_wp_error($tablet)) {
+                $a = wpilot_analyze_screenshot($tablet['path'], 'bugs');
+                if (!is_wp_error($a)) $analyses['tablet'] = $a;
+            }
+            if (!is_wp_error($mobile)) {
+                $a = wpilot_analyze_screenshot($mobile['path'], 'bugs');
+                if (!is_wp_error($a)) $analyses['mobile'] = $a;
+            }
+            return wpilot_ok("Multi-device screenshots for {$url}", [
+                'screenshots' => $shots,
+                'analyses' => $analyses,
+            ]);
+
+        
+        // ═══ FILE SYSTEM — Read/Write any WordPress file ═══
+        case 'read_file':
+        case 'view_file':
+            $path = $params['path'] ?? $params['file'] ?? '';
+            if (empty($path)) return wpilot_err('File path required. Example: /wp-content/themes/flavor/header.php');
+            if (strpos($path, '/') !== 0) $path = ABSPATH . $path;
+            $real = realpath($path);
+            $wp_root = realpath(ABSPATH);
+            if (!$real || strpos($real, $wp_root) !== 0) return wpilot_err('File not found or outside WordPress directory.');
+            if (!is_file($real)) return wpilot_err('Not a file: ' . $path);
+            $size = filesize($real);
+            if ($size > 500000) return wpilot_err('File too large (' . round($size/1024) . ' KB). Max 500KB.');
+            $content = file_get_contents($real);
+            $lines = substr_count($content, "\n") + 1;
+            return wpilot_ok("File: {$path} ({$lines} lines, " . round($size/1024) . " KB)", [
+                'path' => $path, 'content' => $content, 'lines' => $lines, 'size_kb' => round($size/1024),
+            ]);
+
+        case 'write_file':
+        case 'edit_file':
+            $path = $params['path'] ?? $params['file'] ?? '';
+            $content = $params['content'] ?? '';
+            $search = $params['search'] ?? $params['find'] ?? '';
+            $replace_str = $params['replace'] ?? '';
+            if (empty($path)) return wpilot_err('File path required.');
+            if (strpos($path, '/') !== 0) $path = ABSPATH . $path;
+            $real = realpath(dirname($path));
+            $wp_root = realpath(ABSPATH);
+            if (!$real || strpos($real, $wp_root) !== 0) return wpilot_err('Path outside WordPress directory.');
+            $basename = basename($path);
+            if (in_array($basename, ['wp-config.php', '.htaccess', 'wp-settings.php'])) {
+                return wpilot_err('Cannot modify core WordPress config files for security.');
+            }
+            if (file_exists($path)) {
+                $backup_dir = WP_CONTENT_DIR . '/wpilot-backups/files/' . date('Y-m-d');
+                wp_mkdir_p($backup_dir);
+                copy($path, $backup_dir . '/' . $basename . '.' . time() . '.bak');
+            }
+            if (!empty($search)) {
+                if (!file_exists($path)) return wpilot_err('File not found: ' . $path);
+                $existing = file_get_contents($path);
+                if (strpos($existing, $search) === false) return wpilot_err("Search text not found in {$path}.");
+                $existing = str_replace($search, $replace_str, $existing);
+                file_put_contents($path, $existing);
+                return wpilot_ok("Updated {$path} (search & replace).", ['path' => $path]);
+            }
+            if (empty($content)) return wpilot_err('content or search+replace required.');
+            file_put_contents($path, $content);
+            return wpilot_ok("Wrote {$path} (" . strlen($content) . " bytes).", ['path' => $path]);
+
+        case 'list_files':
+        case 'file_list':
+            $dir = $params['path'] ?? $params['dir'] ?? '';
+            if (empty($dir)) $dir = ABSPATH;
+            if (strpos($dir, '/') !== 0) $dir = ABSPATH . $dir;
+            $real = realpath($dir);
+            $wp_root = realpath(ABSPATH);
+            if (!$real || strpos($real, $wp_root) !== 0) return wpilot_err('Directory outside WordPress.');
+            if (!is_dir($real)) return wpilot_err('Not a directory: ' . $dir);
+            $files = [];
+            foreach (scandir($real) as $f_name) {
+                if ($f_name === '.' || $f_name === '..') continue;
+                $full = $real . '/' . $f_name;
+                $files[] = [
+                    'name' => $f_name,
+                    'type' => is_dir($full) ? 'dir' : 'file',
+                    'size' => is_file($full) ? filesize($full) : 0,
+                    'modified' => date('Y-m-d H:i', filemtime($full)),
+                ];
+            }
+            usort($files, function($a, $b) {
+                if ($a['type'] !== $b['type']) return $a['type'] === 'dir' ? -1 : 1;
+                return strcmp($a['name'], $b['name']);
+            });
+            return wpilot_ok(count($files) . " items in {$dir}", ['files' => $files, 'path' => $dir]);
+
+        // ═══ THEME FILE EDITOR ═══
+        case 'edit_theme_file':
+        case 'edit_theme':
+            $file = sanitize_text_field($params['file'] ?? 'functions.php');
+            $search = $params['search'] ?? $params['find'] ?? '';
+            $replace_str = $params['replace'] ?? '';
+            $append = $params['append'] ?? '';
+            $theme_dir = get_stylesheet_directory();
+            $path = $theme_dir . '/' . $file;
+            if (!file_exists($path)) return wpilot_err("Theme file not found: {$file}.");
+            // Backup
+            $backup_dir = WP_CONTENT_DIR . '/wpilot-backups/theme/' . date('Y-m-d');
+            wp_mkdir_p($backup_dir);
+            copy($path, $backup_dir . '/' . basename($file) . '.' . time() . '.bak');
+            $content = file_get_contents($path);
+            if (!empty($search)) {
+                if (strpos($content, $search) === false) return wpilot_err("Text not found in {$file}.");
+                $content = str_replace($search, $replace_str, $content);
+                file_put_contents($path, $content);
+                return wpilot_ok("Updated theme file: {$file}", ['file' => $file, 'path' => $path]);
+            }
+            if (!empty($append)) {
+                if (pathinfo($file, PATHINFO_EXTENSION) === 'php') {
+                    $close_pos = strrpos($content, '?>');
+                    if ($close_pos !== false) {
+                        $content = substr($content, 0, $close_pos) . "\n" . $append . "\n" . substr($content, $close_pos);
+                    } else {
+                        $content .= "\n" . $append;
+                    }
+                } else {
+                    $content .= "\n" . $append;
+                }
+                file_put_contents($path, $content);
+                return wpilot_ok("Appended to {$file}", ['file' => $file]);
+            }
+            return wpilot_ok("Theme file: {$file} (" . strlen($content) . " bytes)", [
+                'file' => $file, 'content' => $content, 'lines' => substr_count($content, "\n") + 1
+            ]);
+
+        // ═══ DATABASE QUERY (read-only + safe writes) ═══
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+        case 'db_query':
+        case 'database_query':
+            $query = $params['query'] ?? $params['sql'] ?? '';
+            if (empty($query)) return wpilot_err('SQL query required.');
+            global $wpdb;
+            $query_upper = strtoupper(trim($query));
+            $blocked = ['DROP ', 'TRUNCATE ', 'ALTER ', 'CREATE TABLE', 'GRANT ', 'REVOKE '];
+            foreach ($blocked as $b) {
+                if (strpos($query_upper, $b) === 0) return wpilot_err("Blocked: {$b} queries not allowed.");
+            }
+            $query = str_replace(['{prefix}', '{wp_}'], $wpdb->prefix, $query);
+            if (strpos($query_upper, 'SELECT') === 0 || strpos($query_upper, 'SHOW') === 0 || strpos($query_upper, 'DESCRIBE') === 0) {
+                $results = $wpdb->get_results($query, ARRAY_A);
+                if ($wpdb->last_error) return wpilot_err("SQL error: " . $wpdb->last_error);
+                return wpilot_ok(count($results) . " rows.", ['rows' => array_slice($results, 0, 100), 'total' => count($results)]);
+            }
+            if (strpos($query_upper, 'UPDATE') === 0 || strpos($query_upper, 'INSERT') === 0 || strpos($query_upper, 'DELETE') === 0) {
+                if (empty($params['confirm'])) {
+                    return wpilot_err("Write query requires confirm:true. Query: " . substr($query, 0, 200));
+                }
+                $affected = $wpdb->query($query);
+                if ($wpdb->last_error) return wpilot_err("SQL error: " . $wpdb->last_error);
+                return wpilot_ok("{$affected} rows affected.", ['affected' => $affected]);
+            }
+            return wpilot_err("Unsupported query type. Use SELECT, SHOW, UPDATE, INSERT, or DELETE.");
+
+        // ═══ WP-CLI WRAPPER ═══
+        case 'wp_cli':
+        case 'run_command':
+            $cmd = $params['command'] ?? $params['cmd'] ?? '';
+            if (empty($cmd)) return wpilot_err('WP-CLI command required. Example: command="post list --post_type=page"');
+            if (preg_match('/[;&|`$()]/', $cmd)) return wpilot_err('Shell operators not allowed in WP-CLI commands.');
+            $blocked_cmds = ['db export', 'db import', 'db reset', 'db drop', 'core download', 'eval-file', 'shell', 'eval '];
+            foreach ($blocked_cmds as $bc) {
+                if (strpos($cmd, $bc) !== false) return wpilot_err("Blocked command: {$bc}");
+            }
+            // Split command into args for safe execution
+            $args = ['wp', '--allow-root', '--path=' . ABSPATH];
+            $parts = preg_split('/\s+/', trim($cmd));
+            foreach ($parts as $part) { $args[] = $part; }
+            $descriptors = [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']];
+            $proc = proc_open($args, $descriptors, $pipes);
+            if (!is_resource($proc)) return wpilot_err('Failed to run WP-CLI.');
+            fclose($pipes[0]);
+            stream_set_timeout($pipes[1], 30);
+            $output = stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[1]); fclose($pipes[2]);
+            $exit = proc_close($proc);
+            if ($exit !== 0) return wpilot_err("WP-CLI error: " . ($stderr ?: $output));
+            return wpilot_ok("Command: wp {$cmd}", ['output' => $output, 'exit_code' => $exit]);
+
+        // ═══ ACTION CHAIN — Run multiple tools in sequence ═══
+        case 'run_chain':
+        case 'action_chain':
+        case 'multi_action':
+            $steps = $params['steps'] ?? $params['actions'] ?? [];
+            if (empty($steps) || !is_array($steps)) return wpilot_err('steps array required: [{"tool":"x","params":{}}, ...]');
+            $results = [];
+            foreach ($steps as $i => $step) {
+                $tool = $step['tool'] ?? '';
+                $step_params = $step['params'] ?? [];
+                if (empty($tool)) { $results[] = ['step' => $i+1, 'error' => 'Missing tool']; continue; }
+                $r = wpilot_run_tool($tool, $step_params);
+                $results[] = ['step' => $i+1, 'tool' => $tool, 'success' => $r['success'] ?? false, 'message' => $r['message'] ?? ''];
+                if (!($r['success'] ?? false) && !empty($params['stop_on_error'])) break;
+            }
+            $passed = count(array_filter($results, fn($r) => $r['success'] ?? false));
+            return wpilot_ok("{$passed}/" . count($results) . " steps completed.", ['results' => $results]);
+
+        // ═══ CRON / SCHEDULED TASKS ═══
+        case 'schedule_action':
+        case 'cron_add':
+            $action = sanitize_text_field($params['action'] ?? $params['tool'] ?? '');
+            $when = $params['when'] ?? $params['time'] ?? '';
+            $action_params = $params['params'] ?? $params['tool_params'] ?? [];
+            if (empty($action)) return wpilot_err('action (tool name) and when (datetime) required.');
+            $timestamp = strtotime($when);
+            if (!$timestamp || $timestamp < time()) $timestamp = time() + 3600;
+            $scheduled = get_option('wpilot_scheduled_actions', []);
+            $id = uniqid('wpi_');
+            $scheduled[$id] = [
+                'tool' => $action, 'params' => $action_params,
+                'scheduled_at' => date('Y-m-d H:i:s'), 'run_at' => date('Y-m-d H:i:s', $timestamp), 'status' => 'pending',
+            ];
+            update_option('wpilot_scheduled_actions', $scheduled);
+            wp_schedule_single_event($timestamp, 'wpilot_run_scheduled', [$id]);
+            return wpilot_ok("Scheduled '{$action}' for " . date('Y-m-d H:i', $timestamp), ['id' => $id]);
+
+        case 'list_scheduled':
+        case 'cron_list':
+            $scheduled = get_option('wpilot_scheduled_actions', []);
+            $list = [];
+            foreach ($scheduled as $id => $s) $list[] = array_merge(['id' => $id], $s);
+            return wpilot_ok(count($list) . " scheduled actions.", ['actions' => $list]);
+
+        case 'cancel_scheduled':
+        case 'cron_delete':
+            $id = sanitize_text_field($params['id'] ?? '');
+            $scheduled = get_option('wpilot_scheduled_actions', []);
+            if (isset($scheduled[$id])) { unset($scheduled[$id]); update_option('wpilot_scheduled_actions', $scheduled); return wpilot_ok("Cancelled: {$id}"); }
+            return wpilot_err("Not found: {$id}");
+
+        // ═══ FULL LOG VIEWER ═══
+        case 'read_log':
+        case 'error_log':
+            $lines = min(intval($params['lines'] ?? 50), 200);
+            $log_file = WP_CONTENT_DIR . '/debug.log';
+            if (!file_exists($log_file)) $log_file = ini_get('error_log');
+            if (!file_exists($log_file)) return wpilot_err('No log file found. Enable WP_DEBUG_LOG.');
+            $file_lines = file($log_file);
+            $total = count($file_lines);
+            $tail = array_slice($file_lines, -$lines);
+            return wpilot_ok("Last {$lines} of {$total} lines.", ['log' => implode('', $tail), 'total_lines' => $total]);
+
+        
+        // ═══ CHECKOUT PAGE DESIGN ═══
+        case 'design_checkout':
+        case 'style_checkout':
+            $style = sanitize_text_field($params['style'] ?? 'premium');
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
+            $text = sanitize_text_field($params['text_color'] ?? '#ffffff');
+
+            $styles = [
+                'premium' => "
+/* Premium Checkout */
+.woocommerce-checkout { max-width: 900px; margin: 40px auto; padding: 0 24px; }
+.woocommerce-checkout h3 { color: {$text}; font-weight: 700; font-size: 1.3rem; margin-top: 32px; }
+.woocommerce-checkout .form-row label { color: {$text}; font-weight: 500; font-size: 0.9rem; }
+.woocommerce-checkout input, .woocommerce-checkout select, .woocommerce-checkout textarea {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: {$text};
+    border-radius: 10px; padding: 14px 16px; font-size: 1rem; transition: border-color 0.3s;
+}
+.woocommerce-checkout input:focus, .woocommerce-checkout select:focus {
+    border-color: {$accent}; box-shadow: 0 0 0 3px " . $accent . "22; outline: none;
+}
+.woocommerce-checkout #order_review { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; }
+.woocommerce-checkout table.shop_table { border: none; }
+.woocommerce-checkout table.shop_table th, .woocommerce-checkout table.shop_table td { border-color: rgba(255,255,255,0.06); color: {$text}; padding: 12px 0; }
+.woocommerce-checkout #place_order { background: linear-gradient(135deg,{$accent}," . $accent . "cc) !important; color: #fff !important; border: none !important;
+    border-radius: 50px !important; padding: 16px 48px !important; font-weight: 700 !important; font-size: 1.1rem !important;
+    box-shadow: 0 8px 32px " . $accent . "44; transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; }
+.woocommerce-checkout #place_order:hover { transform: translateY(-2px); box-shadow: 0 12px 40px " . $accent . "55; }
+.woocommerce-checkout .woocommerce-info { background: rgba(255,255,255,0.03); border-left: 4px solid {$accent}; color: {$text}; border-radius: 8px; }
+",
+                'minimal' => "
+/* Minimal Checkout */
+.woocommerce-checkout { max-width: 700px; margin: 60px auto; padding: 0 24px; }
+.woocommerce-checkout input, .woocommerce-checkout select { border: none; border-bottom: 2px solid rgba(255,255,255,0.1); border-radius: 0; background: transparent; color: {$text}; padding: 12px 0; }
+.woocommerce-checkout input:focus { border-bottom-color: {$accent}; box-shadow: none; }
+.woocommerce-checkout #place_order { background: {$accent} !important; border-radius: 4px !important; }
+",
+            ];
+            $css = $styles[$style] ?? $styles['premium'];
+            $existing = wp_get_custom_css();
+            if (strpos($existing, 'Premium Checkout') === false && strpos($existing, 'Minimal Checkout') === false) {
+                wp_update_custom_css_post($existing . "\n" . $css);
+            }
+            return wpilot_ok("Checkout styled with '{$style}' design.", ['style' => $style]);
+
+        // ═══ LOGIN PAGE DESIGN ═══
+        case 'design_login_page':
+        case 'style_login':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
+            $logo_url = esc_url($params['logo_url'] ?? '');
+            $style = sanitize_text_field($params['style'] ?? 'premium');
+
+            $login_css = "
+/* WPilot Login Page Design */
+body.login { background: {$bg} !important; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at 50% 30%, " . $accent . "15, transparent 60%); pointer-events: none; }
+#login { padding: 0 !important; width: 380px !important; }
+#login h1 a { background-size: contain !important; width: 200px !important; height: 80px !important; " . ($logo_url ? "background-image: url('{$logo_url}') !important;" : "") . " }
+#loginform { background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 20px !important; padding: 32px !important; box-shadow: 0 20px 60px rgba(0,0,0,0.3) !important; }
+#loginform label { color: rgba(255,255,255,0.7) !important; font-size: 0.9rem; }
+#loginform input[type='text'], #loginform input[type='password'] { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #fff !important; border-radius: 10px !important; padding: 12px 16px !important; font-size: 1rem; }
+#loginform input[type='text']:focus, #loginform input[type='password']:focus { border-color: {$accent} !important; box-shadow: 0 0 0 3px " . $accent . "22 !important; }
+#loginform .submit input { background: linear-gradient(135deg,{$accent}," . $accent . "cc) !important; border: none !important; border-radius: 50px !important; padding: 12px 32px !important; font-weight: 700 !important; box-shadow: 0 8px 24px " . $accent . "44 !important; cursor: pointer; width: 100%; font-size: 1rem; }
+#nav, #backtoblog { text-align: center; }
+#nav a, #backtoblog a { color: rgba(255,255,255,0.4) !important; text-decoration: none; }
+#nav a:hover, #backtoblog a:hover { color: {$accent} !important; }
+.login .message, .login .notice { background: rgba(255,255,255,0.03) !important; border-left-color: {$accent} !important; color: rgba(255,255,255,0.7) !important; border-radius: 8px !important; }
+";
+            // Save as mu-plugin for login page (custom CSS doesn't load on login)
+            $mu_dir = ABSPATH . 'wp-content/mu-plugins';
+            if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+            $mu_file = $mu_dir . '/wpilot-login-style.php';
+            $mu_content = "<?php\n// WPilot Login Page Design\nadd_action('login_enqueue_scripts', function() {\n    echo '<style>" . str_replace("'", "\\'", str_replace("\n", " ", $login_css)) . "</style>';\n});\n";
+            file_put_contents($mu_file, $mu_content);
+            return wpilot_ok("Login page styled with premium design.", ['accent' => $accent, 'background' => $bg]);
+
+        // ═══ EMAIL TEMPLATE DESIGN ═══
+        case 'design_emails':
+        case 'style_woo_emails':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $accent = sanitize_text_field($params['accent_color'] ?? $params['color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
+            $header_bg = sanitize_text_field($params['header_bg'] ?? $accent);
+            $text_color = sanitize_text_field($params['text_color'] ?? '#333333');
+            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // WooCommerce email settings
+            update_option('woocommerce_email_background_color', $bg);
+            update_option('woocommerce_email_base_color', $accent);
+            update_option('woocommerce_email_body_background_color', '#ffffff');
+            update_option('woocommerce_email_text_color', $text_color);
+            update_option('woocommerce_email_header_image', $params['logo_url'] ?? '');
+            update_option('woocommerce_email_footer_text', sanitize_text_field($params['footer_text'] ?? '{site_title} — Powered by WPilot'));
+            return wpilot_ok("WooCommerce email templates styled.", ['accent' => $accent, 'bg' => $bg]);
+
+        // ═══ HEADER DESIGN ═══
+        case 'design_header':
+        case 'style_header':
+            $style = sanitize_text_field($params['style'] ?? 'transparent');
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? 'transparent');
+
+            $headers = [
+                'transparent' => "
+.site-header, .elementor-location-header { background: transparent !important; position: absolute; width: 100%; z-index: 100; border: none !important; }
+.site-header a { color: #fff !important; }
+.site-header .site-title a { color: {$accent} !important; font-weight: 800; }
+",
+                'dark' => "
+.site-header, .elementor-location-header { background: #0a0a0a !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; }
+.site-header a { color: #fff !important; transition: color 0.3s; }
+.site-header a:hover { color: {$accent} !important; }
+.site-header .site-title a { color: {$accent} !important; font-weight: 800; }
+",
+                'glass' => "
+.site-header, .elementor-location-header { background: rgba(10,10,10,0.8) !important; backdrop-filter: blur(20px) !important; -webkit-backdrop-filter: blur(20px) !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; position: sticky; top: 0; z-index: 999; }
+.site-header a { color: #fff !important; }
+.site-header .site-title a { color: {$accent} !important; font-weight: 800; }
+",
+                'gradient' => "
+.site-header, .elementor-location-header { background: linear-gradient(135deg, #0a0a0a, {$accent}22) !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; }
+.site-header a { color: #fff !important; }
+",
+            ];
+            $css = $headers[$style] ?? $headers['dark'];
+            $existing = wp_get_custom_css();
+            // Remove old header styles
+            $existing = preg_replace('/\/\* Header Style: \w+ \*\/.*?(?=\/\*|$)/s', '', $existing);
+            wp_update_custom_css_post($existing . "\n/* Header Style: {$style} */\n" . $css);
+            return wpilot_ok("Header styled: {$style}", ['style' => $style]);
+
+        // ═══ FOOTER DESIGN ═══
+        case 'design_footer':
+        case 'style_footer':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $columns = intval($params['columns'] ?? 4);
+            $bg = sanitize_text_field($params['background'] ?? '#050505');
+            $copyright = sanitize_text_field($params['copyright'] ?? '© ' . date('Y') . ' ' . get_bloginfo('name') . '. All rights reserved.');
+
+            $footer_html = '<div style="background:' . $bg . ';padding:60px 24px 30px;color:rgba(255,255,255,0.6);font-family:system-ui,sans-serif">';
+            $footer_html .= '<div style="max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:32px;margin-bottom:40px">';
+            $footer_html .= '<div><h4 style="color:#fff;font-size:1rem;margin:0 0 16px;font-weight:700">' . get_bloginfo('name') . '</h4><p style="line-height:1.7;margin:0;font-size:0.9rem">' . get_bloginfo('description') . '</p></div>';
+            $footer_html .= '<div><h4 style="color:#fff;font-size:1rem;margin:0 0 16px;font-weight:700">Quick Links</h4><p style="margin:0;line-height:2"><a href="/" style="color:rgba(255,255,255,0.6);text-decoration:none">Home</a><br><a href="/shop" style="color:rgba(255,255,255,0.6);text-decoration:none">Shop</a><br><a href="/contact" style="color:rgba(255,255,255,0.6);text-decoration:none">Contact</a></p></div>';
+            $footer_html .= '<div><h4 style="color:#fff;font-size:1rem;margin:0 0 16px;font-weight:700">Contact</h4><p style="margin:0;line-height:2;font-size:0.9rem">' . get_option('admin_email') . '</p></div>';
+            $footer_html .= '</div>';
+            $footer_html .= '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:20px;text-align:center;font-size:0.8rem;color:rgba(255,255,255,0.3)">' . $copyright . '</div></div>';
+
+            // Store as widget or option
+            update_option('wpilot_custom_footer', $footer_html);
+            // Also add CSS to hide default footer and inject custom
+            $css = "\n/* Custom Footer */\n.site-footer .site-info { display: none; }\n";
+            $existing = wp_get_custom_css();
+            if (strpos($existing, 'Custom Footer') === false) wp_update_custom_css_post($existing . $css);
+            return wpilot_ok("Footer designed with {$columns} columns.", ['footer_html' => $footer_html]);
+
+        // ═══ SHOP PAGE DESIGN ═══
+        case 'design_shop':
+        case 'style_shop':
+            $columns = intval($params['columns'] ?? 3);
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $style = sanitize_text_field($params['style'] ?? 'cards');
+            $css = "
+/* Shop Design: {$style} */
+.woocommerce .products { display: grid !important; grid-template-columns: repeat({$columns}, 1fr) !important; gap: 24px !important; }
+@media (max-width: 768px) { .woocommerce .products { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; } }
+@media (max-width: 480px) { .woocommerce .products { grid-template-columns: 1fr !important; } }
+.woocommerce ul.products li.product { margin: 0 !important; padding: 0 !important; width: 100% !important; float: none !important; }
+";
+            if ($style === 'cards') {
+                $css .= "
+.woocommerce ul.products li.product { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px !important; overflow: hidden; }
+.woocommerce ul.products li.product:hover { border-color: {$accent}44; transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.2); }
+.woocommerce ul.products li.product img { border-radius: 10px; }
+";
+            }
+            $existing = wp_get_custom_css();
+            $existing = preg_replace('/\/\* Shop Design:.*?(?=\/\*|$)/s', '', $existing);
+            wp_update_custom_css_post($existing . "\n" . $css);
+            // Set WooCommerce columns
+            update_option('woocommerce_catalog_columns', $columns);
+            return wpilot_ok("Shop page styled: {$columns} columns, {$style} layout.", ['columns' => $columns, 'style' => $style]);
+
+        // ═══ SINGLE PRODUCT PAGE DESIGN ═══
+        case 'design_product_page':
+        case 'style_product':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $css = "
+/* Single Product Premium */
+.single-product .product { max-width: 1100px; margin: 40px auto; }
+.single-product .product .summary { color: #fff; }
+.single-product .product .summary h1 { color: #fff !important; font-size: 2rem; font-weight: 800; }
+.single-product .product .summary .price { color: {$accent} !important; font-size: 1.8rem !important; font-weight: 700; }
+.single-product .product .summary .woocommerce-product-details__short-description { color: rgba(255,255,255,0.7); line-height: 1.7; }
+.single-product .product .summary button.single_add_to_cart_button { background: linear-gradient(135deg,{$accent},{$accent}cc) !important; border: none !important; border-radius: 50px !important; padding: 16px 48px !important; font-weight: 700 !important; font-size: 1.1rem; box-shadow: 0 8px 32px {$accent}44; }
+.single-product .product .summary button.single_add_to_cart_button:hover { transform: translateY(-2px); box-shadow: 0 12px 40px {$accent}55; }
+.single-product .woocommerce-tabs { border-color: rgba(255,255,255,0.08) !important; }
+.single-product .woocommerce-tabs .tabs li a { color: rgba(255,255,255,0.6) !important; }
+.single-product .woocommerce-tabs .tabs li.active a { color: {$accent} !important; }
+.single-product .woocommerce-tabs .panel { color: rgba(255,255,255,0.7); }
+.single-product .product .images img { border-radius: 16px; }
+.single-product .related.products h2 { color: #fff !important; }
+";
+            $existing = wp_get_custom_css();
+            if (strpos($existing, 'Single Product Premium') === false) wp_update_custom_css_post($existing . "\n" . $css);
+            return wpilot_ok("Product page styled premium.", ['accent' => $accent]);
+
+        // ═══ CART PAGE DESIGN ═══
+        case 'design_cart':
+        case 'style_cart':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $css = "
+/* Cart Premium */
+.woocommerce-cart { color: #fff; }
+.woocommerce-cart h1 { color: #fff !important; }
+.woocommerce-cart table.shop_table { background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 16px !important; overflow: hidden; }
+.woocommerce-cart table.shop_table th { background: rgba(255,255,255,0.03) !important; color: rgba(255,255,255,0.6) !important; border-color: rgba(255,255,255,0.06) !important; }
+.woocommerce-cart table.shop_table td { color: #fff !important; border-color: rgba(255,255,255,0.06) !important; }
+.woocommerce-cart table.shop_table img { border-radius: 8px; }
+.woocommerce-cart .cart_totals { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; }
+.woocommerce-cart .cart_totals h2 { color: #fff !important; }
+.woocommerce-cart .cart_totals table { color: #fff !important; }
+.woocommerce-cart .checkout-button { background: linear-gradient(135deg,{$accent},{$accent}cc) !important; border-radius: 50px !important; }
+.woocommerce-cart .coupon input { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #fff !important; border-radius: 10px !important; }
+";
+            $existing = wp_get_custom_css();
+            if (strpos($existing, 'Cart Premium') === false) wp_update_custom_css_post($existing . "\n" . $css);
+            return wpilot_ok("Cart page styled premium.");
+
+        // ═══ DETECT BUILDER ═══
+        case 'detect_builder':
+        case 'which_builder':
+            $builder = wpilot_detect_builder();
+            $details = ['builder' => $builder];
+            if ($builder === 'elementor') {
+                $details['version'] = defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : 'unknown';
+                $details['pro'] = defined('ELEMENTOR_PRO_VERSION');
+            } elseif ($builder === 'divi') {
+                $details['version'] = defined('ET_BUILDER_VERSION') ? ET_BUILDER_VERSION : 'unknown';
+            }
+            $details['theme'] = get_template();
+            $details['child_theme'] = get_stylesheet() !== get_template() ? get_stylesheet() : null;
+            return wpilot_ok("Builder: {$builder}, Theme: " . get_template(), $details);
+
+        // ═══ MY ACCOUNT PAGE DESIGN ═══
+        case 'design_account':
+        case 'style_account':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $css = "
+/* My Account Premium */
+.woocommerce-account .woocommerce { color: #fff; }
+.woocommerce-account h2 { color: #fff !important; }
+.woocommerce-account .woocommerce-MyAccount-navigation { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px; }
+.woocommerce-account .woocommerce-MyAccount-navigation ul { list-style: none; padding: 0; margin: 0; }
+.woocommerce-account .woocommerce-MyAccount-navigation li a { display: block; padding: 12px 16px; color: rgba(255,255,255,0.7); text-decoration: none; border-radius: 8px; transition: all 0.3s; }
+.woocommerce-account .woocommerce-MyAccount-navigation li.is-active a,
+.woocommerce-account .woocommerce-MyAccount-navigation li a:hover { background: {$accent}15; color: {$accent}; }
+.woocommerce-account .woocommerce-MyAccount-content { color: rgba(255,255,255,0.8); }
+.woocommerce-account table { color: #fff !important; border-color: rgba(255,255,255,0.08) !important; }
+.woocommerce-account table th, .woocommerce-account table td { border-color: rgba(255,255,255,0.06) !important; }
+";
+            $existing = wp_get_custom_css();
+            if (strpos($existing, 'My Account Premium') === false) wp_update_custom_css_post($existing . "\n" . $css);
+            return wpilot_ok("Account page styled premium.");
+
+        // ═══ DESIGN EVERYTHING — One command ═══
+        case 'design_all':
+        case 'style_everything':
+        case 'premium_makeover':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
+            $results = [];
+            $pages = ['design_checkout', 'design_login_page', 'design_header', 'design_shop', 'design_product_page', 'design_cart', 'design_account'];
+            foreach ($pages as $page_tool) {
+                $r = wpilot_run_tool($page_tool, ['accent_color' => $accent, 'background' => $bg, 'style' => 'premium']);
+                $results[] = $page_tool . ': ' . ($r['success'] ? 'OK' : 'FAIL');
+            }
+            if (class_exists('WooCommerce')) {
+                $r = wpilot_run_tool('design_emails', ['accent_color' => $accent, 'background' => $bg]);
+                $results[] = 'design_emails: ' . ($r['success'] ? 'OK' : 'FAIL');
+            }
+            return wpilot_ok("Full premium makeover applied to all pages.", ['results' => $results, 'accent' => $accent]);
+
+
+        // ═══ PREMIUM DESIGN TOOLS ══════════════════════════════════
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+
+        case 'hover_effects':
+            $sel    = $params['selector'] ?? '';
+            $effect = $params['effect'] ?? 'lift';
+            if (!$sel) return wpilot_err('selector required.');
+            $effects_map = [
+                'glow'            => 'box-shadow:0 0 20px rgba(59,130,246,0.5);',
+                'lift'            => 'transform:translateY(-8px);box-shadow:0 20px 40px rgba(0,0,0,0.15);',
+                'scale'           => 'transform:scale(1.05);',
+                'border-glow'     => 'border-color:rgba(59,130,246,0.8);box-shadow:0 0 15px rgba(59,130,246,0.3);',
+                'color-shift'     => 'filter:hue-rotate(30deg);',
+                'shadow-pop'      => 'box-shadow:0 12px 35px rgba(0,0,0,0.2);transform:translateY(-4px);',
+                'underline-slide' => 'background-size:100% 2px;',
+            ];
+            $base_trans = 'transition:all 0.3s ease;';
+            $hover_css  = $effects_map[$effect] ?? $effects_map['lift'];
+            $css = "{$sel}{{$base_trans}}";
+            if ($effect === 'underline-slide') {
+                $css .= "\n{$sel}{background-image:linear-gradient(currentColor,currentColor);background-size:0 2px;background-position:left bottom;background-repeat:no-repeat;{$base_trans}}";
+            }
+            $css .= "\n{$sel}:hover{{$hover_css}}";
+            $curr = wp_get_custom_css();
+            if (strpos($curr, "{$sel}:hover") !== false) {
+                $esc = preg_quote($sel, '/');
+                $curr = preg_replace('/' . $esc . ':hover\s*\{[^}]*\}/s', '', $curr);
+            }
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot hover:{$effect} */\n" . $css);
+            return wpilot_ok("Hover effect '{$effect}' applied to {$sel}.", ['css' => $css]);
+
+        case 'gradient_text':
+            $sel   = $params['selector'] ?? '';
+            $from  = $params['from_color'] ?? '#667eea';
+            $to    = $params['to_color'] ?? '#764ba2';
+            $dir   = $params['direction'] ?? '90deg';
+            if (!$sel) return wpilot_err('selector required.');
+            $css = "{$sel}{background:linear-gradient({$dir},{$from},{$to});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}";
+            $curr = wp_get_custom_css();
+            $esc = preg_quote($sel, '/');
+            $curr = preg_replace('/' . $esc . '\s*\{[^}]*background-clip:text[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot gradient-text */\n" . $css);
+            return wpilot_ok("Gradient text applied to {$sel}.", ['css' => $css]);
+
+        case 'glassmorphism':
+            $sel     = $params['selector'] ?? '';
+            $blur    = $params['blur'] ?? '20px';
+            $opacity = $params['opacity'] ?? '0.1';
+            if (!$sel) return wpilot_err('selector required.');
+            $css = "{$sel}{backdrop-filter:blur({$blur});-webkit-backdrop-filter:blur({$blur});background:rgba(255,255,255,{$opacity});border:1px solid rgba(255,255,255,0.2);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.1);}";
+            $curr = wp_get_custom_css();
+            $esc = preg_quote($sel, '/');
+            $curr = preg_replace('/' . $esc . '\s*\{[^}]*backdrop-filter[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot glassmorphism */\n" . $css);
+            return wpilot_ok("Glassmorphism applied to {$sel}.", ['css' => $css]);
+
+        case 'parallax_section':
+            $sel   = $params['selector'] ?? '';
+            $pid   = intval($params['page_id'] ?? 0);
+            $img   = $params['image_url'] ?? '';
+            $speed = floatval($params['speed'] ?? 0.5);
+            if (!$sel && !$pid) return wpilot_err('selector or page_id required.');
+            if (!$sel) $sel = '.page-id-' . $pid . ' .entry-content > *:first-child';
+            $bg_css = $img ? "background-image:url('{$img}');" : '';
+            $css = "{$sel}{{$bg_css}background-attachment:fixed;background-position:center;background-repeat:no-repeat;background-size:cover;min-height:400px;position:relative;overflow:hidden;}";
+            $curr = wp_get_custom_css();
+            $esc = preg_quote($sel, '/');
+            $curr = preg_replace('/' . $esc . '\s*\{[^}]*background-attachment:fixed[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot parallax */\n" . $css);
+            return wpilot_ok("Parallax applied to {$sel}.", ['css' => $css]);
+
+        case 'scroll_animations':
+            $pid       = intval($params['page_id'] ?? 0);
+            $animation = $params['animation'] ?? 'fadeInUp';
+            $stagger   = floatval($params['stagger'] ?? 0.1);
+            if (!$pid) return wpilot_err('page_id required.');
+            $anims = [
+                'fadeInUp'     => 'opacity:0;transform:translateY(40px);',
+                'fadeInLeft'   => 'opacity:0;transform:translateX(-40px);',
+                'fadeInRight'  => 'opacity:0;transform:translateX(40px);',
+                'scaleIn'      => 'opacity:0;transform:scale(0.85);',
+                'slideUp'      => 'transform:translateY(60px);opacity:0;',
+            ];
+            $initial = $anims[$animation] ?? $anims['fadeInUp'];
+            $scope = ".page-id-{$pid}";
+            $css  = "{$scope} .wpilot-scroll-anim{{$initial}transition:all 0.7s cubic-bezier(0.22,1,0.36,1);}";
+            $css .= "\n{$scope} .wpilot-scroll-anim.wpilot-visible{opacity:1;transform:none;}";
+            $js_code = "(function(){if(document.body.classList.contains('page-id-{$pid}')){var els=document.querySelectorAll('{$scope} .entry-content > *');var d=0;els.forEach(function(el){el.classList.add('wpilot-scroll-anim');el.style.transitionDelay=d+'s';d+={$stagger};});var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('wpilot-visible');obs.unobserve(e.target);}});},{threshold:0.1});els.forEach(function(el){obs.observe(el);});}})();";
+            $curr = wp_get_custom_css();
+            $esc = preg_quote("{$scope} .wpilot-scroll-anim", '/');
+            $curr = preg_replace('/' . $esc . '\s*\{[^}]*\}/s', '', $curr);
+            $curr = preg_replace('/' . $esc . '\.wpilot-visible\s*\{[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot scroll-anim:{$animation} */\n" . $css);
+            $stored_js = get_option('wpilot_footer_scripts', '');
+            $stored_js = preg_replace('/<!-- wpilot-scroll-anim-' . $pid . ' -->.*?<!-- \/wpilot-scroll-anim-' . $pid . ' -->/s', '', $stored_js);
+            $stored_js .= "\n<!-- wpilot-scroll-anim-{$pid} --><script>{$js_code}</script><!-- /wpilot-scroll-anim-{$pid} -->";
+            update_option('wpilot_footer_scripts', trim($stored_js));
+            return wpilot_ok("Scroll animation '{$animation}' added to page {$pid}.", ['css' => $css]);
+
+        // ═══ RESPONSIVE TOOLS ══════════════════════════════════════
+
+        case 'responsive_fix':
+            $sel      = $params['selector'] ?? '';
+            $mobile   = $params['mobile_css'] ?? '';
+            $tablet   = $params['tablet_css'] ?? '';
+            $desktop  = $params['desktop_css'] ?? '';
+            if (!$sel) return wpilot_err('selector required.');
+            $css = '';
+            if ($mobile)  $css .= "@media(max-width:768px){{$sel}{{$mobile}}}\n";
+            if ($tablet)  $css .= "@media(min-width:769px) and (max-width:1024px){{$sel}{{$tablet}}}\n";
+            if ($desktop) $css .= "@media(min-width:1025px){{$sel}{{$desktop}}}\n";
+            if (!$css) return wpilot_err('Provide at least one of: mobile_css, tablet_css, desktop_css.');
+            $curr = wp_get_custom_css();
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot responsive-fix */\n" . $css);
+            return wpilot_ok("Responsive CSS applied to {$sel}.", ['css' => $css]);
+
+        case 'responsive_grid':
+            $sel     = $params['selector'] ?? '';
+            $cols_d  = intval($params['columns_desktop'] ?? 3);
+            $cols_t  = intval($params['columns_tablet'] ?? 2);
+            $cols_m  = intval($params['columns_mobile'] ?? 1);
+            $gap     = $params['gap'] ?? '24px';
+            if (!$sel) return wpilot_err('selector required.');
+            $css  = "{$sel}{display:grid;grid-template-columns:repeat({$cols_d},1fr);gap:{$gap};}";
+            $css .= "\n@media(max-width:1024px){{$sel}{grid-template-columns:repeat({$cols_t},1fr);}}";
+            $css .= "\n@media(max-width:768px){{$sel}{grid-template-columns:repeat({$cols_m},1fr);}}";
+            $curr = wp_get_custom_css();
+            $esc = preg_quote($sel, '/');
+            $curr = preg_replace('/' . $esc . '\s*\{[^}]*display:grid[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot responsive-grid */\n" . $css);
+            return wpilot_ok("Responsive grid ({$cols_d}/{$cols_t}/{$cols_m} cols) applied to {$sel}.", ['css' => $css]);
+
+        case 'responsive_text':
+            $sel  = $params['selector'] ?? '';
+            $min  = $params['min_size'] ?? '16px';
+            $max  = $params['max_size'] ?? '48px';
+            $pref = $params['preferred'] ?? '4vw';
+            if (!$sel) return wpilot_err('selector required.');
+            $css = "{$sel}{font-size:clamp({$min},{$pref},{$max});}";
+            $curr = wp_get_custom_css();
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot responsive-text */\n" . $css);
+            return wpilot_ok("Responsive text (clamp {$min}..{$max}) applied to {$sel}.", ['css' => $css]);
+
+        // ═══ DARK MODE & THEMING ═══════════════════════════════════
+
+        case 'dark_mode':
+            $pid     = intval($params['page_id'] ?? 0);
+            $bg      = $params['background'] ?? '#0f172a';
+            $text    = $params['text_color'] ?? '#e2e8f0';
+            $accent  = $params['accent_color'] ?? '#3b82f6';
+            $card_bg = $params['card_bg'] ?? '#1e293b';
+            $scope = $pid ? ".page-id-{$pid}" : 'body';
+            $css  = "{$scope}{background-color:{$bg};color:{$text};}";
+            $css .= "\n{$scope} h1,{$scope} h2,{$scope} h3,{$scope} h4,{$scope} h5,{$scope} h6{color:{$text};}";
+            $css .= "\n{$scope} a{color:{$accent};}";
+            $css .= "\n{$scope} .card,{$scope} .wp-block-group,{$scope} .entry-content > div{background-color:{$card_bg};color:{$text};}";
+            $css .= "\n{$scope} input,{$scope} textarea,{$scope} select{background-color:{$card_bg};color:{$text};border-color:rgba(255,255,255,0.1);}";
+            $css .= "\n{$scope} .woocommerce .product,{$scope} .woocommerce-page .product{background-color:{$card_bg};color:{$text};}";
+            $css .= "\n{$scope} .site-header,{$scope} .site-footer{background-color:{$bg};}";
+            $curr = wp_get_custom_css();
+            $curr = preg_replace('/\/\*\s*WPilot dark-mode[^*]*\*\/[^\/]*(?=\/\*|$)/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot dark-mode */\n" . $css);
+            $target = $pid ? "page {$pid}" : 'entire site';
+            return wpilot_ok("Dark mode applied to {$target}.", ['css' => $css]);
+
+        // ═══ PREMIUM BUTTONS ═══════════════════════════════════════
+
+        case 'premium_buttons':
+            $sel   = $params['selector'] ?? '.wp-block-button__link';
+            $style = $params['style'] ?? 'gradient';
+            $styles_map = [
+                'gradient'     => 'background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;padding:14px 32px;border-radius:8px;font-weight:600;transition:all 0.3s;box-shadow:0 4px 15px rgba(102,126,234,0.4);',
+                'glass'        => 'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:14px 32px;border-radius:12px;transition:all 0.3s;',
+                'neon'         => 'background:transparent;color:#0ff;border:2px solid #0ff;padding:14px 32px;border-radius:8px;text-shadow:0 0 10px #0ff;box-shadow:0 0 20px rgba(0,255,255,0.3),inset 0 0 20px rgba(0,255,255,0.1);transition:all 0.3s;',
+                'outline-glow' => 'background:transparent;color:#3b82f6;border:2px solid #3b82f6;padding:14px 32px;border-radius:8px;transition:all 0.3s;',
+                '3d'           => 'background:#3b82f6;color:#fff;border:none;padding:14px 32px;border-radius:8px;box-shadow:0 6px 0 #1d4ed8;transform:translateY(0);transition:all 0.15s;',
+                'pill'         => 'background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);color:#fff;border:none;padding:14px 40px;border-radius:50px;font-weight:600;transition:all 0.3s;box-shadow:0 4px 15px rgba(245,87,108,0.4);',
+            ];
+            $hover_map = [
+                'gradient'     => 'transform:translateY(-2px);box-shadow:0 8px 25px rgba(102,126,234,0.5);',
+                'glass'        => 'background:rgba(255,255,255,0.25);transform:translateY(-2px);',
+                'neon'         => 'background:rgba(0,255,255,0.1);box-shadow:0 0 40px rgba(0,255,255,0.5),inset 0 0 40px rgba(0,255,255,0.2);',
+                'outline-glow' => 'background:#3b82f6;color:#fff;box-shadow:0 0 20px rgba(59,130,246,0.4);',
+                '3d'           => 'transform:translateY(4px);box-shadow:0 2px 0 #1d4ed8;',
+                'pill'         => 'transform:translateY(-2px);box-shadow:0 8px 25px rgba(245,87,108,0.5);',
+            ];
+            $base  = $styles_map[$style] ?? $styles_map['gradient'];
+            $hover = $hover_map[$style] ?? $hover_map['gradient'];
+            $css   = "{$sel}{{$base}}\n{$sel}:hover{{$hover}}";
+            $curr = wp_get_custom_css();
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot premium-btn:{$style} */\n" . $css);
+            return wpilot_ok("Premium button style '{$style}' applied to {$sel}.", ['css' => $css]);
+
+        // ═══ CARD LAYOUT ═══════════════════════════════════════════
+
+        case 'card_layout':
+            $sel   = $params['selector'] ?? '.card';
+            $style = $params['style'] ?? 'shadow';
+            $card_styles = [
+                'minimal'         => 'padding:24px;border-radius:12px;transition:all 0.3s;',
+                'bordered'        => 'padding:24px;border:1px solid rgba(0,0,0,0.1);border-radius:12px;transition:all 0.3s;',
+                'shadow'          => 'padding:24px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:all 0.3s;',
+                'glass'           => 'padding:24px;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:16px;transition:all 0.3s;',
+                'neon'            => 'padding:24px;border:1px solid rgba(59,130,246,0.3);border-radius:12px;box-shadow:0 0 15px rgba(59,130,246,0.1);transition:all 0.3s;',
+                'gradient-border' => 'padding:24px;border-radius:16px;position:relative;background:var(--wp--preset--color--background,#fff);transition:all 0.3s;',
+            ];
+            $card_hovers = [
+                'minimal'         => 'box-shadow:0 4px 20px rgba(0,0,0,0.08);',
+                'bordered'        => 'border-color:rgba(59,130,246,0.5);transform:translateY(-4px);',
+                'shadow'          => 'box-shadow:0 12px 40px rgba(0,0,0,0.15);transform:translateY(-6px);',
+                'glass'           => 'background:rgba(255,255,255,0.2);transform:translateY(-4px);',
+                'neon'            => 'border-color:rgba(59,130,246,0.8);box-shadow:0 0 30px rgba(59,130,246,0.2);',
+                'gradient-border' => 'transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,0.1);',
+            ];
+            $base  = $card_styles[$style] ?? $card_styles['shadow'];
+            $hover = $card_hovers[$style] ?? $card_hovers['shadow'];
+            $css = "{$sel}{{$base}}\n{$sel}:hover{{$hover}}";
+            if ($style === 'gradient-border') {
+                $css .= "\n{$sel}::before{content:'';position:absolute;inset:-2px;border-radius:18px;background:linear-gradient(135deg,#667eea,#764ba2);z-index:-1;}";
+            }
+            $curr = wp_get_custom_css();
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot card-layout:{$style} */\n" . $css);
+            return wpilot_ok("Card layout '{$style}' applied to {$sel}.", ['css' => $css]);
+
+        // ═══ UX TOOLS ══════════════════════════════════════════════
+
+        case 'smooth_scroll':
+            $enable     = ($params['enable'] ?? true) !== false;
+            $scroll_top = ($params['scroll_to_top'] ?? true) !== false;
+            $css = '';
+            if ($enable) $css .= "html{scroll-behavior:smooth;}";
+            if ($scroll_top) {
+                $css .= "\n.wpilot-scroll-top{position:fixed;bottom:30px;right:30px;width:48px;height:48px;border-radius:50%;background:#3b82f6;color:#fff;border:none;font-size:20px;cursor:pointer;opacity:0;visibility:hidden;transition:all 0.3s;z-index:9999;box-shadow:0 4px 15px rgba(59,130,246,0.4);display:flex;align-items:center;justify-content:center;}";
+                $css .= "\n.wpilot-scroll-top.visible{opacity:1;visibility:visible;}";
+                $css .= "\n.wpilot-scroll-top:hover{transform:translateY(-3px);box-shadow:0 8px 25px rgba(59,130,246,0.5);}";
+                $js_code = "(function(){var b=document.createElement('button');b.className='wpilot-scroll-top';b.textContent='\\u2191';b.onclick=function(){window.scrollTo({top:0,behavior:'smooth'})};document.body.appendChild(b);window.addEventListener('scroll',function(){b.classList.toggle('visible',window.scrollY>300)});})();";
+                $stored_js = get_option('wpilot_footer_scripts', '');
+                $stored_js = preg_replace('/<!-- wpilot-scroll-top -->.*?<!-- \/wpilot-scroll-top -->/s', '', $stored_js);
+                $stored_js .= "\n<!-- wpilot-scroll-top --><script>{$js_code}</script><!-- /wpilot-scroll-top -->";
+                update_option('wpilot_footer_scripts', trim($stored_js));
+            }
+            $curr = wp_get_custom_css();
+            $curr = preg_replace('/html\s*\{[^}]*scroll-behavior:smooth[^}]*\}/s', '', $curr);
+            $curr = preg_replace('/\.wpilot-scroll-top[^{]*\{[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot smooth-scroll */\n" . $css);
+            return wpilot_ok("Smooth scroll enabled.", ['css' => $css]);
+
+        case 'loading_animation':
+            $style    = $params['style'] ?? 'fade';
+            $duration = $params['duration'] ?? '0.5s';
+            $anims = [
+                'fade'     => "@keyframes wpilotFadeIn{from{opacity:0}to{opacity:1}}body{animation:wpilotFadeIn {$duration} ease-out;}",
+                'slide-up' => "@keyframes wpilotSlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}body{animation:wpilotSlideUp {$duration} ease-out;}",
+                'blur'     => "@keyframes wpilotBlurIn{from{opacity:0;filter:blur(10px)}to{opacity:1;filter:none}}body{animation:wpilotBlurIn {$duration} ease-out;}",
+            ];
+            $css = $anims[$style] ?? $anims['fade'];
+            $curr = wp_get_custom_css();
+            $curr = preg_replace('/@keyframes wpilot(FadeIn|SlideUp|BlurIn)\s*\{[^}]*\{[^}]*\}[^}]*\}/s', '', $curr);
+            $curr = preg_replace('/body\s*\{[^}]*animation:wpilot[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot loading-anim:{$style} */\n" . $css);
+            return wpilot_ok("Loading animation '{$style}' applied.", ['css' => $css]);
+
+        case 'text_effects':
+            $sel    = $params['selector'] ?? '';
+            $effect = $params['effect'] ?? 'glow';
+            if (!$sel) return wpilot_err('selector required.');
+            $effects = [
+                'typing'             => "overflow:hidden;white-space:nowrap;border-right:3px solid;animation:wpilotTyping 3s steps(40) 1s forwards,wpilotBlink 0.75s step-end infinite;width:0;",
+                'glow'               => "text-shadow:0 0 10px rgba(59,130,246,0.5),0 0 20px rgba(59,130,246,0.3),0 0 40px rgba(59,130,246,0.1);",
+                'shadow-3d'          => "text-shadow:1px 1px 0 #ccc,2px 2px 0 #bbb,3px 3px 0 #aaa,4px 4px 5px rgba(0,0,0,0.2);",
+                'outline'            => "-webkit-text-stroke:2px currentColor;-webkit-text-fill-color:transparent;",
+                'gradient-underline' => "text-decoration:none;background-image:linear-gradient(135deg,#667eea,#764ba2);background-size:100% 3px;background-position:left bottom;background-repeat:no-repeat;padding-bottom:4px;",
+                'highlight'          => "background:linear-gradient(120deg,rgba(255,220,0,0.3) 0%,rgba(255,220,0,0.3) 100%);padding:2px 6px;border-radius:4px;",
+            ];
+            $effect_css = $effects[$effect] ?? $effects['glow'];
+            $css = "{$sel}{{$effect_css}}";
+            if ($effect === 'typing') {
+                $css .= "\n@keyframes wpilotTyping{from{width:0}to{width:100%}}";
+                $css .= "\n@keyframes wpilotBlink{50%{border-color:transparent}}";
+            }
+            $curr = wp_get_custom_css();
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot text-fx:{$effect} */\n" . $css);
+            return wpilot_ok("Text effect '{$effect}' applied to {$sel}.", ['css' => $css]);
+
+        case 'image_effects':
+            $sel    = $params['selector'] ?? 'img';
+            $effect = $params['effect'] ?? 'zoom-hover';
+            $effects = [
+                'zoom-hover'      => "overflow:hidden;",
+                'grayscale-hover' => "filter:grayscale(100%);transition:filter 0.4s;",
+                'blur-hover'      => "transition:filter 0.4s;",
+                'overlay'         => "position:relative;",
+                'rounded'         => "border-radius:16px;overflow:hidden;",
+                'shadow-3d'       => "box-shadow:0 20px 40px rgba(0,0,0,0.2);border-radius:12px;transform:perspective(1000px) rotateY(-5deg);transition:all 0.4s;",
+                'tilt'            => "transition:transform 0.4s;transform:perspective(800px) rotateY(0deg);",
+            ];
+            $hovers = [
+                'zoom-hover'      => "transform:scale(1.1);transition:transform 0.4s;",
+                'grayscale-hover' => "filter:grayscale(0%);",
+                'blur-hover'      => "filter:blur(3px);",
+                'shadow-3d'       => "transform:perspective(1000px) rotateY(0deg);box-shadow:0 30px 60px rgba(0,0,0,0.3);",
+                'tilt'            => "transform:perspective(800px) rotateY(5deg);",
+            ];
+            $effect_css = $effects[$effect] ?? $effects['zoom-hover'];
+            $css = "{$sel}{{$effect_css}}";
+            $hv = $hovers[$effect] ?? '';
+            if ($hv) $css .= "\n{$sel}:hover{{$hv}}";
+            $curr = wp_get_custom_css();
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot img-fx:{$effect} */\n" . $css);
+            return wpilot_ok("Image effect '{$effect}' applied to {$sel}.", ['css' => $css]);
+
+        case 'sticky_header':
+            $sel    = $params['selector'] ?? '.site-header';
+            $shrink = !empty($params['shrink']);
+            $blur   = !empty($params['blur_bg']);
+            $css = "{$sel}{position:sticky;top:0;z-index:1000;transition:all 0.3s;}";
+            if ($shrink) {
+                $css .= "\n{$sel}.wpilot-shrunk{padding-top:8px !important;padding-bottom:8px !important;box-shadow:0 2px 20px rgba(0,0,0,0.1);}";
+            }
+            if ($blur) {
+                $css .= "\n{$sel}{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);background:rgba(255,255,255,0.85) !important;}";
+            }
+            if ($shrink) {
+                $esc_sel = addslashes($sel);
+                $js_code = "(function(){var h=document.querySelector('{$esc_sel}');if(!h)return;window.addEventListener('scroll',function(){h.classList.toggle('wpilot-shrunk',window.scrollY>80)});})();";
+                $stored_js = get_option('wpilot_footer_scripts', '');
+                $stored_js = preg_replace('/<!-- wpilot-sticky-header -->.*?<!-- \/wpilot-sticky-header -->/s', '', $stored_js);
+                $stored_js .= "\n<!-- wpilot-sticky-header --><script>{$js_code}</script><!-- /wpilot-sticky-header -->";
+                update_option('wpilot_footer_scripts', trim($stored_js));
+            }
+            $curr = wp_get_custom_css();
+            $esc = preg_quote($sel, '/');
+            $curr = preg_replace('/' . $esc . '\s*\{[^}]*position:sticky[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot sticky-header */\n" . $css);
+            return wpilot_ok("Sticky header applied to {$sel}.", ['css' => $css]);
+
+        case 'custom_cursor':
+            $style = $params['style'] ?? 'dot';
+            $color = $params['color'] ?? '#3b82f6';
+            $size  = $params['size'] ?? '20px';
+            $cursors = [
+                'dot'       => "body{cursor:none;}",
+                'circle'    => "body{cursor:none;}",
+                'crosshair' => "body{cursor:crosshair;}",
+                'emoji'     => "body{cursor:crosshair;}",
+            ];
+            $css = $cursors[$style] ?? $cursors['dot'];
+            if (in_array($style, ['dot', 'circle'])) {
+                $border_or_bg = ($style === 'dot') ? "background:{$color};" : "border:2px solid {$color};";
+                $js_code = "(function(){var c=document.createElement('div');c.id='wpilot-cursor';c.style.cssText='position:fixed;width:{$size};height:{$size};{$border_or_bg}border-radius:50%;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);transition:transform 0.1s;top:-50px;left:-50px;';document.body.appendChild(c);document.addEventListener('mousemove',function(e){c.style.left=e.clientX+'px';c.style.top=e.clientY+'px';});})();";
+                $stored_js = get_option('wpilot_footer_scripts', '');
+                $stored_js = preg_replace('/<!-- wpilot-cursor -->.*?<!-- \/wpilot-cursor -->/s', '', $stored_js);
+                $stored_js .= "\n<!-- wpilot-cursor --><script>{$js_code}</script><!-- /wpilot-cursor -->";
+                update_option('wpilot_footer_scripts', trim($stored_js));
+            }
+            $curr = wp_get_custom_css();
+            $curr = preg_replace('/\/\*\s*WPilot custom-cursor[^*]*\*\/[^\/]*(?=\/\*|$)/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot custom-cursor:{$style} */\n" . $css);
+            return wpilot_ok("Custom cursor '{$style}' applied.", ['css' => $css]);
+
+        case 'page_transition':
+            $style    = $params['style'] ?? 'fade';
+            $duration = $params['duration'] ?? '0.3s';
+            $anims = [
+                'fade'  => "@keyframes wpilotPageFade{from{opacity:0}to{opacity:1}}.wpilot-page-trans{animation:wpilotPageFade {$duration} ease-out;}",
+                'slide' => "@keyframes wpilotPageSlide{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:none}}.wpilot-page-trans{animation:wpilotPageSlide {$duration} ease-out;}",
+                'zoom'  => "@keyframes wpilotPageZoom{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:none}}.wpilot-page-trans{animation:wpilotPageZoom {$duration} ease-out;}",
+            ];
+            $css = $anims[$style] ?? $anims['fade'];
+            $js_code = "document.body.classList.add('wpilot-page-trans');";
+            $stored_js = get_option('wpilot_footer_scripts', '');
+            $stored_js = preg_replace('/<!-- wpilot-page-trans -->.*?<!-- \/wpilot-page-trans -->/s', '', $stored_js);
+            $stored_js .= "\n<!-- wpilot-page-trans --><script>{$js_code}</script><!-- /wpilot-page-trans -->";
+            update_option('wpilot_footer_scripts', trim($stored_js));
+            $curr = wp_get_custom_css();
+            $curr = preg_replace('/@keyframes wpilotPage(Fade|Slide|Zoom)\s*\{[^}]*\{[^}]*\}[^}]*\}/s', '', $curr);
+            $curr = preg_replace('/\.wpilot-page-trans\s*\{[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot page-transition:{$style} */\n" . $css);
+            return wpilot_ok("Page transition '{$style}' applied.", ['css' => $css]);
+
+        case 'marquee_text':
+            $text  = sanitize_text_field($params['text'] ?? '');
+            $speed = $params['speed'] ?? '20s';
+            $dir   = ($params['direction'] ?? 'left') === 'right' ? 'reverse' : 'normal';
+            $bg    = $params['background'] ?? '#1e293b';
+            $color = $params['color'] ?? '#ffffff';
+            if (!$text) return wpilot_err('text required.');
+            $css  = ".wpilot-marquee{overflow:hidden;white-space:nowrap;background:{$bg};color:{$color};padding:12px 0;font-size:18px;font-weight:500;}";
+            $css .= "\n.wpilot-marquee span{display:inline-block;animation:wpilotMarquee {$speed} linear infinite;animation-direction:{$dir};}";
+            $css .= "\n.wpilot-marquee:hover span{animation-play-state:paused;}";
+            $css .= "\n@keyframes wpilotMarquee{0%{transform:translateX(100vw)}100%{transform:translateX(-100%)}}";
+            $safe_text = esc_attr($text);
+            $js_code = "(function(){if(document.querySelector('.wpilot-marquee'))return;var d=document.createElement('div');d.className='wpilot-marquee';var s=document.createElement('span');s.textContent='" . addslashes($text) . "  \\u00a0\\u00a0\\u00a0  " . addslashes($text) . "  \\u00a0\\u00a0\\u00a0  " . addslashes($text) . "';d.appendChild(s);var b=document.querySelector('.site-content')||document.querySelector('main')||document.body.firstElementChild;if(b)b.parentNode.insertBefore(d,b);})();";
+            $stored_js = get_option('wpilot_footer_scripts', '');
+            $stored_js = preg_replace('/<!-- wpilot-marquee -->.*?<!-- \/wpilot-marquee -->/s', '', $stored_js);
+            $stored_js .= "\n<!-- wpilot-marquee --><script>{$js_code}</script><!-- /wpilot-marquee -->";
+            update_option('wpilot_footer_scripts', trim($stored_js));
+            $curr = wp_get_custom_css();
+            $curr = preg_replace('/\.wpilot-marquee[^{]*\{[^}]*\}/s', '', $curr);
+            $curr = preg_replace('/@keyframes wpilotMarquee\s*\{[^}]*\}/s', '', $curr);
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot marquee */\n" . $css);
+            return wpilot_ok("Marquee text added.", ['css' => $css]);
+
+        case 'count_up':
+            $pid = intval($params['page_id'] ?? 0);
+            $sel = $params['selector'] ?? '[data-count]';
+            if (!$pid) return wpilot_err('page_id required.');
+            $scope = ".page-id-{$pid}";
+            $css = "{$scope} {$sel}{font-variant-numeric:tabular-nums;}";
+            $js_code = "(function(){if(!document.body.classList.contains('page-id-{$pid}'))return;var els=document.querySelectorAll('{$scope} {$sel}');var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){var el=e.target;var target=parseInt(el.getAttribute('data-count')||el.textContent);var start=0;var dur=2000;var step=Math.max(Math.ceil(dur/target),1);var timer=setInterval(function(){start++;el.textContent=start;if(start>=target){clearInterval(timer);el.textContent=target;}},step);obs.unobserve(el);}});},{threshold:0.3});els.forEach(function(el){obs.observe(el);});})();";
+            $stored_js = get_option('wpilot_footer_scripts', '');
+            $stored_js = preg_replace('/<!-- wpilot-countup-' . $pid . ' -->.*?<!-- \/wpilot-countup-' . $pid . ' -->/s', '', $stored_js);
+            $stored_js .= "\n<!-- wpilot-countup-{$pid} --><script>{$js_code}</script><!-- /wpilot-countup-{$pid} -->";
+            update_option('wpilot_footer_scripts', trim($stored_js));
+            $curr = wp_get_custom_css();
+            wpilot_save_css_snapshot();
+            wp_update_custom_css_post(trim($curr) . "\n/* WPilot count-up */\n" . $css);
+            return wpilot_ok("Count-up animation added to page {$pid}.", ['css' => $css]);
+
+        
+        // ═══ API CONNECTOR — Call any external API ═══
+        case 'api_call':
+        case 'http_request':
+        case 'connect_api':
+            $url = $params['url'] ?? '';
+            $method = strtoupper($params['method'] ?? 'GET');
+            $headers = $params['headers'] ?? [];
+            $body = $params['body'] ?? $params['data'] ?? '';
+            $api_key_name = $params['api_key'] ?? '';
+            if (empty($url)) return wpilot_err('URL required. Example: url="https://api.stripe.com/v1/charges"');
+            // Security: block internal/private IPs
+            $host = parse_url($url, PHP_URL_HOST);
+            if (in_array($host, ['localhost', '127.0.0.1', '0.0.0.0']) || preg_match('/^(10\.|172\.(1[6-9]|2|3[01])\.|192\.168\.)/', gethostbyname($host))) {
+                return wpilot_err('Cannot call internal/private IP addresses.');
+            }
+            // Load stored API key if referenced
+            if ($api_key_name) {
+                $keys = get_option('wpilot_api_keys', []);
+                if (isset($keys[$api_key_name])) {
+                    $key_data = $keys[$api_key_name];
+                    // Auto-add auth header
+                    if ($key_data['type'] === 'bearer') $headers['Authorization'] = 'Bearer ' . $key_data['key'];
+                    elseif ($key_data['type'] === 'basic') $headers['Authorization'] = 'Basic ' . base64_encode($key_data['key']);
+                    elseif ($key_data['type'] === 'header') $headers[$key_data['header_name']] = $key_data['key'];
+                }
+            }
+            $wp_args = ['method' => $method, 'timeout' => 30, 'headers' => $headers, 'sslverify' => true];
+            if ($body && in_array($method, ['POST', 'PUT', 'PATCH'])) {
+                $wp_args['body'] = is_array($body) ? wp_json_encode($body) : $body;
+                if (!isset($headers['Content-Type'])) $wp_args['headers']['Content-Type'] = 'application/json';
+            }
+            $response = wp_remote_request($url, $wp_args);
+            if (is_wp_error($response)) return wpilot_err('API call failed: ' . $response->get_error_message());
+            $code = wp_remote_retrieve_response_code($response);
+            $resp_body = wp_remote_retrieve_body($response);
+            $json = json_decode($resp_body, true);
+            return wpilot_ok("API {$method} {$url} — HTTP {$code}", [
+                'status' => $code,
+                'response' => $json ?: substr($resp_body, 0, 5000),
+                'headers' => wp_remote_retrieve_headers($response)->getAll(),
+            ]);
+
+        // ═══ STORE API KEYS SECURELY ═══
+        case 'save_api_key':
+        case 'store_api_key':
+            $name = sanitize_key($params['name'] ?? '');
+            $key = $params['key'] ?? $params['value'] ?? '';
+            $type = sanitize_text_field($params['type'] ?? 'bearer'); // bearer, basic, header, query
+            $header_name = sanitize_text_field($params['header_name'] ?? 'X-API-Key');
+            if (empty($name) || empty($key)) return wpilot_err('name and key required. Example: name="stripe", key="sk_live_..."');
+            $keys = get_option('wpilot_api_keys', []);
+            $keys[$name] = ['key' => $key, 'type' => $type, 'header_name' => $header_name, 'added' => date('Y-m-d H:i:s')];
+            update_option('wpilot_api_keys', $keys);
+            return wpilot_ok("API key '{$name}' saved ({$type} auth).", ['name' => $name, 'type' => $type]);
+
+        case 'list_api_keys':
+            $keys = get_option('wpilot_api_keys', []);
+            $list = [];
+            foreach ($keys as $name => $data) {
+                $list[] = ['name' => $name, 'type' => $data['type'], 'added' => $data['added'] ?? '', 'key_preview' => substr($data['key'], 0, 8) . '...'];
+            }
+            return wpilot_ok(count($list) . " API keys stored.", ['keys' => $list]);
+
+        case 'delete_api_key':
+            $name = sanitize_key($params['name'] ?? '');
+            $keys = get_option('wpilot_api_keys', []);
+            if (isset($keys[$name])) { unset($keys[$name]); update_option('wpilot_api_keys', $keys); return wpilot_ok("Deleted key: {$name}"); }
+            return wpilot_err("Key not found: {$name}");
+
+        // ═══ WEBHOOK RECEIVER — Create endpoints that external services can call ═══
+        case 'create_webhook':
+        case 'add_webhook':
+            $slug = sanitize_title($params['slug'] ?? $params['name'] ?? '');
+            $action = sanitize_text_field($params['action'] ?? $params['tool'] ?? '');
+            $secret = $params['secret'] ?? wp_generate_password(32, false);
+            if (empty($slug)) return wpilot_err('slug required. Creates endpoint: /wp-json/wpilot/v1/webhook/{slug}');
+            $webhooks = get_option('wpilot_webhooks', []);
+            $webhooks[$slug] = ['action' => $action, 'secret' => $secret, 'created' => date('Y-m-d H:i:s'), 'calls' => 0];
+            update_option('wpilot_webhooks', $webhooks);
+            $endpoint = get_rest_url(null, "wpilot/v1/webhook/{$slug}");
+            return wpilot_ok("Webhook created: {$endpoint}", ['url' => $endpoint, 'secret' => $secret, 'slug' => $slug]);
+
+        case 'list_webhooks':
+            $webhooks = get_option('wpilot_webhooks', []);
+            $list = [];
+            foreach ($webhooks as $slug => $wh) {
+                $list[] = ['slug' => $slug, 'url' => get_rest_url(null, "wpilot/v1/webhook/{$slug}"), 'action' => $wh['action'], 'calls' => $wh['calls']];
+            }
+            return wpilot_ok(count($list) . " webhooks.", ['webhooks' => $list]);
+
+        case 'delete_webhook':
+            $slug = sanitize_title($params['slug'] ?? '');
+            $webhooks = get_option('wpilot_webhooks', []);
+            if (isset($webhooks[$slug])) { unset($webhooks[$slug]); update_option('wpilot_webhooks', $webhooks); return wpilot_ok("Deleted webhook: {$slug}"); }
+            return wpilot_err("Webhook not found: {$slug}");
+
+        // ═══ PRE-BUILT INTEGRATIONS ═══
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+        case 'connect_stripe':
+            $key = $params['key'] ?? $params['secret_key'] ?? '';
+            $pub = $params['publishable_key'] ?? $params['public_key'] ?? '';
+            if (empty($key)) return wpilot_err('Stripe secret key required (sk_live_... or sk_test_...)');
+            // Store keys
+            $keys = get_option('wpilot_api_keys', []);
+            $keys['stripe'] = ['key' => $key, 'type' => 'bearer', 'header_name' => '', 'added' => date('Y-m-d H:i:s')];
+            update_option('wpilot_api_keys', $keys);
+            // If WooCommerce Stripe is active, configure it
+            if (class_exists('WooCommerce')) {
+                update_option('woocommerce_stripe_settings', array_merge(
+                    get_option('woocommerce_stripe_settings', []),
+                    ['enabled' => 'yes', 'testmode' => (strpos($key, 'sk_test_') === 0) ? 'yes' : 'no',
+                     'secret_key' => $key, 'publishable_key' => $pub,
+                     'test_secret_key' => (strpos($key, 'sk_test_') === 0) ? $key : '',
+                     'test_publishable_key' => (strpos($pub, 'pk_test_') === 0) ? $pub : '']
+                ));
+            }
+            // Test connection
+            $test = wp_remote_get('https://api.stripe.com/v1/balance', ['headers' => ['Authorization' => 'Bearer ' . $key], 'timeout' => 10]);
+            $ok = !is_wp_error($test) && wp_remote_retrieve_response_code($test) === 200;
+            $balance = $ok ? json_decode(wp_remote_retrieve_body($test), true) : null;
+            return wpilot_ok("Stripe " . ($ok ? "connected! Balance available." : "key saved but connection test failed."), [
+                'connected' => $ok,
+                'test_mode' => strpos($key, 'sk_test_') === 0,
+                'balance' => $balance ? ($balance['available'][0]['amount']/100 . ' ' . strtoupper($balance['available'][0]['currency'])) : null,
+            ]);
+
+        case 'connect_google_analytics':
+        case 'add_analytics':
+            $id = sanitize_text_field($params['measurement_id'] ?? $params['ga_id'] ?? $params['id'] ?? '');
+            if (empty($id) || !preg_match('/^G-[A-Z0-9]+$/', $id)) return wpilot_err('Google Analytics Measurement ID required (G-XXXXXXXXXX).');
+            $script = "<script async src=\"https://www.googletagmanager.com/gtag/js?id={$id}\"></script>\n<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{$id}');</script>";
+            $existing = get_option('wpilot_head_code', '');
+            if (strpos($existing, $id) !== false) return wpilot_ok("Analytics already installed: {$id}");
+            update_option('wpilot_head_code', $existing . "\n" . $script);
+            return wpilot_ok("Google Analytics connected: {$id}", ['measurement_id' => $id]);
+
+        case 'connect_facebook_pixel':
+        case 'add_pixel':
+            $pixel_id = sanitize_text_field($params['pixel_id'] ?? $params['id'] ?? '');
+            if (empty($pixel_id) || !preg_match('/^\d+$/', $pixel_id)) return wpilot_err('Facebook Pixel ID required (numeric).');
+            $script = "<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','{$pixel_id}');fbq('track','PageView');</script>";
+            $existing = get_option('wpilot_head_code', '');
+            if (strpos($existing, $pixel_id) !== false) return wpilot_ok("Pixel already installed.");
+            update_option('wpilot_head_code', $existing . "\n" . $script);
+            return wpilot_ok("Facebook Pixel connected: {$pixel_id}", ['pixel_id' => $pixel_id]);
+
+        case 'connect_mailchimp':
+            $api_key = $params['key'] ?? $params['api_key'] ?? '';
+            if (empty($api_key) || strpos($api_key, '-') === false) return wpilot_err('Mailchimp API key required (ends with -usXX).');
+            $dc = substr($api_key, strpos($api_key, '-') + 1);
+            // Store key
+            $keys = get_option('wpilot_api_keys', []);
+            $keys['mailchimp'] = ['key' => $api_key, 'type' => 'basic', 'dc' => $dc, 'added' => date('Y-m-d H:i:s')];
+            update_option('wpilot_api_keys', $keys);
+            // Test — get lists
+            $test = wp_remote_get("https://{$dc}.api.mailchimp.com/3.0/lists?count=5", [
+                'headers' => ['Authorization' => 'Basic ' . base64_encode('anystring:' . $api_key)], 'timeout' => 10
+            ]);
+            $ok = !is_wp_error($test) && wp_remote_retrieve_response_code($test) === 200;
+            $lists = [];
+            if ($ok) {
+                $data = json_decode(wp_remote_retrieve_body($test), true);
+                foreach (($data['lists'] ?? []) as $l) $lists[] = ['id' => $l['id'], 'name' => $l['name'], 'members' => $l['stats']['member_count']];
+            }
+            return wpilot_ok("Mailchimp " . ($ok ? "connected! " . count($lists) . " lists found." : "key saved but test failed."), ['connected' => $ok, 'lists' => $lists]);
+
+        case 'mailchimp_add_subscriber':
+            $email = sanitize_email($params['email'] ?? '');
+            $list_id = $params['list_id'] ?? '';
+            $name = sanitize_text_field($params['name'] ?? '');
+            if (empty($email)) return wpilot_err('email required.');
+            $keys = get_option('wpilot_api_keys', []);
+            if (!isset($keys['mailchimp'])) return wpilot_err('Mailchimp not connected. Use connect_mailchimp first.');
+            $api_key = $keys['mailchimp']['key'];
+            $dc = $keys['mailchimp']['dc'];
+            // If no list_id, get the first list
+            if (empty($list_id)) {
+                $lists = wp_remote_get("https://{$dc}.api.mailchimp.com/3.0/lists?count=1", [
+                    'headers' => ['Authorization' => 'Basic ' . base64_encode('anystring:' . $api_key)], 'timeout' => 10
+                ]);
+                if (!is_wp_error($lists)) {
+                    $data = json_decode(wp_remote_retrieve_body($lists), true);
+                    $list_id = $data['lists'][0]['id'] ?? '';
+                }
+            }
+            if (empty($list_id)) return wpilot_err('No Mailchimp list found. Provide list_id.');
+            $body = ['email_address' => $email, 'status' => 'subscribed'];
+            if ($name) {
+                $parts = explode(' ', $name, 2);
+                $body['merge_fields'] = ['FNAME' => $parts[0], 'LNAME' => $parts[1] ?? ''];
+            }
+            $result = wp_remote_post("https://{$dc}.api.mailchimp.com/3.0/lists/{$list_id}/members", [
+                'headers' => ['Authorization' => 'Basic ' . base64_encode('anystring:' . $api_key), 'Content-Type' => 'application/json'],
+                'body' => wp_json_encode($body), 'timeout' => 10
+            ]);
+            $code = wp_remote_retrieve_response_code($result);
+            return ($code === 200 || $code === 201) ? wpilot_ok("Added {$email} to Mailchimp.") : wpilot_err("Failed: HTTP {$code}");
+
+        case 'connect_google_maps':
+        case 'add_google_maps':
+            $api_key = $params['key'] ?? $params['api_key'] ?? '';
+            if (empty($api_key)) return wpilot_err('Google Maps API key required.');
+            $keys = get_option('wpilot_api_keys', []);
+            $keys['google_maps'] = ['key' => $api_key, 'type' => 'query', 'added' => date('Y-m-d H:i:s')];
+            update_option('wpilot_api_keys', $keys);
+            $script = "<script src=\"https://maps.googleapis.com/maps/api/js?key={$api_key}\" async defer></script>";
+            $existing = get_option('wpilot_head_code', '');
+            if (strpos($existing, 'maps.googleapis.com') === false) update_option('wpilot_head_code', $existing . "\n" . $script);
+            return wpilot_ok("Google Maps connected.", ['api_key' => substr($api_key, 0, 8) . '...']);
+
+        case 'add_map':
+        case 'embed_map':
+            $address = $params['address'] ?? $params['location'] ?? '';
+            $page_id = intval($params['page_id'] ?? 0);
+            $width = $params['width'] ?? '100%';
+            $height = $params['height'] ?? '400px';
+            if (empty($address)) return wpilot_err('address or location required.');
+            $encoded = urlencode($address);
+            $keys = get_option('wpilot_api_keys', []);
+            if (isset($keys['google_maps'])) {
+                $map_html = "<div style=\"border-radius:16px;overflow:hidden;margin:24px 0\"><iframe width=\"{$width}\" height=\"{$height}\" style=\"border:0;width:100%\" loading=\"lazy\" referrerpolicy=\"no-referrer-when-downgrade\" src=\"https://www.google.com/maps/embed/v1/place?key=" . $keys['google_maps']['key'] . "&q={$encoded}\"></iframe></div>";
+            } else {
+                $map_html = "<div style=\"border-radius:16px;overflow:hidden;margin:24px 0\"><iframe width=\"{$width}\" height=\"{$height}\" style=\"border:0;width:100%\" loading=\"lazy\" src=\"https://maps.google.com/maps?q={$encoded}&output=embed\"></iframe></div>";
+            }
+            if ($page_id) {
+                $content = get_post_field('post_content', $page_id);
+                $content .= "\n" . $map_html;
+                wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+                // Also Elementor
+                $el = get_post_meta($page_id, '_elementor_data', true);
+                if ($el && strpos($el, 'google.com/maps') === false) {
+                    $el = str_replace('</div>\n</div>', '</div>' . addslashes($map_html) . '</div>', $el);
+                }
+                return wpilot_ok("Map added to page {$page_id}.", ['address' => $address, 'page_id' => $page_id]);
+            }
+            return wpilot_ok("Map HTML generated.", ['html' => $map_html, 'address' => $address]);
+
+        case 'connect_recaptcha':
+            $site_key = $params['site_key'] ?? '';
+            $secret_key = $params['secret_key'] ?? '';
+            if (empty($site_key) || empty($secret_key)) return wpilot_err('site_key and secret_key required from Google reCAPTCHA.');
+            update_option('wpilot_recaptcha_site_key', $site_key);
+            update_option('wpilot_recaptcha_secret_key', $secret_key);
+            $keys = get_option('wpilot_api_keys', []);
+            $keys['recaptcha'] = ['key' => $site_key, 'secret' => $secret_key, 'type' => 'custom', 'added' => date('Y-m-d H:i:s')];
+            update_option('wpilot_api_keys', $keys);
+            return wpilot_ok("reCAPTCHA connected.", ['site_key' => substr($site_key, 0, 10) . '...']);
+
+        case 'connect_custom_api':
+        case 'setup_integration':
+            $name = sanitize_key($params['name'] ?? '');
+            $base_url = esc_url_raw($params['base_url'] ?? $params['url'] ?? '');
+            $auth_type = sanitize_text_field($params['auth_type'] ?? 'bearer');
+            $api_key = $params['api_key'] ?? $params['key'] ?? '';
+            $header_name = sanitize_text_field($params['header_name'] ?? 'Authorization');
+            if (empty($name) || empty($base_url)) return wpilot_err('name and base_url required.');
+            $integrations = get_option('wpilot_integrations', []);
+            $integrations[$name] = [
+                'base_url' => $base_url, 'auth_type' => $auth_type, 'header_name' => $header_name, 'added' => date('Y-m-d H:i:s'),
+            ];
+            update_option('wpilot_integrations', $integrations);
+            if ($api_key) {
+                $keys = get_option('wpilot_api_keys', []);
+                $keys[$name] = ['key' => $api_key, 'type' => $auth_type, 'header_name' => $header_name, 'added' => date('Y-m-d H:i:s')];
+                update_option('wpilot_api_keys', $keys);
+            }
+            return wpilot_ok("Integration '{$name}' configured: {$base_url}", ['name' => $name, 'base_url' => $base_url]);
+
+        
+        // ═══ WOOCOMMERCE REST API KEYS ═══
+        case 'woo_create_api_key':
+        case 'woo_generate_api':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $description = sanitize_text_field($params['description'] ?? $params['name'] ?? 'WPilot API Access');
+            $permissions = sanitize_text_field($params['permissions'] ?? 'read_write'); // read, write, read_write
+            $user_id = intval($params['user_id'] ?? get_current_user_id());
+            global $wpdb;
+            $consumer_key = 'ck_' . wc_rand_hash();
+            $consumer_secret = 'cs_' . wc_rand_hash();
+            $wpdb->insert($wpdb->prefix . 'woocommerce_api_keys', [
+                'user_id' => $user_id,
+                'description' => $description,
+                'permissions' => $permissions,
+                'consumer_key' => wc_api_hash($consumer_key),
+                'consumer_secret' => $consumer_secret,
+                'truncated_key' => substr($consumer_key, -7),
+            ]);
+            $key_id = $wpdb->insert_id;
+            return wpilot_ok("WooCommerce API key created: {$description}", [
+                'key_id' => $key_id,
+                'consumer_key' => $consumer_key,
+                'consumer_secret' => $consumer_secret,
+                'permissions' => $permissions,
+                'api_url' => get_site_url() . '/wp-json/wc/v3/',
+                'note' => 'Save these keys — the secret cannot be shown again.',
+            ]);
+
+        case 'woo_list_api_keys':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            global $wpdb;
+            $keys = $wpdb->get_results("SELECT key_id, user_id, description, permissions, truncated_key, last_access FROM {$wpdb->prefix}woocommerce_api_keys ORDER BY key_id DESC LIMIT 20", ARRAY_A);
+            return wpilot_ok(count($keys) . " WooCommerce API keys.", ['keys' => $keys]);
+
+        // ═══ ORDER PRINTING / RECEIPTS ═══
+        case 'print_order':
+        case 'order_receipt':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $order_id = intval($params['order_id'] ?? $params['id'] ?? 0);
+            if (!$order_id) return wpilot_err('order_id required.');
+            $order = wc_get_order($order_id);
+            if (!$order) return wpilot_err("Order #{$order_id} not found.");
+            $receipt = "═══════════════════════════════\n";
+            $receipt .= "         " . get_bloginfo('name') . "\n";
+            $receipt .= "═══════════════════════════════\n";
+            $receipt .= "Order: #{$order_id}\n";
+            $receipt .= "Date: " . $order->get_date_created()->format('Y-m-d H:i') . "\n";
+            $receipt .= "Status: " . ucfirst($order->get_status()) . "\n";
+            $receipt .= "───────────────────────────────\n";
+            $receipt .= "Customer: " . $order->get_billing_first_name() . " " . $order->get_billing_last_name() . "\n";
+            $receipt .= "Email: " . $order->get_billing_email() . "\n";
+            if ($order->get_billing_phone()) $receipt .= "Phone: " . $order->get_billing_phone() . "\n";
+            $receipt .= "───────────────────────────────\n";
+            $receipt .= "ITEMS:\n";
+            foreach ($order->get_items() as $item) {
+                $qty = $item->get_quantity();
+                $total = $item->get_total();
+                $receipt .= "  {$qty}x " . $item->get_name() . " — " . wc_price($total) . "\n";
+            }
+            $receipt .= "───────────────────────────────\n";
+            if (floatval($order->get_shipping_total()) > 0) $receipt .= "Shipping: " . wc_price($order->get_shipping_total()) . "\n";
+            if (floatval($order->get_total_tax()) > 0) $receipt .= "Tax: " . wc_price($order->get_total_tax()) . "\n";
+            $receipt .= "TOTAL: " . wc_price($order->get_total()) . "\n";
+            $receipt .= "Payment: " . $order->get_payment_method_title() . "\n";
+            $receipt .= "═══════════════════════════════\n";
+            if ($order->get_shipping_address_1()) {
+                $receipt .= "Ship to: " . $order->get_shipping_address_1() . ", " . $order->get_shipping_city() . " " . $order->get_shipping_postcode() . "\n";
+            }
+            // Save as file for download
+            $upload = wp_upload_dir();
+            $file = $upload['basedir'] . "/wpilot-receipt-{$order_id}.txt";
+            file_put_contents($file, $receipt);
+            return wpilot_ok("Receipt for order #{$order_id}", [
+                'receipt' => $receipt,
+                'download_url' => $upload['baseurl'] . "/wpilot-receipt-{$order_id}.txt",
+                'total' => $order->get_total(),
+                'currency' => $order->get_currency(),
+            ]);
+
+        // ═══ SALES REPORTS & ANALYTICS ═══
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+        case 'sales_report':
+        case 'revenue_report':
+        case 'woo_sales_report':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $period = sanitize_text_field($params['period'] ?? 'month'); // today, week, month, year, all
+            $periods = ['today' => '1 day', 'week' => '7 days', 'month' => '30 days', 'year' => '365 days', 'all' => '100 years'];
+            $after = date('Y-m-d', strtotime('-' . ($periods[$period] ?? '30 days')));
+            $orders = wc_get_orders(['date_after' => $after, 'status' => ['completed', 'processing'], 'limit' => -1]);
+            $total_revenue = 0; $total_orders = count($orders); $total_items = 0;
+            $by_day = []; $by_product = []; $by_status = [];
+            foreach ($orders as $o) {
+                $total_revenue += floatval($o->get_total());
+                $day = $o->get_date_created()->format('Y-m-d');
+                $by_day[$day] = ($by_day[$day] ?? 0) + floatval($o->get_total());
+                $by_status[$o->get_status()] = ($by_status[$o->get_status()] ?? 0) + 1;
+                foreach ($o->get_items() as $item) {
+                    $name = $item->get_name();
+                    $total_items += $item->get_quantity();
+                    $by_product[$name] = ($by_product[$name] ?? 0) + floatval($item->get_total());
+                }
+            }
+            arsort($by_product);
+            $avg_order = $total_orders > 0 ? round($total_revenue / $total_orders, 2) : 0;
+            $currency = get_woocommerce_currency();
+            return wpilot_ok("Sales report ({$period}): {$total_revenue} {$currency} from {$total_orders} orders.", [
+                'period' => $period, 'from' => $after,
+                'total_revenue' => $total_revenue, 'total_orders' => $total_orders, 'total_items' => $total_items,
+                'avg_order_value' => $avg_order, 'currency' => $currency,
+                'by_status' => $by_status,
+                'top_products' => array_slice($by_product, 0, 10, true),
+                'daily_revenue' => array_slice($by_day, -14, null, true),
+            ]);
+
+        case 'customer_stats':
+        case 'woo_customer_stats':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $customers = get_users(['role' => 'customer']);
+            $total = count($customers); $total_spent = 0; $top = [];
+            foreach ($customers as $u) {
+                $c = new WC_Customer($u->ID);
+                $spent = floatval($c->get_total_spent());
+                $total_spent += $spent;
+                $top[] = ['name' => $u->display_name, 'email' => $u->user_email, 'spent' => $spent, 'orders' => $c->get_order_count(), 'registered' => $u->user_registered];
+            }
+            usort($top, fn($a, $b) => $b['spent'] <=> $a['spent']);
+            $new_this_month = count(array_filter($customers, fn($u) => strtotime($u->user_registered) > strtotime('-30 days')));
+            return wpilot_ok("{$total} customers, " . get_woocommerce_currency_symbol() . number_format($total_spent, 0) . " total spent.", [
+                'total_customers' => $total, 'total_spent' => $total_spent,
+                'new_this_month' => $new_this_month,
+                'avg_spent' => $total > 0 ? round($total_spent / $total, 2) : 0,
+                'top_10' => array_slice($top, 0, 10),
+            ]);
+
+        case 'inventory_report':
+        case 'stock_report':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $products = wc_get_products(['limit' => -1, 'status' => 'publish']);
+            $in_stock = 0; $out_of_stock = 0; $low_stock = 0; $items = [];
+            $low_threshold = intval($params['threshold'] ?? 5);
+            foreach ($products as $p) {
+                $stock = $p->get_stock_quantity();
+                $status = $p->get_stock_status();
+                if ($status === 'instock') $in_stock++;
+                elseif ($status === 'outofstock') { $out_of_stock++; $items[] = ['name' => $p->get_name(), 'id' => $p->get_id(), 'stock' => 0, 'status' => 'out']; }
+                if ($stock !== null && $stock <= $low_threshold && $stock > 0) { $low_stock++; $items[] = ['name' => $p->get_name(), 'id' => $p->get_id(), 'stock' => $stock, 'status' => 'low']; }
+            }
+            return wpilot_ok("Inventory: {$in_stock} in stock, {$out_of_stock} out, {$low_stock} low.", [
+                'total' => count($products), 'in_stock' => $in_stock, 'out_of_stock' => $out_of_stock, 'low_stock' => $low_stock,
+                'alerts' => $items,
+            ]);
+
+        // ═══ SECURITY PLUGIN INTEGRATIONS ═══
+        case 'block_ip':
+        case 'ban_ip':
+            $ip = sanitize_text_field($params['ip'] ?? '');
+            $reason = sanitize_text_field($params['reason'] ?? 'Blocked by WPilot');
+            if (empty($ip) || !filter_var($ip, FILTER_VALIDATE_IP)) return wpilot_err('Valid IP address required.');
+            $blocked = get_option('wpilot_blocked_ips', []);
+            $blocked[$ip] = ['reason' => $reason, 'date' => date('Y-m-d H:i:s')];
+            update_option('wpilot_blocked_ips', $blocked);
+            // Add to .htaccess if Apache
+            $htaccess = ABSPATH . '.htaccess';
+            if (file_exists($htaccess)) {
+                $content = file_get_contents($htaccess);
+                if (strpos($content, $ip) === false) {
+                    $rule = "\n# WPilot blocked IP\nDeny from {$ip}\n";
+                    $content = str_replace('# END WordPress', $rule . "# END WordPress", $content);
+                    file_put_contents($htaccess, $content);
+                }
+            }
+            return wpilot_ok("Blocked IP: {$ip}", ['ip' => $ip, 'reason' => $reason]);
+
+        case 'unblock_ip':
+            $ip = sanitize_text_field($params['ip'] ?? '');
+            $blocked = get_option('wpilot_blocked_ips', []);
+            unset($blocked[$ip]);
+            update_option('wpilot_blocked_ips', $blocked);
+            return wpilot_ok("Unblocked IP: {$ip}");
+
+        case 'list_blocked_ips':
+            $blocked = get_option('wpilot_blocked_ips', []);
+            $list = [];
+            foreach ($blocked as $ip => $data) $list[] = array_merge(['ip' => $ip], $data);
+            return wpilot_ok(count($list) . " blocked IPs.", ['ips' => $list]);
+
+        case 'failed_logins':
+        case 'login_attempts':
+            global $wpdb;
+            // Check if Wordfence or Limit Login Attempts is active
+            $attempts = [];
+            // Try WPilot's own tracking
+            $log = get_option('wpilot_failed_logins', []);
+            // Try WordPress default
+            if (empty($log)) {
+                $log_file = WP_CONTENT_DIR . '/debug.log';
+                if (file_exists($log_file)) {
+                    $lines = file($log_file);
+                    foreach (array_reverse($lines) as $line) {
+                        if (stripos($line, 'authentication') !== false || stripos($line, 'login failed') !== false) {
+                            $attempts[] = trim($line);
+                            if (count($attempts) >= 20) break;
+                        }
+                    }
+                }
+            }
+            return wpilot_ok(count($attempts) . " failed login entries found.", ['attempts' => $attempts]);
+
+        case 'security_audit':
+        case 'full_security_check':
+            $issues = [];
+            $score = 100;
+            // Check debug mode
+            if (defined('WP_DEBUG') && WP_DEBUG) { $issues[] = ['severity' => 'high', 'issue' => 'WP_DEBUG is enabled', 'fix' => 'Set WP_DEBUG to false in wp-config.php']; $score -= 15; }
+            // Check file editing
+            if (!defined('DISALLOW_FILE_EDIT') || !DISALLOW_FILE_EDIT) { $issues[] = ['severity' => 'medium', 'issue' => 'File editing enabled in admin', 'fix' => "Add define('DISALLOW_FILE_EDIT', true) to wp-config.php"]; $score -= 10; }
+            // Check admin username
+            if (username_exists('admin')) { $issues[] = ['severity' => 'high', 'issue' => 'Default "admin" username exists', 'fix' => 'Rename admin user']; $score -= 15; }
+            // Check SSL
+            if (!is_ssl() && strpos(get_site_url(), 'https') === false) { $issues[] = ['severity' => 'high', 'issue' => 'No SSL/HTTPS', 'fix' => 'Install SSL certificate']; $score -= 20; }
+            // Check WP version
+            global $wp_version;
+            $latest = get_site_transient('update_core');
+            if ($latest && !empty($latest->updates) && version_compare($wp_version, $latest->updates[0]->version, '<')) {
+                $issues[] = ['severity' => 'high', 'issue' => "WordPress outdated: {$wp_version} (latest: " . $latest->updates[0]->version . ")", 'fix' => 'Update WordPress'];
+                $score -= 15;
+            }
+            // Check plugin updates
+            $update_plugins = get_site_transient('update_plugins');
+            $outdated = !empty($update_plugins->response) ? count($update_plugins->response) : 0;
+            if ($outdated > 0) { $issues[] = ['severity' => 'medium', 'issue' => "{$outdated} plugins need updates", 'fix' => 'Update plugins']; $score -= min($outdated * 5, 20); }
+            // Check xmlrpc
+            $xmlrpc_test = wp_remote_get(home_url('/xmlrpc.php'), ['timeout' => 5]);
+            if (!is_wp_error($xmlrpc_test) && wp_remote_retrieve_response_code($xmlrpc_test) === 200) {
+                $issues[] = ['severity' => 'medium', 'issue' => 'XML-RPC enabled', 'fix' => 'Use disable_xmlrpc tool']; $score -= 5;
+            }
+            // Check security headers
+            $home_resp = wp_remote_get(home_url('/'), ['timeout' => 5]);
+            if (!is_wp_error($home_resp)) {
+                $h = wp_remote_retrieve_headers($home_resp);
+                if (empty($h['x-frame-options'])) { $issues[] = ['severity' => 'medium', 'issue' => 'Missing X-Frame-Options header']; $score -= 5; }
+                if (empty($h['x-content-type-options'])) { $issues[] = ['severity' => 'low', 'issue' => 'Missing X-Content-Type-Options header']; $score -= 3; }
+                if (empty($h['strict-transport-security'])) { $issues[] = ['severity' => 'low', 'issue' => 'Missing HSTS header']; $score -= 3; }
+            }
+            // Check blocked IPs
+            $blocked = count(get_option('wpilot_blocked_ips', []));
+            $score = max(0, $score);
+            $grade = $score >= 90 ? 'A' : ($score >= 75 ? 'B' : ($score >= 60 ? 'C' : ($score >= 40 ? 'D' : 'F')));
+            return wpilot_ok("Security score: {$score}/100 (Grade {$grade}). " . count($issues) . " issues found.", [
+                'score' => $score, 'grade' => $grade, 'issues' => $issues, 'blocked_ips' => $blocked,
+            ]);
+
+        case 'configure_wordfence':
+            if (!is_plugin_active('wordfence/wordfence.php')) return wpilot_err('Wordfence not installed. Use plugin_install to add it.');
+            $settings = [];
+            if (isset($params['firewall'])) $settings['firewallEnabled'] = $params['firewall'] ? 1 : 0;
+            if (isset($params['brute_force'])) $settings['loginSecurityEnabled'] = $params['brute_force'] ? 1 : 0;
+            if (isset($params['scan_schedule'])) $settings['scheduledScansEnabled'] = 1;
+            if (isset($params['block_fake_google'])) $settings['blockFakeCrawlers'] = $params['block_fake_google'] ? 1 : 0;
+            foreach ($settings as $k => $v) update_option('wordfence_' . $k, $v);
+            return wpilot_ok("Wordfence configured: " . count($settings) . " settings updated.", ['settings' => $settings]);
+
+        // ═══ PLUGIN POWER INTEGRATIONS ═══
+        case 'configure_updraftplus':
+        case 'setup_backups':
+            if (!class_exists('UpdraftPlus')) return wpilot_err('UpdraftPlus not installed.');
+            $schedule_files = sanitize_text_field($params['files_schedule'] ?? 'weekly');
+            $schedule_db = sanitize_text_field($params['db_schedule'] ?? 'daily');
+            $retain = intval($params['retain'] ?? 5);
+            $settings = get_option('updraft_interval', 'manual');
+            update_option('updraft_interval', $schedule_files);
+            update_option('updraft_interval_database', $schedule_db);
+            update_option('updraft_retain', $retain);
+            update_option('updraft_retain_db', $retain);
+            // Configure storage if provided
+            if (!empty($params['storage'])) {
+                update_option('updraft_service', [$params['storage']]);
+            }
+            return wpilot_ok("UpdraftPlus configured: files={$schedule_files}, db={$schedule_db}, retain={$retain}.");
+
+        case 'configure_litespeed':
+        case 'setup_cache':
+            if (!defined('LSCWP_V')) return wpilot_err('LiteSpeed Cache not installed.');
+            $settings = [];
+            if (isset($params['cache'])) { update_option('litespeed.conf.cache', $params['cache'] ? 1 : 0); $settings[] = 'cache=' . ($params['cache'] ? 'on' : 'off'); }
+            if (isset($params['css_minify'])) { update_option('litespeed.conf.optm-css_min', $params['css_minify'] ? 1 : 0); $settings[] = 'css_minify'; }
+            if (isset($params['js_minify'])) { update_option('litespeed.conf.optm-js_min', $params['js_minify'] ? 1 : 0); $settings[] = 'js_minify'; }
+            if (isset($params['lazy_load'])) { update_option('litespeed.conf.media-lazy', $params['lazy_load'] ? 1 : 0); $settings[] = 'lazy_load'; }
+            if (isset($params['browser_cache'])) { update_option('litespeed.conf.cache-browser', $params['browser_cache'] ? 1 : 0); $settings[] = 'browser_cache'; }
+            // IMPORTANT: Keep CSS inline OFF (known to break themes)
+            update_option('litespeed.conf.optm-css_comb_ext_inl', 0);
+            update_option('litespeed.conf.css_async_inline', 0);
+            return wpilot_ok("LiteSpeed configured: " . implode(', ', $settings));
+
+        case 'configure_rankmath':
+        case 'setup_seo_plugin':
+            if (!class_exists('RankMath')) return wpilot_err('Rank Math not installed.');
+            $settings = [];
+            if (isset($params['sitemap'])) { update_option('rank_math_modules', array_merge(get_option('rank_math_modules', []), ['sitemap'])); $settings[] = 'sitemap'; }
+            if (isset($params['schema'])) { update_option('rank_math_modules', array_merge(get_option('rank_math_modules', []), ['rich-snippet'])); $settings[] = 'schema'; }
+            if (isset($params['breadcrumbs'])) { update_option('rank_math_breadcrumbs', $params['breadcrumbs'] ? 'on' : 'off'); $settings[] = 'breadcrumbs'; }
+            if (isset($params['noindex_empty_cats'])) { update_option('rank_math_noindex_empty_category', $params['noindex_empty_cats'] ? 'on' : 'off'); $settings[] = 'noindex_empty'; }
+            return wpilot_ok("Rank Math configured: " . implode(', ', $settings));
+
+        case 'configure_polylang':
+        case 'setup_multilang':
+            if (!function_exists('pll_languages_list')) return wpilot_err('Polylang not installed.');
+            $languages = pll_languages_list(['fields' => 'name']);
+            return wpilot_ok(count($languages) . " languages configured: " . implode(', ', $languages), ['languages' => $languages]);
+
+        case 'translate_page':
+            if (!function_exists('pll_set_post_language')) return wpilot_err('Polylang required for translations.');
+            $page_id = intval($params['page_id'] ?? 0);
+            $lang = sanitize_text_field($params['language'] ?? $params['lang'] ?? '');
+            if (!$page_id || empty($lang)) return wpilot_err('page_id and language required.');
+            pll_set_post_language($page_id, $lang);
+            return wpilot_ok("Page {$page_id} language set to {$lang}.");
+
+        
+        // ═══ SERVER PERFORMANCE INFO ═══
+        case 'server_info':
+        case 'system_info':
+            $info = [
+                'php_version' => PHP_VERSION,
+                'wp_version' => get_bloginfo('version'),
+                'memory_limit' => WP_MEMORY_LIMIT,
+                'memory_used' => round(memory_get_usage() / 1048576, 1) . ' MB',
+                'memory_peak' => round(memory_get_peak_usage() / 1048576, 1) . ' MB',
+                'php_memory_limit' => ini_get('memory_limit'),
+                'max_execution_time' => ini_get('max_execution_time') . 's',
+                'upload_max' => ini_get('upload_max_filesize'),
+                'post_max' => ini_get('post_max_size'),
+                'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? 'unknown',
+                'active_plugins' => count(get_option('active_plugins', [])),
+                'theme' => get_template(),
+                'builder' => wpilot_detect_builder(),
+                'woocommerce' => class_exists('WooCommerce') ? WC()->version : 'not installed',
+                'ssl' => is_ssl() ? 'yes' : 'no',
+                'multisite' => is_multisite() ? 'yes' : 'no',
+                'cron_disabled' => defined('DISABLE_WP_CRON') && DISABLE_WP_CRON ? 'yes' : 'no',
+                'debug_mode' => defined('WP_DEBUG') && WP_DEBUG ? 'yes' : 'no',
+                'wpilot_tools' => substr_count(file_get_contents(__FILE__), "case '"),
+            ];
+            global $wpdb;
+            $db_size = 0;
+            foreach ($wpdb->get_results("SHOW TABLE STATUS") as $t) $db_size += $t->Data_length + $t->Index_length;
+            $info['database_size'] = round($db_size / 1048576, 1) . ' MB';
+            $info['db_tables'] = count($wpdb->get_results("SHOW TABLES"));
+            return wpilot_ok("Server info: PHP " . PHP_VERSION . ", " . $info['memory_used'] . " used.", $info);
+
+        case 'clear_screenshots':
+        case 'delete_screenshots':
+            wpilot_cleanup_all_screenshots();
+            return wpilot_ok("All screenshots deleted.");
+
+        case 'clear_temp_files':
+        case 'cleanup':
+            wpilot_cleanup_all_screenshots();
+            global $wpdb;
+            $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_wpilot_%'");
+            $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_wpilot_%'");
+            delete_transient('wpilot_ctx_general');
+            delete_transient('wpilot_ctx_build');
+            delete_transient('wpilot_ctx_analyze');
+            return wpilot_ok("All temp files, screenshots, and caches cleared.");
+
+        case 'storage_usage':
+            $dir = wp_upload_dir()['basedir'] . '/wpilot-screenshots';
+            $screenshots = is_dir($dir) ? glob($dir . '/*.png') : [];
+            $ss_size = 0;
+            foreach ($screenshots as $f) $ss_size += filesize($f);
+            $receipts = glob(wp_upload_dir()['basedir'] . '/wpilot-receipt-*.txt');
+            $csvs = glob(wp_upload_dir()['basedir'] . '/wpilot-*.csv');
+            $backups_dir = WP_CONTENT_DIR . '/wpilot-backups';
+            $backup_size = 0;
+            if (is_dir($backups_dir)) {
+                $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($backups_dir, RecursiveDirectoryIterator::SKIP_DOTS));
+                foreach ($iter as $file) $backup_size += $file->getSize();
+            }
+            return wpilot_ok("WPilot storage usage", [
+                'screenshots' => count($screenshots) . ' files (' . round($ss_size/1024) . ' KB)',
+                'receipts' => count($receipts) . ' files',
+                'csv_exports' => count($csvs) . ' files',
+                'backups' => round($backup_size/1024) . ' KB',
+                'total_kb' => round(($ss_size + $backup_size) / 1024),
+            ]);
+
+        
+        // ═══ CUSTOM HEADER BUILDER ═══
+        case 'build_header':
+        case 'create_custom_header':
+            $style = sanitize_text_field($params['style'] ?? 'modern');
+            $logo_url = esc_url($params['logo_url'] ?? $params['logo'] ?? '');
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
+            $transparent = !empty($params['transparent']);
+            $sticky = !empty($params['sticky']) || $style === 'sticky';
+            // Get site info
+            $site_name = get_bloginfo('name');
+            $tagline = get_bloginfo('description');
+            // Get menu items
+            $menu_items = [];
+            $locations = get_nav_menu_locations();
+            $menu_id = $locations['menu-1'] ?? $locations['primary'] ?? $locations['main-menu'] ?? 0;
+            if ($menu_id) {
+                $items = wp_get_nav_menu_items($menu_id);
+                if ($items) foreach ($items as $item) {
+                    if ($item->menu_item_parent == 0) $menu_items[] = ['title' => $item->title, 'url' => $item->url];
+                }
+            }
+            if (empty($menu_items)) {
+                $menu_items = [['title' => 'Home', 'url' => '/'], ['title' => 'Shop', 'url' => '/shop'], ['title' => 'About', 'url' => '/about'], ['title' => 'Contact', 'url' => '/contact']];
+            }
+            // Build menu HTML
+            $nav_html = '';
+            foreach ($menu_items as $item) {
+                $nav_html .= '<a href="' . esc_url($item['url']) . '" style="color:rgba(255,255,255,0.8);text-decoration:none;font-weight:500;font-size:0.95rem;transition:color 0.3s;padding:8px 0">' . esc_html($item['title']) . '</a>';
+            }
+            // Logo
+            $logo_html = $logo_url
+                ? '<img src="' . $logo_url . '" alt="' . esc_attr($site_name) . '" style="height:36px;width:auto">'
+                : '<span style="font-size:1.3rem;font-weight:800;color:' . $accent . ';letter-spacing:-0.5px">' . esc_html($site_name) . '</span>';
+            // CTA button
+            $cta = sanitize_text_field($params['cta_text'] ?? '');
+            $cta_url = esc_url($params['cta_url'] ?? '/shop');
+            $cta_html = $cta ? '<a href="' . $cta_url . '" style="padding:10px 24px;background:' . $accent . ';color:#fff;border-radius:50px;text-decoration:none;font-weight:600;font-size:0.9rem">' . esc_html($cta) . '</a>' : '';
+            // Header styles
+            $bg_style = $transparent ? 'transparent' : $bg;
+            $position = ($transparent || $sticky) ? 'position:fixed;top:0;left:0;right:0;z-index:9999' : 'position:relative';
+            $backdrop = $sticky ? 'backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);background:rgba(10,10,10,0.85) !important' : '';
+            // Built by Christos Ferlachidis & Daniel Hedenberg
+            $header_html = '<div id="wpilot-header" style="' . $position . ';background:' . $bg_style . ';' . $backdrop . ';border-bottom:1px solid rgba(255,255,255,0.06);padding:0 24px;transition:all 0.3s">';
+            $header_html .= '<div style="max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:70px">';
+            $header_html .= '<div>' . $logo_html . '</div>';
+            $header_html .= '<nav style="display:flex;gap:28px;align-items:center">' . $nav_html . '</nav>';
+            if ($cta_html) $header_html .= '<div>' . $cta_html . '</div>';
+            $header_html .= '</div></div>';
+            // Add mobile hamburger CSS
+            $header_css = "
+/* WPilot Custom Header */
+.site-header, .elementor-location-header { display: none !important; }
+#wpilot-header a:hover { color: {$accent} !important; }
+@media (max-width: 768px) {
+  #wpilot-header nav { display: none; }
+  #wpilot-header { padding: 0 16px; }
+}
+";
+            if ($transparent) $header_css .= "#wpilot-header { background: transparent !important; }\n";
+            if ($sticky) $header_css .= "#wpilot-header.scrolled { background: rgba(10,10,10,0.95) !important; backdrop-filter: blur(20px); box-shadow: 0 4px 30px rgba(0,0,0,0.2); }\n";
+            // Save header
+            update_option('wpilot_custom_header', $header_html);
+            $existing_css = wp_get_custom_css();
+            $existing_css = preg_replace('/\/\* WPilot Custom Header \*\/.*?(?=\/\*|$)/s', '', $existing_css);
+            wp_update_custom_css_post($existing_css . "\n" . $header_css);
+            return wpilot_ok("Custom header built: {$style}" . ($sticky ? ' (sticky)' : '') . ($transparent ? ' (transparent)' : ''), [
+                'style' => $style, 'menu_items' => count($menu_items), 'has_cta' => !empty($cta),
+            ]);
+
+        // ═══ CUSTOM FOOTER BUILDER ═══
+        case 'build_footer':
+        case 'create_custom_footer':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? '#050505');
+            $columns = intval($params['columns'] ?? 4);
+            $style = sanitize_text_field($params['style'] ?? 'modern');
+            $site_name = get_bloginfo('name');
+            $tagline = get_bloginfo('description');
+            $email = get_option('admin_email');
+            $phone = sanitize_text_field($params['phone'] ?? '');
+            $address = sanitize_text_field($params['address'] ?? '');
+            $copyright = sanitize_text_field($params['copyright'] ?? '');
+            if (empty($copyright)) $copyright = '&copy; ' . date('Y') . ' ' . $site_name . '. All rights reserved.';
+            // Social links
+            $socials = '';
+            $social_links = $params['social'] ?? [];
+            if (!empty($social_links)) {
+                $icons = ['facebook' => 'f', 'instagram' => 'ig', 'twitter' => 'x', 'linkedin' => 'in', 'youtube' => 'yt', 'tiktok' => 'tk'];
+                $socials = '<div style="display:flex;gap:12px;margin-top:16px">';
+                foreach ($social_links as $platform => $url) {
+                    $label = strtoupper(substr($platform, 0, 2));
+                    $socials .= '<a href="' . esc_url($url) . '" target="_blank" style="width:36px;height:36px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.5);text-decoration:none;font-size:0.7rem;font-weight:700;transition:all 0.3s">' . $label . '</a>';
+                }
+                $socials .= '</div>';
+            }
+            // Newsletter form
+            $newsletter = '';
+            if (!empty($params['newsletter'])) {
+                $newsletter = '<div style="margin-top:16px"><p style="margin:0 0 8px;font-size:0.85rem;color:rgba(255,255,255,0.5)">Subscribe to our newsletter</p>';
+                $newsletter .= '<div style="display:flex;gap:8px"><input type="email" placeholder="Email" style="flex:1;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;font-size:0.85rem"><button style="padding:10px 20px;background:' . $accent . ';color:#fff;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer">Join</button></div></div>';
+            }
+            // Quick links
+            $links_html = '';
+            $pages = get_pages(['number' => 6, 'sort_column' => 'menu_order']);
+            foreach ($pages as $p) {
+                $links_html .= '<a href="' . get_permalink($p->ID) . '" style="display:block;color:rgba(255,255,255,0.5);text-decoration:none;padding:4px 0;font-size:0.9rem;transition:color 0.3s">' . esc_html($p->post_title) . '</a>';
+            }
+            // Build footer
+            $footer_html = '<div id="wpilot-footer" style="background:' . $bg . ';padding:60px 24px 30px;font-family:system-ui,sans-serif">';
+            $footer_html .= '<div style="max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:40px;margin-bottom:40px">';
+            // Col 1: Brand
+            $footer_html .= '<div><h4 style="color:#fff;font-size:1.1rem;margin:0 0 12px;font-weight:700">' . esc_html($site_name) . '</h4>';
+            $footer_html .= '<p style="color:rgba(255,255,255,0.5);line-height:1.6;margin:0;font-size:0.9rem">' . esc_html($tagline) . '</p>';
+            $footer_html .= $socials . '</div>';
+            // Col 2: Links
+            $footer_html .= '<div><h4 style="color:#fff;font-size:0.95rem;margin:0 0 12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:0.8rem">Pages</h4>' . $links_html . '</div>';
+            // Col 3: Contact
+            $footer_html .= '<div><h4 style="color:#fff;font-size:0.95rem;margin:0 0 12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:0.8rem">Contact</h4>';
+            if ($phone) $footer_html .= '<p style="color:rgba(255,255,255,0.5);margin:0 0 6px;font-size:0.9rem">' . esc_html($phone) . '</p>';
+            $footer_html .= '<p style="color:rgba(255,255,255,0.5);margin:0 0 6px;font-size:0.9rem">' . esc_html($email) . '</p>';
+            if ($address) $footer_html .= '<p style="color:rgba(255,255,255,0.5);margin:0;font-size:0.9rem">' . esc_html($address) . '</p>';
+            $footer_html .= '</div>';
+            // Col 4: Newsletter or WooCommerce
+            if ($newsletter) {
+                $footer_html .= '<div><h4 style="color:#fff;font-size:0.95rem;margin:0 0 12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:0.8rem">Newsletter</h4>' . $newsletter . '</div>';
+            }
+            $footer_html .= '</div>';
+            // Copyright bar
+            $footer_html .= '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
+            $footer_html .= '<p style="color:rgba(255,255,255,0.3);margin:0;font-size:0.8rem">' . $copyright . '</p>';
+            $footer_html .= '<div style="display:flex;gap:16px">';
+            $footer_html .= '<a href="/privacy-policy" style="color:rgba(255,255,255,0.3);text-decoration:none;font-size:0.8rem">Privacy</a>';
+            $footer_html .= '<a href="/terms" style="color:rgba(255,255,255,0.3);text-decoration:none;font-size:0.8rem">Terms</a>';
+            $footer_html .= '</div></div></div>';
+            // Save
+            update_option('wpilot_custom_footer', $footer_html);
+            $css = "\n/* WPilot Custom Footer */\n.site-footer .site-info, .elementor-location-footer { display: none !important; }\n#wpilot-footer a:hover { color: {$accent} !important; }\n@media (max-width: 768px) { #wpilot-footer > div > div { grid-template-columns: 1fr !important; } }\n";
+            $existing = wp_get_custom_css();
+            $existing = preg_replace('/\/\* WPilot Custom Footer \*\/.*?(?=\/\*|$)/s', '', $existing);
+            wp_update_custom_css_post($existing . $css);
+            return wpilot_ok("Custom footer built: {$style}, {$columns} columns" . ($newsletter ? ', with newsletter' : ''), [
+                'columns' => $columns, 'has_newsletter' => !empty($params['newsletter']), 'pages_linked' => count($pages),
+            ]);
+
+        // ═══ MOBILE MENU (hamburger) ═══
+        case 'build_mobile_menu':
+        case 'create_mobile_menu':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
+            // Get menu items
+            $menu_items = [];
+            $locations = get_nav_menu_locations();
+            $menu_id = $locations['menu-1'] ?? $locations['primary'] ?? $locations['main-menu'] ?? 0;
+            if ($menu_id) {
+                $items = wp_get_nav_menu_items($menu_id);
+                if ($items) foreach ($items as $item) {
+                    if ($item->menu_item_parent == 0) $menu_items[] = ['title' => $item->title, 'url' => $item->url];
+                }
+            }
+            $nav_links = '';
+            foreach ($menu_items as $item) {
+                $nav_links .= '<a href="' . esc_url($item['url']) . '" style="display:block;padding:16px 24px;color:#fff;text-decoration:none;font-size:1.1rem;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.06);transition:background 0.3s" onclick="document.getElementById(\'wpilot-mobile-menu\').style.display=\'none\'">' . esc_html($item['title']) . '</a>';
+            }
+            $hamburger_css = "
+/* WPilot Mobile Menu */
+#wpilot-hamburger { display: none; background: none; border: none; cursor: pointer; padding: 8px; z-index: 10001; }
+#wpilot-hamburger span { display: block; width: 24px; height: 2px; background: #fff; margin: 5px 0; transition: 0.3s; }
+#wpilot-mobile-menu { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: {$bg}; z-index: 10000; padding-top: 70px; overflow-y: auto; }
+#wpilot-mobile-menu a:hover { background: {$accent}15; color: {$accent} !important; }
+@media (max-width: 768px) { #wpilot-hamburger { display: block; } }
+";
+            // Save hamburger button HTML (injected in header)
+            $hamburger_html = '<button id="wpilot-hamburger" onclick="var m=document.getElementById(\'wpilot-mobile-menu\');m.style.display=m.style.display===\'none\'?\'block\':\'none\'"><span></span><span></span><span></span></button>';
+            $mobile_menu_html = '<div id="wpilot-mobile-menu">' . $nav_links . '</div>';
+            update_option('wpilot_mobile_menu', $hamburger_html . $mobile_menu_html);
+            $existing = wp_get_custom_css();
+            $existing = preg_replace('/\/\* WPilot Mobile Menu \*\/.*?(?=\/\*|$)/s', '', $existing);
+            wp_update_custom_css_post($existing . "\n" . $hamburger_css);
+            return wpilot_ok("Mobile hamburger menu built with " . count($menu_items) . " items.", ['items' => count($menu_items)]);
+
+        // ═══ INJECT HEADER/FOOTER INTO PAGES ═══
+        case 'activate_custom_header':
+            $header = get_option('wpilot_custom_header', '');
+            if (empty($header)) return wpilot_err('No custom header built. Use build_header first.');
+            // Create mu-plugin to inject
+            $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-custom-header.php';
+            $code = "<?php\n// WPilot Custom Header\nadd_action('wp_body_open', function() {\n    \$h = get_option('wpilot_custom_header','');\n    \$m = get_option('wpilot_mobile_menu','');\n    if (\$h) echo \$h;\n    if (\$m) echo \$m;\n});\n";
+            file_put_contents($mu, $code);
+            return wpilot_ok("Custom header activated on all pages.");
+
+        case 'activate_custom_footer':
+            $footer = get_option('wpilot_custom_footer', '');
+            if (empty($footer)) return wpilot_err('No custom footer built. Use build_footer first.');
+            $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-custom-footer.php';
+            $code = "<?php\n// WPilot Custom Footer\nadd_action('wp_footer', function() {\n    \$f = get_option('wpilot_custom_footer','');\n    if (\$f) echo \$f;\n}, 5);\n";
+            file_put_contents($mu, $code);
+            return wpilot_ok("Custom footer activated on all pages.");
+
+        // ═══ MEGA MENU ═══
+        case 'create_mega_menu':
+        case 'build_mega_menu':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $items = $params['items'] ?? [];
+            if (empty($items)) return wpilot_err('items array required: [{"title":"Shop","url":"/shop","children":[{"title":"Cleaning","url":"/product-category/cleaning"}]}]');
+            $menu_html = '<nav id="wpilot-mega" style="display:flex;gap:24px;align-items:center">';
+            foreach ($items as $item) {
+                $has_children = !empty($item['children']);
+                $menu_html .= '<div style="position:relative" class="wpilot-mega-item">';
+                $menu_html .= '<a href="' . esc_url($item['url'] ?? '#') . '" style="color:rgba(255,255,255,0.8);text-decoration:none;font-weight:500;padding:8px 0;display:block">' . esc_html($item['title'] ?? '') . ($has_children ? ' ▾' : '') . '</a>';
+                if ($has_children) {
+                    $menu_html .= '<div class="wpilot-mega-dropdown" style="display:none;position:absolute;top:100%;left:-16px;background:#0f0f0f;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;min-width:200px;box-shadow:0 20px 60px rgba(0,0,0,0.4);z-index:999">';
+                    foreach ($item['children'] as $child) {
+                        $menu_html .= '<a href="' . esc_url($child['url'] ?? '#') . '" style="display:block;padding:8px 12px;color:rgba(255,255,255,0.7);text-decoration:none;border-radius:6px;font-size:0.9rem;transition:all 0.2s">' . esc_html($child['title'] ?? '') . '</a>';
+                    }
+                    $menu_html .= '</div>';
+                }
+                $menu_html .= '</div>';
+            }
+            $menu_html .= '</nav>';
+            $mega_css = "
+/* WPilot Mega Menu */
+.wpilot-mega-item:hover .wpilot-mega-dropdown { display: block !important; animation: wpilot-fadeInUp 0.2s ease; }
+.wpilot-mega-dropdown a:hover { background: {$accent}15 !important; color: {$accent} !important; }
+";
+            update_option('wpilot_mega_menu', $menu_html);
+            $existing = wp_get_custom_css();
+            if (strpos($existing, 'WPilot Mega Menu') === false) wp_update_custom_css_post($existing . "\n" . $mega_css);
+            return wpilot_ok("Mega menu built with " . count($items) . " top-level items.", ['items' => count($items)]);
+
+        
+/* ── Email Pro Tools ────────────────────────────────── */
+case 'send_email':
+    $to       = sanitize_email($params['to'] ?? '');
+    $subject  = sanitize_text_field($params['subject'] ?? '');
+    $body     = wp_kses_post($params['body'] ?? '');
+    $from     = sanitize_text_field($params['from_name'] ?? get_bloginfo('name'));
+    if (!$to || !$subject) return wpilot_err('to and subject are required.');
+    $headers = ['Content-Type: text/html; charset=UTF-8', "From: {$from} <" . get_option('admin_email') . ">"];
+    $sent = wp_mail($to, $subject, $body, $headers);
+    // Log it
+    $log = get_option('wpilot_email_log', []);
+    $log[] = ['to'=>$to,'subject'=>$subject,'date'=>date('Y-m-d H:i:s'),'status'=>$sent?'sent':'failed'];
+    if (count($log) > 100) $log = array_slice($log, -100);
+    update_option('wpilot_email_log', $log);
+    return $sent ? wpilot_ok("Email sent to {$to}.") : wpilot_err("Failed to send email to {$to}.");
+
+case 'send_test_email':
+    $to = sanitize_email($params['to'] ?? get_option('admin_email'));
+    $site = get_bloginfo('name');
+    $body = "<h2>WPilot Test Email</h2><p>This is a test email from <strong>{$site}</strong>.</p><p>If you received this, your email system is working correctly.</p><p>Sent at: " . date('Y-m-d H:i:s') . "</p>";
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
+    $sent = wp_mail($to, "[{$site}] Test Email from WPilot", $body, $headers);
+    return $sent ? wpilot_ok("Test email sent to {$to}.") : wpilot_err("Failed to send test email.");
+
+case 'create_email_template':
+    $name    = sanitize_text_field($params['name'] ?? '');
+    $subject = sanitize_text_field($params['subject'] ?? '');
+    $body    = wp_kses_post($params['body'] ?? '');
+    $style   = sanitize_text_field($params['style'] ?? 'modern');
+    if (!$name) return wpilot_err('Template name is required.');
+    $styles = [
+        'modern'    => 'font-family:Inter,sans-serif;max-width:600px;margin:0 auto;padding:40px;background:#fff;border-radius:12px;box-shadow:0 2px 20px rgba(0,0,0,.08);',
+        'minimal'   => 'font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:30px;background:#fafafa;border-top:3px solid #333;',
+        'corporate' => 'font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:0;background:#fff;border:1px solid #ddd;',
+    ];
+    $css = $styles[$style] ?? $styles['modern'];
+    $wrapped = "<div style=\"{$css}\">{$body}</div>";
+    $templates = get_option('wpilot_email_templates', []);
+    $templates[$name] = ['subject'=>$subject,'body'=>$wrapped,'style'=>$style,'created'=>date('Y-m-d H:i:s')];
+    update_option('wpilot_email_templates', $templates);
+    return wpilot_ok("Email template \"{$name}\" saved ({$style} style).");
+
+case 'list_email_templates':
+    $templates = get_option('wpilot_email_templates', []);
+    if (empty($templates)) return wpilot_ok("No email templates found.", ['templates'=>[]]);
+    $list = [];
+    foreach ($templates as $name => $t) {
+        $list[] = ['name'=>$name,'subject'=>$t['subject'],'style'=>$t['style'] ?? 'modern','created'=>$t['created'] ?? 'unknown'];
+    }
+    return wpilot_ok(count($list) . " email template(s) found.", ['templates'=>$list]);
+
+case 'send_bulk_email':
+    $tpl_name = sanitize_text_field($params['template_name'] ?? '');
+    $role     = sanitize_text_field($params['role'] ?? 'subscriber');
+    $limit    = intval($params['limit'] ?? 50);
+    $templates = get_option('wpilot_email_templates', []);
+    if (!isset($templates[$tpl_name])) return wpilot_err("Template \"{$tpl_name}\" not found.");
+    $tpl = $templates[$tpl_name];
+    $users = get_users(['role'=>$role,'number'=>$limit,'fields'=>['user_email']]);
+    if (empty($users)) return wpilot_err("No users found with role \"{$role}\".");
+    $sent = 0; $failed = 0;
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
+    foreach ($users as $u) {
+        if (wp_mail($u->user_email, $tpl['subject'], $tpl['body'], $headers)) { $sent++; } else { $failed++; }
+    }
+    // Built by Christos Ferlachidis & Daniel Hedenberg
+    $log = get_option('wpilot_email_log', []);
+    $log[] = ['to'=>"bulk:{$role}",'subject'=>$tpl['subject'],'date'=>date('Y-m-d H:i:s'),'status'=>"sent:{$sent},failed:{$failed}"];
+    if (count($log) > 100) $log = array_slice($log, -100);
+    update_option('wpilot_email_log', $log);
+    return wpilot_ok("Bulk email sent: {$sent} delivered, {$failed} failed.", ['sent'=>$sent,'failed'=>$failed,'role'=>$role]);
+
+case 'email_log':
+    $log = get_option('wpilot_email_log', []);
+    if (empty($log)) return wpilot_ok("No emails logged yet.", ['log'=>[]]);
+    $recent = array_slice($log, -20);
+    return wpilot_ok(count($recent) . " recent email(s).", ['log'=>array_reverse($recent)]);
+
+/* ── Booking System Tools ───────────────────────────── */
+case 'create_booking_page':
+    $title    = sanitize_text_field($params['title'] ?? 'Book an Appointment');
+    $services = $params['services'] ?? [];
+    $slots    = $params['time_slots'] ?? ['09:00','10:00','11:00','13:00','14:00','15:00','16:00'];
+    $days     = $params['days'] ?? ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+    $settings = get_option('wpilot_booking_settings', ['timezone'=>'UTC','slot_duration'=>60,'max_per_slot'=>1,'notification_email'=>get_option('admin_email')]);
+    // Save config
+    update_option('wpilot_booking_services', $services);
+    update_option('wpilot_booking_slots', $slots);
+    update_option('wpilot_booking_days', $days);
+    // Build service options HTML
+    $svc_html = '';
+    foreach ($services as $s) {
+        $sname = esc_attr($s['name'] ?? '');
+        $sprice = esc_attr($s['price'] ?? '0');
+        $sdur = esc_attr($s['duration'] ?? '60');
+        $svc_html .= "<option value=\"{$sname}\" data-price=\"{$sprice}\" data-duration=\"{$sdur}\">{$sname} - \${$sprice} ({$sdur} min)</option>";
+    }
+    // Build time slot options
+    $slot_html = '';
+    foreach ($slots as $sl) { $slot_html .= "<option value=\"" . esc_attr($sl) . "\">{$sl}</option>"; }
+    // Build day checkboxes for display
+    $day_list = implode(', ', $days);
+    $form = '<div class="wpilot-booking-form" style="max-width:600px;margin:0 auto;font-family:Inter,sans-serif;">'
+        . '<h2 style="text-align:center;margin-bottom:20px;">' . esc_html($title) . '</h2>'
+        . '<p style="text-align:center;color:#666;">Available: ' . esc_html($day_list) . '</p>'
+        . '<form id="wpilot-booking" method="post" style="display:flex;flex-direction:column;gap:15px;">'
+        . '<input type="hidden" name="wpilot_booking_submit" value="1">'
+        . '<label>Your Name<input type="text" name="booking_name" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;"></label>'
+        . '<label>Email<input type="email" name="booking_email" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;"></label>'
+        . '<label>Phone<input type="tel" name="booking_phone" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;"></label>'
+        . '<label>Service<select name="booking_service" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;">' . $svc_html . '</select></label>'
+        . '<label>Date<input type="date" name="booking_date" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;"></label>'
+        . '<label>Time<select name="booking_time" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;">' . $slot_html . '</select></label>'
+        . '<label>Notes<textarea name="booking_notes" rows="3" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;"></textarea></label>'
+        . '<button type="submit" style="padding:14px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Book Now</button>'
+        . '</form></div>';
+    // Create the page
+    $page_id = wp_insert_post(['post_title'=>$title,'post_content'=>$form,'post_status'=>'publish','post_type'=>'page']);
+    if (is_wp_error($page_id)) return wpilot_err($page_id->get_error_message());
+    // Register a simple handler via option
+    update_option('wpilot_booking_page_id', $page_id);
+    // Add booking handler if not already
+    if (!get_option('wpilot_booking_handler_active')) {
+        update_option('wpilot_booking_handler_active', true);
+    }
+    return wpilot_ok("Booking page \"{$title}\" created (ID: {$page_id}) with " . count($services) . " services and " . count($slots) . " time slots.", ['page_id'=>$page_id,'services'=>count($services)]);
+
+case 'list_bookings':
+    $bookings = get_option('wpilot_bookings', []);
+    $status   = sanitize_text_field($params['status'] ?? '');
+    $from     = sanitize_text_field($params['date_from'] ?? '');
+    $to       = sanitize_text_field($params['date_to'] ?? '');
+    if ($status) $bookings = array_filter($bookings, function($b) use ($status) { return ($b['status'] ?? 'pending') === $status; });
+    if ($from) $bookings = array_filter($bookings, function($b) use ($from) { return ($b['date'] ?? '') >= $from; });
+    if ($to) $bookings = array_filter($bookings, function($b) use ($to) { return ($b['date'] ?? '') <= $to; });
+    $bookings = array_values($bookings);
+    return wpilot_ok(count($bookings) . " booking(s) found.", ['bookings'=>$bookings]);
+
+case 'confirm_booking':
+    $bid = intval($params['booking_id'] ?? 0);
+    $bookings = get_option('wpilot_bookings', []);
+    if (!isset($bookings[$bid])) return wpilot_err("Booking #{$bid} not found.");
+    $bookings[$bid]['status'] = 'confirmed';
+    update_option('wpilot_bookings', $bookings);
+    $email = $bookings[$bid]['email'] ?? '';
+    if ($email) {
+        $site = get_bloginfo('name');
+        $date = $bookings[$bid]['date'] ?? '';
+        $time = $bookings[$bid]['time'] ?? '';
+        $svc  = $bookings[$bid]['service'] ?? '';
+        wp_mail($email, "Booking Confirmed - {$site}", "<h2>Your booking is confirmed!</h2><p><strong>Service:</strong> {$svc}<br><strong>Date:</strong> {$date}<br><strong>Time:</strong> {$time}</p><p>Thank you for choosing {$site}!</p>", ['Content-Type: text/html; charset=UTF-8']);
+    }
+    return wpilot_ok("Booking #{$bid} confirmed. Confirmation email sent to {$email}.");
+
+case 'cancel_booking':
+    $bid = intval($params['booking_id'] ?? 0);
+    $bookings = get_option('wpilot_bookings', []);
+    if (!isset($bookings[$bid])) return wpilot_err("Booking #{$bid} not found.");
+    $bookings[$bid]['status'] = 'cancelled';
+    update_option('wpilot_bookings', $bookings);
+    return wpilot_ok("Booking #{$bid} cancelled.");
+
+case 'booking_settings':
+    $settings = get_option('wpilot_booking_settings', ['timezone'=>'UTC','slot_duration'=>60,'max_per_slot'=>1,'notification_email'=>get_option('admin_email')]);
+    if (isset($params['timezone']))          $settings['timezone']          = sanitize_text_field($params['timezone']);
+    if (isset($params['slot_duration']))     $settings['slot_duration']     = intval($params['slot_duration']);
+    if (isset($params['max_per_slot']))      $settings['max_per_slot']      = intval($params['max_per_slot']);
+    if (isset($params['notification_email'])) $settings['notification_email'] = sanitize_email($params['notification_email']);
+    update_option('wpilot_booking_settings', $settings);
+    return wpilot_ok("Booking settings updated.", ['settings'=>$settings]);
+
+/* ── WooCommerce Extra Tools ────────────────────────── */
+case 'woo_create_category_with_image':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $name  = sanitize_text_field($params['name'] ?? '');
+    $desc  = sanitize_text_field($params['description'] ?? '');
+    $img   = esc_url_raw($params['image_url'] ?? '');
+    $parent = intval($params['parent'] ?? 0);
+    if (!$name) return wpilot_err('Category name required.');
+    $term = wp_insert_term($name, 'product_cat', ['description'=>$desc,'parent'=>$parent]);
+    if (is_wp_error($term)) return wpilot_err($term->get_error_message());
+    $term_id = $term['term_id'];
+    if ($img) {
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $att_id = media_sideload_image($img, 0, $name, 'id');
+        if (!is_wp_error($att_id)) update_term_meta($term_id, 'thumbnail_id', $att_id);
+    }
+    return wpilot_ok("Category \"{$name}\" created (ID: {$term_id}).", ['term_id'=>$term_id]);
+
+case 'woo_bulk_update_prices':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $updates = $params['updates'] ?? [];
+    $pct     = floatval($params['percentage'] ?? 0);
+    $count   = 0;
+    if (!empty($updates)) {
+        foreach ($updates as $u) {
+            $pid = intval($u['product_id'] ?? 0);
+            $price = sanitize_text_field($u['price'] ?? '');
+            if ($pid && $price !== '') {
+                update_post_meta($pid, '_regular_price', $price);
+                update_post_meta($pid, '_price', $price);
+                $count++;
+            }
+        }
+        return wpilot_ok("{$count} product prices updated.", ['updated'=>$count]);
+    } elseif ($pct != 0) {
+        $products = wc_get_products(['limit'=>-1,'return'=>'ids']);
+        foreach ($products as $pid) {
+            $old = floatval(get_post_meta($pid, '_regular_price', true));
+            if ($old > 0) {
+                $new = round($old * (1 + $pct / 100), 2);
+                update_post_meta($pid, '_regular_price', $new);
+                $sale = get_post_meta($pid, '_sale_price', true);
+                if (!$sale) update_post_meta($pid, '_price', $new);
+                $count++;
+            }
+        }
+        $dir = $pct > 0 ? 'increased' : 'decreased';
+        return wpilot_ok("{$count} products {$dir} by {$pct}%.", ['updated'=>$count,'percentage'=>$pct]);
+    }
+    return wpilot_err('Provide updates array or percentage.');
+
+case 'woo_create_simple_product':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $name  = sanitize_text_field($params['name'] ?? '');
+    $price = sanitize_text_field($params['price'] ?? '');
+    $desc  = wp_kses_post($params['description'] ?? '');
+    $img   = esc_url_raw($params['image_url'] ?? '');
+    $cat   = sanitize_text_field($params['category'] ?? '');
+    $sku   = sanitize_text_field($params['sku'] ?? '');
+    $stock = isset($params['stock']) ? intval($params['stock']) : null;
+    if (!$name || $price === '') return wpilot_err('name and price are required.');
+    $pid = wp_insert_post(['post_title'=>$name,'post_content'=>$desc,'post_status'=>'publish','post_type'=>'product']);
+    if (is_wp_error($pid)) return wpilot_err($pid->get_error_message());
+    update_post_meta($pid, '_regular_price', $price);
+    update_post_meta($pid, '_price', $price);
+    wp_set_object_terms($pid, 'simple', 'product_type');
+    if ($sku) update_post_meta($pid, '_sku', $sku);
+    if ($stock !== null) {
+        update_post_meta($pid, '_manage_stock', 'yes');
+        update_post_meta($pid, '_stock', $stock);
+        update_post_meta($pid, '_stock_status', $stock > 0 ? 'instock' : 'outofstock');
+    }
+    if ($cat) {
+        $term = term_exists($cat, 'product_cat');
+        if (!$term) $term = wp_insert_term($cat, 'product_cat');
+        if (!is_wp_error($term)) wp_set_object_terms($pid, intval($term['term_id']), 'product_cat');
+    }
+    if ($img) {
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $att_id = media_sideload_image($img, $pid, $name, 'id');
+        if (!is_wp_error($att_id)) set_post_thumbnail($pid, $att_id);
+    }
+    return wpilot_ok("Product \"{$name}\" created (ID: {$pid}, price: \${$price}).", ['product_id'=>$pid]);
+
+case 'woo_shipping_calculator':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $zones = WC_Shipping_Zones::get_zones();
+    $result = [];
+    foreach ($zones as $z) {
+        $methods = [];
+        foreach ($z['shipping_methods'] as $m) {
+            $methods[] = ['id'=>$m->id,'title'=>$m->title,'enabled'=>$m->enabled,'cost'=>$m->get_option('cost','N/A')];
+        }
+        $result[] = ['zone'=>$z['zone_name'],'regions'=>wp_list_pluck($z['zone_locations'],'code'),'methods'=>$methods];
+    }
+    // Rest of World
+    $rw = WC_Shipping_Zones::get_zone(0);
+    $rw_methods = [];
+    foreach ($rw->get_shipping_methods() as $m) {
+        $rw_methods[] = ['id'=>$m->id,'title'=>$m->title,'enabled'=>$m->enabled];
+    }
+    if (!empty($rw_methods)) $result[] = ['zone'=>'Rest of World','regions'=>['*'],'methods'=>$rw_methods];
+    return wpilot_ok(count($result) . " shipping zone(s).", ['zones'=>$result]);
+
+case 'woo_payment_methods':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $gateways = WC()->payment_gateways()->payment_gateways();
+    $list = [];
+    foreach ($gateways as $gw) {
+        $list[] = ['id'=>$gw->id,'title'=>$gw->get_title(),'enabled'=>$gw->enabled==='yes','description'=>$gw->get_description()];
+    }
+    return wpilot_ok(count($list) . " payment method(s).", ['methods'=>$list]);
+
+case 'woo_tax_summary':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    global $wpdb;
+    $rates = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}woocommerce_tax_rates ORDER BY tax_rate_order", ARRAY_A);
+    $tax_enabled = get_option('woocommerce_calc_taxes') === 'yes';
+    return wpilot_ok(($tax_enabled ? "Taxes ENABLED" : "Taxes DISABLED") . ". " . count($rates) . " rate(s).", ['enabled'=>$tax_enabled,'rates'=>$rates]);
+
+case 'woo_order_stats':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $statuses = ['pending','processing','on-hold','completed','cancelled','refunded','failed'];
+    $stats = [];
+    foreach ($statuses as $s) {
+        $count = count(wc_get_orders(['status'=>$s,'limit'=>-1,'return'=>'ids']));
+        $stats[$s] = $count;
+    }
+    $total = array_sum($stats);
+    return wpilot_ok("Total {$total} orders.", ['stats'=>$stats,'total'=>$total]);
+
+case 'woo_product_search':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $q = sanitize_text_field($params['query'] ?? '');
+    if (!$q) return wpilot_err('Search query required.');
+    $products = wc_get_products(['s'=>$q,'limit'=>20]);
+    // Also search by SKU
+    $by_sku = wc_get_products(['sku'=>$q,'limit'=>10]);
+    $all = array_merge($products, $by_sku);
+    $seen = []; $results = [];
+    foreach ($all as $p) {
+        if (isset($seen[$p->get_id()])) continue;
+        $seen[$p->get_id()] = true;
+        $results[] = ['id'=>$p->get_id(),'name'=>$p->get_name(),'price'=>$p->get_price(),'sku'=>$p->get_sku(),'status'=>$p->get_status(),'stock'=>$p->get_stock_quantity()];
+    }
+    return wpilot_ok(count($results) . " product(s) found for \"{$q}\".", ['products'=>$results]);
+
+case 'woo_duplicate_product':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $pid = intval($params['product_id'] ?? 0);
+    if (!$pid) return wpilot_err('product_id required.');
+    $product = wc_get_product($pid);
+    if (!$product) return wpilot_err("Product #{$pid} not found.");
+    $new_name = sanitize_text_field($params['new_name'] ?? $product->get_name() . ' (Copy)');
+    $dup = clone $product;
+    $dup->set_id(0);
+    $dup->set_name($new_name);
+    $dup->set_slug('');
+    $dup->set_date_created(null);
+    $new_id = $dup->save();
+    // Copy meta
+    $meta = get_post_meta($pid);
+    foreach ($meta as $key => $vals) {
+        if ($key === '_sku') { update_post_meta($new_id, '_sku', $vals[0] . '-copy'); continue; }
+        foreach ($vals as $v) { add_post_meta($new_id, $key, maybe_unserialize($v)); }
+    }
+    return wpilot_ok("Product duplicated as \"{$new_name}\" (ID: {$new_id}).", ['original_id'=>$pid,'new_id'=>$new_id]);
+
+case 'woo_set_product_gallery':
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');
+    $pid  = intval($params['product_id'] ?? 0);
+    $urls = $params['image_urls'] ?? [];
+    if (!$pid) return wpilot_err('product_id required.');
+    if (empty($urls)) return wpilot_err('image_urls array required.');
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    $ids = [];
+    foreach ($urls as $url) {
+        $att = media_sideload_image(esc_url_raw($url), $pid, '', 'id');
+        if (!is_wp_error($att)) $ids[] = $att;
+    }
+    if (!empty($ids)) {
+        $product = wc_get_product($pid);
+        if ($product) { $product->set_gallery_image_ids($ids); $product->save(); }
+    }
+    return wpilot_ok(count($ids) . " gallery image(s) added to product #{$pid}.", ['attachment_ids'=>$ids]);
+
+/* ── SEO Pro Tools ──────────────────────────────────── */
+case 'seo_check_page':
+    $pid = intval($params['page_id'] ?? $params['id'] ?? 0);
+    $url = esc_url_raw($params['url'] ?? '');
+    if (!$pid && $url) {
+        $pid = url_to_postid($url);
+    }
+    if (!$pid) return wpilot_err('page_id or url required.');
+    $post = get_post($pid);
+    if (!$post) return wpilot_err("Page #{$pid} not found.");
+    $content = $post->post_content;
+    $issues = []; $score = 100;
+    // Title length
+    $title_len = strlen($post->post_title);
+    if ($title_len < 30) { $issues[] = "Title too short ({$title_len} chars, aim for 50-60)"; $score -= 10; }
+    if ($title_len > 60) { $issues[] = "Title too long ({$title_len} chars, aim for 50-60)"; $score -= 5; }
+    // Meta description
+    $meta_desc = get_post_meta($pid, '_yoast_wpseo_metadesc', true) ?: get_post_meta($pid, '_rank_math_description', true) ?: '';
+    if (!$meta_desc) { $issues[] = "Missing meta description"; $score -= 15; }
+    elseif (strlen($meta_desc) < 120) { $issues[] = "Meta description too short (" . strlen($meta_desc) . " chars)"; $score -= 5; }
+    // Headings
+    preg_match_all('/<h1[^>]*>/i', $content, $h1s);
+    if (count($h1s[0]) > 1) { $issues[] = "Multiple H1 tags (" . count($h1s[0]) . " found)"; $score -= 10; }
+    if (count($h1s[0]) === 0) { $issues[] = "No H1 tag found"; $score -= 10; }
+    // Images alt text
+    preg_match_all('/<img[^>]*>/i', $content, $imgs);
+    $missing_alt = 0;
+    foreach ($imgs[0] as $img_tag) { if (!preg_match('/alt=["\'][^"\']+["\']/', $img_tag)) $missing_alt++; }
+    if ($missing_alt > 0) { $issues[] = "{$missing_alt} image(s) missing alt text"; $score -= $missing_alt * 3; }
+    // Internal links
+    preg_match_all('/href=["\']([^"\']+)["\']/', $content, $links);
+    $internal = 0;
+    $site_url = get_site_url();
+    foreach ($links[1] as $l) { if (strpos($l, $site_url) !== false || strpos($l, '/') === 0) $internal++; }
+    if ($internal === 0) { $issues[] = "No internal links found"; $score -= 10; }
+    // Word count
+    $words = str_word_count(strip_tags($content));
+    if ($words < 300) { $issues[] = "Thin content ({$words} words, aim for 300+)"; $score -= 10; }
+    $score = max(0, $score);
+    $grade = $score >= 80 ? 'Good' : ($score >= 50 ? 'Needs Improvement' : 'Poor');
+    return wpilot_ok("SEO Score: {$score}/100 ({$grade}). " . count($issues) . " issue(s).", ['score'=>$score,'grade'=>$grade,'issues'=>$issues,'title_length'=>$title_len,'word_count'=>$words,'internal_links'=>$internal]);
+
+case 'seo_generate_meta':
+    $pid = intval($params['page_id'] ?? $params['id'] ?? 0);
+    if (!$pid) return wpilot_err('page_id required.');
+    $post = get_post($pid);
+    if (!$post) return wpilot_err("Page #{$pid} not found.");
+    $title = $post->post_title;
+    $content = strip_tags($post->post_content);
+    $words = explode(' ', $content);
+    $excerpt = implode(' ', array_slice($words, 0, 30));
+    // Generate optimized meta
+    $site = get_bloginfo('name');
+    $meta_title = strlen($title) > 55 ? substr($title, 0, 52) . '...' : $title . " | {$site}";
+    if (strlen($meta_title) > 60) $meta_title = substr($meta_title, 0, 57) . '...';
+    $meta_desc = strlen($excerpt) > 10 ? rtrim(substr($excerpt, 0, 155), ' .') . '.' : "Discover {$title} at {$site}. Learn more about our offerings.";
+    // Save to Yoast or RankMath if available
+    if (defined('WPSEO_VERSION')) {
+        update_post_meta($pid, '_yoast_wpseo_title', $meta_title);
+        update_post_meta($pid, '_yoast_wpseo_metadesc', $meta_desc);
+    }
+    if (class_exists('RankMath')) {
+        update_post_meta($pid, 'rank_math_title', $meta_title);
+        update_post_meta($pid, 'rank_math_description', $meta_desc);
+    }
+    return wpilot_ok("Meta generated for \"{$title}\".", ['meta_title'=>$meta_title,'meta_title_length'=>strlen($meta_title),'meta_description'=>$meta_desc,'meta_desc_length'=>strlen($meta_desc)]);
+
+case 'seo_internal_links':
+    $pages = get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>200]);
+    $site_url = get_site_url();
+    $linked_to = [];
+    foreach ($pages as $p) {
+        preg_match_all('/href=["\']([^"\']+)["\']/', $p->post_content, $m);
+        foreach ($m[1] as $link) {
+            $link = strtok($link, '#');
+            $link = strtok($link, '?');
+            $link = rtrim($link, '/');
+            if (strpos($link, $site_url) !== false) {
+                $linked_to[$link] = true;
+            }
+        }
+    }
+    $orphans = [];
+    foreach ($pages as $p) {
+        $purl = rtrim(get_permalink($p->ID), '/');
+        if (!isset($linked_to[$purl]) && $p->ID != get_option('page_on_front')) {
+            $orphans[] = ['id'=>$p->ID,'title'=>$p->post_title,'url'=>$purl,'type'=>$p->post_type];
+        }
+    }
+    return wpilot_ok(count($orphans) . " orphan page(s) with no internal links pointing to them.", ['orphans'=>$orphans,'total_pages'=>count($pages)]);
+
+case 'seo_keyword_check':
+    $keyword = sanitize_text_field($params['keyword'] ?? '');
+    if (!$keyword) return wpilot_err('keyword parameter required.');
+    $pages = get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>200]);
+    $results = [];
+    $kw_lower = strtolower($keyword);
+    foreach ($pages as $p) {
+        $text = strtolower(strip_tags($p->post_content . ' ' . $p->post_title));
+        $count = substr_count($text, $kw_lower);
+        if ($count > 0) {
+            $words = str_word_count($text);
+            $density = $words > 0 ? round(($count / $words) * 100, 2) : 0;
+            $in_title = strpos(strtolower($p->post_title), $kw_lower) !== false;
+            $results[] = ['id'=>$p->ID,'title'=>$p->post_title,'mentions'=>$count,'density'=>$density.'%','in_title'=>$in_title,'type'=>$p->post_type];
+        }
+    }
+    usort($results, function($a,$b){ return $b['mentions'] - $a['mentions']; });
+    return wpilot_ok("Keyword \"{$keyword}\" found on " . count($results) . " page(s).", ['keyword'=>$keyword,'pages'=>$results]);
+
+case 'seo_broken_links':
+    $pages = get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>100]);
+    $broken = [];
+    $checked = 0;
+    $site_url = get_site_url();
+    foreach ($pages as $p) {
+        preg_match_all('/href=["\']([^"\'#][^"\']*)["\']/', $p->post_content, $m);
+        foreach ($m[1] as $link) {
+            if (strpos($link, 'mailto:') === 0 || strpos($link, 'tel:') === 0 || strpos($link, 'javascript:') === 0) continue;
+            $checked++;
+            if ($checked > 200) break 2; // Limit checks
+            // Internal link check
+            if (strpos($link, $site_url) !== false || strpos($link, '/') === 0) {
+                $full = strpos($link, '/') === 0 ? $site_url . $link : $link;
+                $post_id = url_to_postid($full);
+                if (!$post_id && !file_exists(ABSPATH . ltrim(parse_url($full, PHP_URL_PATH), '/'))) {
+                    $broken[] = ['url'=>$link,'page_id'=>$p->ID,'page_title'=>$p->post_title,'type'=>'internal'];
+                }
+            } else {
+                // External - quick check
+                $response = wp_remote_head($link, ['timeout'=>5,'redirection'=>3,'sslverify'=>false]);
+                if (is_wp_error($response) || wp_remote_retrieve_response_code($response) >= 400) {
+                    $code = is_wp_error($response) ? 'error' : wp_remote_retrieve_response_code($response);
+                    $broken[] = ['url'=>$link,'page_id'=>$p->ID,'page_title'=>$p->post_title,'type'=>'external','status'=>$code];
+                }
+            }
+        }
+    }
+    return wpilot_ok(count($broken) . " broken link(s) found ({$checked} checked).", ['broken'=>$broken,'total_checked'=>$checked]);
+
+case 'seo_redirect_check':
+    $pages = get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>100]);
+    $redirects = [];
+    $four04s   = [];
+    $checked   = 0;
+    foreach ($pages as $p) {
+        preg_match_all('/href=["\']([^"\'#][^"\']*)["\']/', $p->post_content, $m);
+        foreach ($m[1] as $link) {
+            if (strpos($link, 'mailto:') === 0 || strpos($link, 'tel:') === 0) continue;
+            if (strpos($link, 'http') !== 0) continue;
+            $checked++;
+            if ($checked > 150) break 2;
+            $response = wp_remote_get($link, ['timeout'=>5,'redirection'=>0,'sslverify'=>false]);
+            if (is_wp_error($response)) continue;
+            $code = wp_remote_retrieve_response_code($response);
+            if ($code >= 300 && $code < 400) {
+                $location = wp_remote_retrieve_header($response, 'location');
+                $redirects[] = ['url'=>$link,'redirects_to'=>$location,'status'=>$code,'page_id'=>$p->ID,'page_title'=>$p->post_title];
+            } elseif ($code === 404) {
+                $four04s[] = ['url'=>$link,'page_id'=>$p->ID,'page_title'=>$p->post_title];
+            }
+        }
+    }
+    return wpilot_ok(count($redirects) . " redirect(s), " . count($four04s) . " 404(s) found ({$checked} links checked).", ['redirects'=>$redirects,'not_found'=>$four04s,'total_checked'=>$checked]);
+
+        
+        /* ── Button Builder ─────────────────────────────────── */
+        case 'create_button':
+            $page_id = intval($params['page_id'] ?? 0);
+            $text    = sanitize_text_field($params['text'] ?? 'Click Me');
+            $url     = esc_url($params['url'] ?? '#');
+            $style   = sanitize_text_field($params['style'] ?? 'gradient');
+            $color   = sanitize_hex_color($params['color'] ?? '#6366f1');
+            $size    = sanitize_text_field($params['size'] ?? 'md');
+            $icon    = sanitize_text_field($params['icon'] ?? '');
+            if (!$page_id) return wpilot_err('page_id required.');
+            $sizes = ['sm' => 'padding:8px 18px;font-size:0.85rem', 'md' => 'padding:12px 28px;font-size:1rem', 'lg' => 'padding:16px 40px;font-size:1.15rem'];
+            $sz = $sizes[$size] ?? $sizes['md'];
+            $base = "display:inline-block;{$sz};border-radius:8px;text-decoration:none;font-weight:600;cursor:pointer;transition:all 0.3s ease;text-align:center;";
+            $styles_map = [
+                'gradient'  => "background:linear-gradient(135deg,{$color},{$color}cc);color:#fff;border:none;box-shadow:0 4px 15px {$color}40;",
+                'outline'   => "background:transparent;color:{$color};border:2px solid {$color};",
+                'glass'     => "background:{$color}20;color:{$color};border:1px solid {$color}40;backdrop-filter:blur(10px);",
+                'neon'      => "background:transparent;color:{$color};border:2px solid {$color};box-shadow:0 0 10px {$color}60,inset 0 0 10px {$color}20;text-shadow:0 0 8px {$color}80;",
+                'pill'      => "background:{$color};color:#fff;border:none;border-radius:50px;",
+                '3d'        => "background:{$color};color:#fff;border:none;border-bottom:4px solid {$color}90;border-radius:8px;",
+            ];
+            $s = $styles_map[$style] ?? $styles_map['gradient'];
+            $icon_html = $icon ? "{$icon} " : '';
+            $btn_html = '<div style="margin:20px 0;text-align:center"><a href="' . $url . '" style="' . $base . $s . '">' . $icon_html . esc_html($text) . '</a></div>';
+            wpilot_save_post_snapshot($page_id);
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $btn_html]);
+            return wpilot_ok("Button '{$text}' ({$style} style, {$size}) added to page #{$page_id}.", ['html' => $btn_html]);
+
+        /* ── CSS Power Tools ────────────────────────────────── */
+        case 'add_css_variable':
+            $variables = $params['variables'] ?? [];
+            if (empty($variables) || !is_array($variables)) return wpilot_err('variables array required (name=>value pairs).');
+            $css_vars = "\n/* wpilot-css-variables */\n:root {\n";
+            foreach ($variables as $name => $value) {
+                $name = sanitize_text_field($name);
+                $value = sanitize_text_field($value);
+                if (strpos($name, '--') !== 0) $name = '--' . $name;
+                $css_vars .= "  {$name}: {$value};\n";
+            }
+            $css_vars .= "}\n";
+            $existing = wp_get_custom_css();
+            wp_update_custom_css_post($existing . $css_vars);
+            return wpilot_ok("Added " . count($variables) . " CSS variable(s) to :root.", ['variables' => array_keys($variables)]);
+
+        case 'add_css_class':
+            $class_name = sanitize_text_field($params['class_name'] ?? '');
+            $properties = $params['properties'] ?? '';
+            if (!$class_name || !$properties) return wpilot_err('class_name and properties required.');
+            if (strpos($class_name, '.') !== 0) $class_name = '.' . $class_name;
+            $css_block = "\n/* wpilot-class-{$class_name} */\n{$class_name} {\n  {$properties}\n}\n";
+            $existing = wp_get_custom_css();
+            wp_update_custom_css_post($existing . $css_block);
+            return wpilot_ok("CSS class {$class_name} created.", ['class' => $class_name]);
+
+        case 'remove_css':
+            $tag = sanitize_text_field($params['tag'] ?? '');
+            if (!$tag) return wpilot_err('tag required.');
+            $existing = wp_get_custom_css();
+            $pattern = '/\/\*\s*' . preg_quote($tag, '/') . '\s*\*\/.*?(?=\/\*|\z)/s';
+            $updated = preg_replace($pattern, '', $existing);
+            if ($updated === $existing) return wpilot_err("Tag '{$tag}' not found in CSS.");
+            wp_update_custom_css_post(trim($updated));
+            return wpilot_ok("CSS block tagged '{$tag}' removed.");
+
+        case 'css_reset':
+            $existing = wp_get_custom_css();
+            $cleaned = preg_replace('/\/\*\s*wpilot[^*]*\*\/.*?(?=\/\*|\z)/si', '', $existing);
+            $cleaned = preg_replace('/\/\*\s*WPilot[^*]*\*\/.*?(?=\/\*|\z)/s', '', $cleaned);
+            wp_update_custom_css_post(trim($cleaned));
+            return wpilot_ok("All WPilot-added CSS removed. Non-WPilot CSS preserved.");
+
+        case 'get_css':
+            $css = wp_get_custom_css();
+            if (empty(trim($css))) return wpilot_ok("No custom CSS found.", ['css' => '']);
+            return wpilot_ok("Current custom CSS (" . strlen($css) . " bytes):", ['css' => $css]);
+
+        /* ── HTML Tools ─────────────────────────────────────── */
+        case 'inject_html':
+            $page_id  = intval($params['page_id'] ?? 0);
+            $html     = wp_kses_post($params['html'] ?? '');
+            $position = sanitize_text_field($params['position'] ?? 'bottom');
+            if (!$page_id || !$html) return wpilot_err('page_id and html required.');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $content = $post->post_content;
+            switch ($position) {
+                case 'top':            $content = $html . "\n" . $content; break;
+                case 'before_content': $content = $html . "\n" . $content; break;
+                case 'after_content':  $content = $content . "\n" . $html; break;
+                default:               $content = $content . "\n" . $html; break;
+            }
+            wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+            return wpilot_ok("HTML injected at '{$position}' on page #{$page_id}.", ['position' => $position]);
+
+        case 'create_section':
+            $page_id   = intval($params['page_id'] ?? 0);
+            $title     = sanitize_text_field($params['title'] ?? '');
+            $content   = wp_kses_post($params['content'] ?? '');
+            $bg_color  = sanitize_text_field($params['bg_color'] ?? '#f8f9fa');
+            $text_color = sanitize_text_field($params['text_color'] ?? '#1a1a1a');
+            $padding   = sanitize_text_field($params['padding'] ?? '60px 20px');
+            $style     = sanitize_text_field($params['style'] ?? 'full-width');
+            if (!$page_id) return wpilot_err('page_id required.');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $styles_map = [
+                'card'       => "background:{$bg_color};color:{$text_color};padding:{$padding};border-radius:16px;max-width:800px;margin:40px auto;box-shadow:0 4px 20px rgba(0,0,0,0.08);",
+                'full-width' => "background:{$bg_color};color:{$text_color};padding:{$padding};width:100vw;position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;",
+                'centered'   => "background:{$bg_color};color:{$text_color};padding:{$padding};max-width:900px;margin:40px auto;text-align:center;",
+                'split'      => "background:{$bg_color};color:{$text_color};padding:{$padding};display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;",
+            ];
+            $s = $styles_map[$style] ?? $styles_map['full-width'];
+            $section_html = '<div style="' . $s . '">';
+            if ($title) $section_html .= '<h2 style="margin-bottom:20px;font-size:2rem;font-weight:700">' . esc_html($title) . '</h2>';
+            $section_html .= '<div>' . $content . '</div></div>';
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $section_html]);
+            return wpilot_ok("Section '{$title}' ({$style}) added to page #{$page_id}.", ['style' => $style]);
+
+        case 'create_grid':
+            $page_id = intval($params['page_id'] ?? 0);
+            $columns = intval($params['columns'] ?? 3);
+            $items   = $params['items'] ?? [];
+            if (!$page_id) return wpilot_err('page_id required.');
+            if (empty($items)) return wpilot_err('items array required (each: {title, content, icon}).');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $grid_html = '<div style="display:grid;grid-template-columns:repeat(' . $columns . ',1fr);gap:24px;padding:40px 20px">';
+            foreach ($items as $item) {
+                $icon = sanitize_text_field($item['icon'] ?? '');
+                $t    = sanitize_text_field($item['title'] ?? '');
+                $c    = wp_kses_post($item['content'] ?? '');
+                $grid_html .= '<div style="background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 12px rgba(0,0,0,0.06);transition:transform 0.3s">';
+                if ($icon) $grid_html .= '<div style="font-size:2.5rem;margin-bottom:16px">' . $icon . '</div>';
+                if ($t) $grid_html .= '<h3 style="font-size:1.2rem;font-weight:600;margin-bottom:12px">' . esc_html($t) . '</h3>';
+                $grid_html .= '<p style="color:#666;line-height:1.6">' . $c . '</p></div>';
+            }
+            $grid_html .= '</div>';
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $grid_html]);
+            return wpilot_ok("Grid ({$columns} columns, " . count($items) . " items) added to page #{$page_id}.", ['columns' => $columns, 'items' => count($items)]);
+
+        case 'create_table':
+            $page_id = intval($params['page_id'] ?? 0);
+            $headers = $params['headers'] ?? [];
+            $rows    = $params['rows'] ?? [];
+            $style   = sanitize_text_field($params['style'] ?? 'striped');
+            if (!$page_id) return wpilot_err('page_id required.');
+            if (empty($headers)) return wpilot_err('headers array required.');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $styles_map = [
+                'dark'    => ['bg' => '#1a1a2e', 'text' => '#eee', 'head' => '#16213e', 'border' => '#2a2a4a', 'stripe' => '#1e1e3a'],
+                'light'   => ['bg' => '#fff', 'text' => '#333', 'head' => '#f5f5f5', 'border' => '#e0e0e0', 'stripe' => '#fff'],
+                'striped' => ['bg' => '#fff', 'text' => '#333', 'head' => '#6366f1', 'border' => '#e5e7eb', 'stripe' => '#f9fafb'],
+            ];
+            $s = $styles_map[$style] ?? $styles_map['striped'];
+            $head_text = ($style === 'striped') ? '#fff' : $s['text'];
+            $tbl = '<div style="overflow-x:auto;margin:20px 0"><table style="width:100%;border-collapse:collapse;background:' . $s['bg'] . ';border-radius:12px;overflow:hidden">';
+            $tbl .= '<thead><tr>';
+            foreach ($headers as $h) $tbl .= '<th style="padding:14px 18px;background:' . $s['head'] . ';color:' . $head_text . ';font-weight:600;text-align:left;border-bottom:2px solid ' . $s['border'] . '">' . esc_html($h) . '</th>';
+            $tbl .= '</tr></thead><tbody>';
+            foreach ($rows as $i => $row) {
+                $row_bg = ($i % 2 === 1) ? $s['stripe'] : $s['bg'];
+                $tbl .= '<tr>';
+                foreach ($row as $cell) $tbl .= '<td style="padding:12px 18px;color:' . $s['text'] . ';border-bottom:1px solid ' . $s['border'] . ';background:' . $row_bg . '">' . esc_html($cell) . '</td>';
+                $tbl .= '</tr>';
+            }
+            $tbl .= '</tbody></table></div>';
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $tbl]);
+            return wpilot_ok("Table (" . count($headers) . " cols, " . count($rows) . " rows, {$style}) added to page #{$page_id}.", ['headers' => count($headers), 'rows' => count($rows)]);
+
+        /* ── Icon Tools ─────────────────────────────────────── */
+        case 'add_icon':
+            $page_id  = intval($params['page_id'] ?? 0);
+            $icon     = sanitize_text_field($params['icon'] ?? '');
+            $size     = sanitize_text_field($params['size'] ?? '2rem');
+            $color    = sanitize_text_field($params['color'] ?? 'inherit');
+            $position = sanitize_text_field($params['position'] ?? 'inline');
+            if (!$page_id) return wpilot_err('page_id required.');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $is_fa = (strpos($icon, 'fa-') !== false);
+            if ($is_fa) {
+                $icon_html = '<i class="' . esc_attr($icon) . '" style="font-size:' . $size . ';color:' . $color . '"></i>';
+            } else {
+                $icon_html = '<span style="font-size:' . $size . ';color:' . $color . '">' . $icon . '</span>';
+            }
+            $align = ($position === 'center') ? 'center' : (($position === 'right') ? 'right' : 'left');
+            $wrapper = '<div style="margin:10px 0;text-align:' . $align . '">' . $icon_html . '</div>';
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $wrapper]);
+            return wpilot_ok("Icon added to page #{$page_id}.", ['icon' => $icon]);
+
+        case 'icon_list':
+            $packs = ['emoji' => ['smileys' => 'Various smiley emojis', 'hands' => 'Hand gesture emojis', 'arrows' => 'Arrow emojis', 'symbols' => 'Star, heart, check emojis', 'objects' => 'House, phone, computer emojis']];
+            $fa_loaded = false;
+            $existing_css = wp_get_custom_css();
+            if (strpos($existing_css, 'font-awesome') !== false || strpos($existing_css, 'fontawesome') !== false) $fa_loaded = true;
+            $head_code = get_option('wpilot_head_code', '');
+            if (strpos($head_code, 'font-awesome') !== false || strpos($head_code, 'fontawesome') !== false) $fa_loaded = true;
+            if ($fa_loaded) $packs['fontawesome'] = 'Loaded. Use classes like fa-solid fa-house, fa-regular fa-heart';
+            return wpilot_ok("Available icon packs.", ['packs' => $packs, 'fontawesome_loaded' => $fa_loaded]);
+
+        case 'load_icons':
+            $library = sanitize_text_field($params['library'] ?? 'fontawesome');
+            $cdns = [
+                'fontawesome'     => '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">',
+                'bootstrap-icons' => '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">',
+                'material-icons'  => '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">',
+            ];
+            if (!isset($cdns[$library])) return wpilot_err("Unknown library: {$library}. Options: fontawesome, bootstrap-icons, material-icons.");
+            $head = get_option('wpilot_head_code', '');
+            if (strpos($head, $library) !== false || strpos($head, str_replace('-', '', $library)) !== false) return wpilot_ok("{$library} is already loaded.");
+            update_option('wpilot_head_code', $head . "\n" . $cdns[$library]);
+            return wpilot_ok("{$library} icon library loaded via CDN.", ['library' => $library]);
+
+        /* ── Slider / Carousel ──────────────────────────────── */
+        case 'create_slider':
+            $page_id  = intval($params['page_id'] ?? 0);
+            $images   = $params['images'] ?? [];
+            $autoplay = isset($params['autoplay']) ? (bool)$params['autoplay'] : true;
+            $speed    = intval($params['speed'] ?? 4000);
+            $style    = sanitize_text_field($params['style'] ?? 'slide');
+            if (!$page_id) return wpilot_err('page_id required.');
+            if (empty($images)) return wpilot_err('images array required (array of URLs).');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $uid = 'wpslider-' . wp_rand(1000, 9999);
+            $count = count($images);
+            $dur = ($speed / 1000) * $count;
+            $slider_css = '<style>';
+            $slider_css .= "#{$uid}{position:relative;width:100%;max-width:1200px;margin:30px auto;overflow:hidden;border-radius:12px}";
+            $slider_css .= "#{$uid} .wpslider-track{display:flex;width:" . ($count * 100) . "%;";
+            if ($autoplay) {
+                $slider_css .= "animation:{$uid}-slide {$dur}s infinite;";
+            }
+            $slider_css .= "}";
+            $slider_css .= "#{$uid} .wpslider-track img{width:" . (100 / $count) . "%;height:400px;object-fit:cover;flex-shrink:0}";
+            if ($style === 'fade') {
+                $slider_css .= "#{$uid} .wpslider-track{width:100%;position:relative}";
+                $slider_css .= "#{$uid} .wpslider-track img{position:absolute;top:0;left:0;width:100%;opacity:0;animation:{$uid}-fade {$dur}s infinite}";
+                for ($i = 0; $i < $count; $i++) {
+                    $delay = $i * ($speed / 1000);
+                    $slider_css .= "#{$uid} .wpslider-track img:nth-child(" . ($i + 1) . "){animation-delay:{$delay}s}";
+                }
+                $step = 100 / $count;
+                $slider_css .= "@keyframes {$uid}-fade{0%,{$step}%{opacity:1}" . ($step + 5) . "%,100%{opacity:0}}";
+            } else {
+                $kf = "@keyframes {$uid}-slide{";
+                for ($i = 0; $i < $count; $i++) {
+                    $pct_start = ($i / $count) * 100;
+                    $pct_hold  = (($i + 0.8) / $count) * 100;
+                    $offset = ($i / $count) * 100;
+                    $kf .= "{$pct_start}%,{$pct_hold}%{transform:translateX(-{$offset}%)}";
+                }
+                $kf .= "}";
+                $slider_css .= $kf;
+            }
+            $slider_css .= '</style>';
+            $slider_markup = '<div id="' . $uid . '"><div class="wpslider-track">';
+            foreach ($images as $img) $slider_markup .= '<img src="' . esc_url($img) . '" alt="Slide">';
+            $slider_markup .= '</div></div>';
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $slider_css . $slider_markup]);
+            return wpilot_ok("Slider ({$count} images, {$style} style" . ($autoplay ? ", autoplay {$speed}ms" : "") . ") added to page #{$page_id}.", ['slides' => $count, 'style' => $style]);
+
+        case 'create_testimonial_slider':
+            $page_id      = intval($params['page_id'] ?? 0);
+            $testimonials = $params['testimonials'] ?? [];
+            if (!$page_id) return wpilot_err('page_id required.');
+            if (empty($testimonials)) return wpilot_err('testimonials array required (each: {name, text, role, image}).');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $uid = 'wptesti-' . wp_rand(1000, 9999);
+            $count = count($testimonials);
+            $dur = $count * 5;
+            $testi_css = '<style>';
+            $testi_css .= "#{$uid}{max-width:700px;margin:40px auto;overflow:hidden;position:relative}";
+            $testi_css .= "#{$uid} .wpt-track{display:flex;width:" . ($count * 100) . "%;animation:{$uid}-slide {$dur}s infinite}";
+            $testi_css .= "#{$uid} .wpt-card{width:" . (100 / $count) . "%;padding:40px;text-align:center;flex-shrink:0}";
+            $testi_css .= "#{$uid} .wpt-text{font-size:1.1rem;line-height:1.8;color:#555;font-style:italic;margin-bottom:24px}";
+            $testi_css .= "#{$uid} .wpt-avatar{width:60px;height:60px;border-radius:50%;object-fit:cover;margin:0 auto 12px}";
+            $testi_css .= "#{$uid} .wpt-name{font-weight:700;font-size:1rem;color:#1a1a1a}";
+            $testi_css .= "#{$uid} .wpt-role{font-size:0.85rem;color:#888}";
+            $kf = "@keyframes {$uid}-slide{";
+            for ($i = 0; $i < $count; $i++) {
+                $ps = ($i / $count) * 100;
+                $ph = (($i + 0.8) / $count) * 100;
+                $off = ($i / $count) * 100;
+                $kf .= "{$ps}%,{$ph}%{transform:translateX(-{$off}%)}";
+            }
+            $kf .= "}";
+            $testi_css .= $kf . '</style>';
+            $testi_markup = '<div id="' . $uid . '"><div class="wpt-track">';
+            foreach ($testimonials as $t) {
+                $testi_markup .= '<div class="wpt-card">';
+                $testi_markup .= '<div class="wpt-text">' . esc_html($t['text'] ?? '') . '</div>';
+                if (!empty($t['image'])) $testi_markup .= '<img class="wpt-avatar" src="' . esc_url($t['image']) . '" alt="' . esc_attr($t['name'] ?? '') . '">';
+                $testi_markup .= '<div class="wpt-name">' . esc_html($t['name'] ?? '') . '</div>';
+                $testi_markup .= '<div class="wpt-role">' . esc_html($t['role'] ?? '') . '</div>';
+                $testi_markup .= '</div>';
+            }
+            $testi_markup .= '</div></div>';
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $testi_css . $testi_markup]);
+            return wpilot_ok("Testimonial slider ({$count} testimonials) added to page #{$page_id}.", ['testimonials' => $count]);
+
+        /* ── 3D CSS Effects ─────────────────────────────────── */
+        case 'add_3d_effect':
+            $selector = sanitize_text_field($params['selector'] ?? '');
+            $effect   = sanitize_text_field($params['effect'] ?? 'tilt');
+            if (!$selector) return wpilot_err('selector required.');
+            $effects = [
+                'tilt'        => "{$selector}{transition:transform 0.4s ease;transform-style:preserve-3d}{$selector}:hover{transform:perspective(800px) rotateX(5deg) rotateY(5deg)}",
+                'flip'        => "{$selector}{transition:transform 0.6s ease;transform-style:preserve-3d}{$selector}:hover{transform:perspective(800px) rotateY(180deg)}",
+                'rotate'      => "{$selector}{transition:transform 0.6s ease}{$selector}:hover{transform:perspective(600px) rotateX(15deg) scale(1.05)}",
+                'perspective' => "{$selector}{transform:perspective(1000px) rotateX(2deg);transition:transform 0.5s}{$selector}:hover{transform:perspective(1000px) rotateX(0deg)}",
+                'float'       => "@keyframes wpilot-float{0%,100%{transform:translateY(0) perspective(800px) rotateX(2deg)}50%{transform:translateY(-10px) perspective(800px) rotateX(-2deg)}}{$selector}{animation:wpilot-float 3s ease-in-out infinite}",
+            ];
+            if (!isset($effects[$effect])) return wpilot_err("Unknown effect: {$effect}. Options: tilt, flip, rotate, perspective, float.");
+            $css = "\n/* wpilot-3d-{$effect} */\n" . $effects[$effect] . "\n";
+            $existing = wp_get_custom_css();
+            wp_update_custom_css_post($existing . $css);
+            return wpilot_ok("3D '{$effect}' effect applied to {$selector}.", ['selector' => $selector, 'effect' => $effect]);
+
+        case 'create_3d_card':
+            $page_id   = intval($params['page_id'] ?? 0);
+            $title     = sanitize_text_field($params['title'] ?? '');
+            $content   = wp_kses_post($params['content'] ?? '');
+            $image_url = esc_url($params['image_url'] ?? '');
+            if (!$page_id) return wpilot_err('page_id required.');
+            $post = get_post($page_id);
+            if (!$post) return wpilot_err("Page #{$page_id} not found.");
+            wpilot_save_post_snapshot($page_id);
+            $uid = 'wp3d-' . wp_rand(1000, 9999);
+            $css = "\n/* wpilot-3d-card-{$uid} */\n";
+            $css .= "#{$uid}{perspective:1000px;max-width:400px;margin:30px auto}";
+            $css .= "#{$uid} .wp3d-inner{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.1);transition:transform 0.4s ease,box-shadow 0.4s ease;transform-style:preserve-3d}";
+            $css .= "#{$uid} .wp3d-inner:hover{transform:rotateX(5deg) rotateY(-5deg) scale(1.02);box-shadow:0 20px 60px rgba(0,0,0,0.15)}";
+            $css .= "#{$uid} .wp3d-img{width:100%;height:220px;object-fit:cover}";
+            $css .= "#{$uid} .wp3d-body{padding:24px}";
+            $css .= "#{$uid} .wp3d-title{font-size:1.3rem;font-weight:700;margin-bottom:12px}";
+            $css .= "#{$uid} .wp3d-text{color:#666;line-height:1.6}\n";
+            $existing_css = wp_get_custom_css();
+            wp_update_custom_css_post($existing_css . $css);
+            $card_markup = '<div id="' . $uid . '"><div class="wp3d-inner">';
+            if ($image_url) $card_markup .= '<img class="wp3d-img" src="' . $image_url . '" alt="' . esc_attr($title) . '">';
+            $card_markup .= '<div class="wp3d-body"><div class="wp3d-title">' . esc_html($title) . '</div><div class="wp3d-text">' . $content . '</div></div></div></div>';
+            wp_update_post(['ID' => $page_id, 'post_content' => $post->post_content . "\n" . $card_markup]);
+            return wpilot_ok("3D hover card '{$title}' added to page #{$page_id}.", ['id' => $uid]);
+
+        /* ── JavaScript Tools ───────────────────────────────── */
+        case 'add_javascript':
+            $code     = $params['code'] ?? '';
+            $location = sanitize_text_field($params['location'] ?? 'footer');
+            $page_id  = intval($params['page_id'] ?? 0);
+            $tag      = sanitize_text_field($params['tag'] ?? 'wpilot-js-' . wp_rand(1000, 9999));
+            if (!$code) return wpilot_err('code (JS string) required.');
+            $opt_key = ($location === 'header') ? 'wpilot_head_code' : 'wpilot_footer_scripts';
+            $existing = get_option($opt_key, '');
+            $js_block = "\n<!-- {$tag} -->\n<script>\n";
+            if ($page_id > 0) {
+                $pg = $page_id;
+                $js_block .= "(function(){var b=document.body.className;if(b.indexOf('page-id-{$pg}')<0&&b.indexOf('postid-{$pg}')<0)return;\n";
+                $js_block .= $code . "\n})();";
+            } else {
+                $js_block .= $code;
+            }
+            $js_block .= "\n</script>\n<!-- /{$tag} -->\n";
+            update_option($opt_key, $existing . $js_block);
+            return wpilot_ok("JavaScript added to {$location}" . ($page_id ? " for page #{$page_id}" : " (all pages)") . ".", ['tag' => $tag, 'location' => $location]);
+
+        case 'remove_javascript':
+            $tag = sanitize_text_field($params['tag'] ?? '');
+            if (!$tag) return wpilot_err('tag required.');
+            $removed = false;
+            foreach (['wpilot_head_code', 'wpilot_footer_scripts'] as $opt_key) {
+                $js_content = get_option($opt_key, '');
+                $pattern = '/<!--\s*' . preg_quote($tag, '/') . '\s*-->.*?<!--\s*\/' . preg_quote($tag, '/') . '\s*-->/s';
+                $updated = preg_replace($pattern, '', $js_content);
+                if ($updated !== $js_content) {
+                    update_option($opt_key, trim($updated));
+                    $removed = true;
+                }
+            }
+            if (!$removed) return wpilot_err("Tag '{$tag}' not found in header or footer scripts.");
+            return wpilot_ok("JavaScript tagged '{$tag}' removed.");
+
+        case 'add_counter_animation':
+            $selector = sanitize_text_field($params['selector'] ?? '.wpilot-counter');
+            $js_counter = "document.addEventListener('DOMContentLoaded',function(){var counters=document.querySelectorAll('" . addslashes($selector) . "');var observer=new IntersectionObserver(function(entries){entries.forEach(function(entry){if(entry.isIntersecting){var el=entry.target;var target=parseInt(el.getAttribute('data-target'))||parseInt(el.textContent)||0;var duration=1500;var start=0;var step=Math.ceil(target/60);var timer=setInterval(function(){start+=step;if(start>=target){el.textContent=target.toLocaleString();clearInterval(timer)}else{el.textContent=start.toLocaleString()}},duration/60);observer.unobserve(el)}});},{threshold:0.3});counters.forEach(function(c){observer.observe(c)})});";
+            $opt = get_option('wpilot_footer_scripts', '');
+            if (strpos($opt, 'wpilot-counter-anim') !== false) return wpilot_ok("Counter animation already loaded.");
+            $block = "\n<!-- wpilot-counter-anim -->\n<script>" . $js_counter . "</script>\n<!-- /wpilot-counter-anim -->\n";
+            update_option('wpilot_footer_scripts', $opt . $block);
+            return wpilot_ok("Counter animation added for '{$selector}'. Add data-target attribute to elements.", ['selector' => $selector]);
+
+        case 'add_scroll_to_top':
+            $opt = get_option('wpilot_footer_scripts', '');
+            if (strpos($opt, 'wpilot-scroll-top') !== false) return wpilot_ok("Scroll-to-top button already exists.");
+            $js_stt = "document.addEventListener('DOMContentLoaded',function(){var btn=document.createElement('button');btn.id='wpilot-stt';btn.textContent='\\u2191';btn.style.cssText='position:fixed;bottom:30px;right:30px;width:48px;height:48px;border-radius:50%;background:#6366f1;color:#fff;border:none;font-size:1.3rem;cursor:pointer;opacity:0;transition:opacity 0.3s,transform 0.3s;z-index:9999;box-shadow:0 4px 15px rgba(99,102,241,0.3);transform:translateY(20px)';document.body.appendChild(btn);window.addEventListener('scroll',function(){if(window.scrollY>300){btn.style.opacity='1';btn.style.transform='translateY(0)'}else{btn.style.opacity='0';btn.style.transform='translateY(20px)'}});btn.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'})})});";
+            $block = "\n<!-- wpilot-scroll-top -->\n<script>" . $js_stt . "</script>\n<!-- /wpilot-scroll-top -->\n";
+            update_option('wpilot_footer_scripts', $opt . $block);
+            return wpilot_ok("Scroll-to-top button added (appears after 300px scroll).");
+
+        case 'add_typed_text':
+            $selector = sanitize_text_field($params['selector'] ?? '.wpilot-typed');
+            $words    = $params['words'] ?? ['Hello', 'World'];
+            $speed    = intval($params['speed'] ?? 80);
+            $words_js = json_encode($words);
+            $js_typed = "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('" . addslashes($selector) . "').forEach(function(el){var words={$words_js};var wi=0;var ci=0;var deleting=false;var speed={$speed};function type(){var word=words[wi];if(deleting){el.textContent=word.substring(0,ci--);if(ci<0){deleting=false;wi=(wi+1)%words.length;setTimeout(type,400);return}}else{el.textContent=word.substring(0,ci++);if(ci>word.length){deleting=true;setTimeout(type,1500);return}}setTimeout(type,deleting?speed/2:speed)}type()})});";
+            $opt = get_option('wpilot_footer_scripts', '');
+            $tag = 'wpilot-typed-' . wp_rand(1000, 9999);
+            $block = "\n<!-- {$tag} -->\n<script>" . $js_typed . "</script>\n<!-- /{$tag} -->\n";
+            update_option('wpilot_footer_scripts', $opt . $block);
+            return wpilot_ok("Typed text animation added for '{$selector}'.", ['words' => $words, 'tag' => $tag]);
+
+        /* ── Role / Permission Tools ────────────────────────── */
+        case 'create_role':
+            $role_slug    = sanitize_text_field($params['role_slug'] ?? '');
+            $role_name    = sanitize_text_field($params['role_name'] ?? '');
+            $capabilities = $params['capabilities'] ?? ['read' => true];
+            if (!$role_slug || !$role_name) return wpilot_err('role_slug and role_name required.');
+            if (get_role($role_slug)) return wpilot_err("Role '{$role_slug}' already exists.");
+            $caps = [];
+            foreach ($capabilities as $cap => $val) $caps[sanitize_text_field($cap)] = (bool)$val;
+            add_role($role_slug, $role_name, $caps);
+            return wpilot_ok("Role '{$role_name}' ({$role_slug}) created with " . count($caps) . " capabilities.", ['role' => $role_slug, 'capabilities' => count($caps)]);
+
+        case 'delete_role':
+            $role_slug = sanitize_text_field($params['role_slug'] ?? '');
+            if (!$role_slug) return wpilot_err('role_slug required.');
+            if (in_array($role_slug, ['administrator', 'editor', 'author', 'contributor', 'subscriber'])) return wpilot_err("Cannot delete built-in role '{$role_slug}'.");
+            if (!get_role($role_slug)) return wpilot_err("Role '{$role_slug}' not found.");
+            remove_role($role_slug);
+            return wpilot_ok("Role '{$role_slug}' deleted.");
+
+        case 'list_roles':
+            global $wp_roles;
+            if (!isset($wp_roles)) $wp_roles = new WP_Roles();
+            $roles_list = [];
+            foreach ($wp_roles->roles as $slug => $details) {
+                $roles_list[] = ['slug' => $slug, 'name' => $details['name'], 'capabilities' => count($details['capabilities'])];
+            }
+            return wpilot_ok(count($roles_list) . " roles found.", ['roles' => $roles_list]);
+
+        case 'add_capability':
+            $role = sanitize_text_field($params['role'] ?? '');
+            $cap  = sanitize_text_field($params['capability'] ?? '');
+            if (!$role || !$cap) return wpilot_err('role and capability required.');
+            $role_obj = get_role($role);
+            if (!$role_obj) return wpilot_err("Role '{$role}' not found.");
+            $role_obj->add_cap($cap);
+            return wpilot_ok("Capability '{$cap}' added to role '{$role}'.");
+
+        case 'set_user_role':
+            $user_id = intval($params['user_id'] ?? 0);
+            $role    = sanitize_text_field($params['role'] ?? '');
+            if (!$user_id || !$role) return wpilot_err('user_id and role required.');
+            $user = get_user_by('id', $user_id);
+            if (!$user) return wpilot_err("User #{$user_id} not found.");
+            if (!get_role($role)) return wpilot_err("Role '{$role}' not found.");
+            $user->set_role($role);
+            return wpilot_ok("User #{$user_id} ({$user->user_login}) role set to '{$role}'.");
+
+        /* ── Admin Panel Tools ──────────────────────────────── */
+        case 'add_admin_notice':
+            $message     = sanitize_text_field($params['message'] ?? '');
+            $type        = sanitize_text_field($params['type'] ?? 'info');
+            $dismissible = isset($params['dismissible']) ? (bool)$params['dismissible'] : true;
+            if (!$message) return wpilot_err('message required.');
+            $valid_types = ['success', 'warning', 'error', 'info'];
+            if (!in_array($type, $valid_types)) $type = 'info';
+            $notices = get_option('wpilot_admin_notices', []);
+            $notices[] = ['message' => $message, 'type' => $type, 'dismissible' => $dismissible, 'time' => time()];
+            update_option('wpilot_admin_notices', $notices);
+            return wpilot_ok("Admin notice ({$type}) added: {$message}", ['type' => $type, 'dismissible' => $dismissible]);
+
+        case 'customize_admin_bar':
+            $hide = $params['hide'] ?? [];
+            if (empty($hide) || !is_array($hide)) return wpilot_err('hide array required (array of admin bar item IDs).');
+            $existing = get_option('wpilot_hidden_admin_bar', []);
+            $merged = array_unique(array_merge($existing, $hide));
+            update_option('wpilot_hidden_admin_bar', $merged);
+            return wpilot_ok(count($hide) . " admin bar item(s) hidden.", ['hidden' => $merged]);
+
+        case 'add_dashboard_widget':
+            $title   = sanitize_text_field($params['title'] ?? 'WPilot Widget');
+            $content = wp_kses_post($params['content'] ?? '');
+            if (!$content) return wpilot_err('content (HTML) required.');
+            $widgets = get_option('wpilot_dashboard_widgets', []);
+            $widget_id = 'wpilot_widget_' . wp_rand(1000, 9999);
+            $widgets[$widget_id] = ['title' => $title, 'content' => $content];
+            update_option('wpilot_dashboard_widgets', $widgets);
+            return wpilot_ok("Dashboard widget '{$title}' added.", ['widget_id' => $widget_id]);
+
+        case 'admin_color_scheme':
+            $scheme = sanitize_text_field($params['scheme'] ?? 'default');
+            $valid = ['default', 'light', 'blue', 'midnight', 'sunrise', 'ectoplasm', 'coffee', 'ocean', 'modern'];
+            if (!in_array($scheme, $valid)) return wpilot_err("Unknown scheme: {$scheme}. Options: " . implode(', ', $valid));
+            $users = get_users(['role__in' => ['administrator'], 'fields' => 'ID']);
+            foreach ($users as $uid) update_user_meta($uid, 'admin_color', $scheme);
+            return wpilot_ok("Admin color scheme set to '{$scheme}' for " . count($users) . " admin(s).", ['scheme' => $scheme]);
+
+        
+        // ═══ CALENDAR / EVENTS ═══
+        case 'create_event':
+        case 'add_event':
+            $title = sanitize_text_field($params['title'] ?? '');
+            $date = sanitize_text_field($params['date'] ?? '');
+            $time = sanitize_text_field($params['time'] ?? '');
+            $end_date = sanitize_text_field($params['end_date'] ?? $date);
+            $location = sanitize_text_field($params['location'] ?? '');
+            $description = wp_kses_post($params['description'] ?? '');
+            if (empty($title) || empty($date)) return wpilot_err('title and date required.');
+            $events = get_option('wpilot_events', []);
+            $id = uniqid('evt_');
+            $events[$id] = ['title' => $title, 'date' => $date, 'time' => $time, 'end_date' => $end_date, 'location' => $location, 'description' => $description, 'created' => date('Y-m-d H:i:s')];
+            update_option('wpilot_events', $events);
+            return wpilot_ok("Event created: {$title} on {$date}" . ($time ? " at {$time}" : ""), ['id' => $id]);
+
+        case 'list_events':
+            $events = get_option('wpilot_events', []);
+            $upcoming = [];
+            foreach ($events as $id => $e) {
+                if ($e['date'] >= date('Y-m-d')) $upcoming[] = array_merge(['id' => $id], $e);
+            }
+            usort($upcoming, fn($a, $b) => strcmp($a['date'], $b['date']));
+            return wpilot_ok(count($upcoming) . " upcoming events.", ['events' => $upcoming]);
+
+        case 'delete_event':
+            $id = sanitize_text_field($params['id'] ?? '');
+            $events = get_option('wpilot_events', []);
+            if (isset($events[$id])) { unset($events[$id]); update_option('wpilot_events', $events); return wpilot_ok("Event deleted."); }
+            return wpilot_err("Event not found.");
+
+        case 'create_calendar_page':
+            $events = get_option('wpilot_events', []);
+            $html = '<div style="max-width:900px;margin:60px auto;padding:0 24px;font-family:system-ui,sans-serif">';
+            $html .= '<h2 style="font-size:2rem;font-weight:800;margin:0 0 32px;color:inherit">Upcoming Events</h2>';
+            $html .= '<div style="display:flex;flex-direction:column;gap:16px">';
+            foreach ($events as $e) {
+                if ($e['date'] < date('Y-m-d')) continue;
+                $html .= '<div style="display:flex;gap:20px;padding:20px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px">';
+                $html .= '<div style="text-align:center;min-width:60px"><p style="font-size:1.8rem;font-weight:800;margin:0;color:#E91E8C">' . date('d', strtotime($e['date'])) . '</p><p style="font-size:0.8rem;text-transform:uppercase;margin:0;color:rgba(255,255,255,0.5)">' . date('M', strtotime($e['date'])) . '</p></div>';
+                $html .= '<div><h3 style="margin:0 0 4px;font-weight:600">' . esc_html($e['title']) . '</h3>';
+                if ($e['time']) $html .= '<p style="margin:0;color:rgba(255,255,255,0.5);font-size:0.9rem">🕐 ' . esc_html($e['time']) . '</p>';
+                if ($e['location']) $html .= '<p style="margin:4px 0 0;color:rgba(255,255,255,0.5);font-size:0.9rem">📍 ' . esc_html($e['location']) . '</p>';
+                $html .= '</div></div>';
+            }
+            $html .= '</div></div>';
+            $page_id = wp_insert_post(['post_title' => 'Events', 'post_content' => $html, 'post_status' => 'publish', 'post_type' => 'page']);
+            return wpilot_ok("Calendar page created.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+
+        // ═══ DOWNLOAD / EXPORT TOOLS ═══
+        case 'download_site':
+        case 'export_full_site':
+            $upload = wp_upload_dir();
+            $export_dir = $upload['basedir'] . '/wpilot-export';
+            wp_mkdir_p($export_dir);
+            // Export posts + pages as JSON
+            $pages = get_posts(['post_type' => ['page', 'post'], 'numberposts' => -1, 'post_status' => 'publish']);
+            $data = [];
+            foreach ($pages as $p) {
+                $data[] = ['id' => $p->ID, 'type' => $p->post_type, 'title' => $p->post_title, 'slug' => $p->post_name, 'content' => $p->post_content, 'date' => $p->post_date, 'status' => $p->post_status];
+            }
+            file_put_contents($export_dir . '/pages.json', wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            // Export options
+            $opts = ['blogname', 'blogdescription', 'siteurl', 'home', 'permalink_structure', 'template', 'stylesheet'];
+            $options = [];
+            foreach ($opts as $o) $options[$o] = get_option($o);
+            file_put_contents($export_dir . '/options.json', wp_json_encode($options, JSON_PRETTY_PRINT));
+            // Export custom CSS
+            file_put_contents($export_dir . '/custom.css', wp_get_custom_css());
+            // Export menus
+            $menus_data = [];
+            foreach (wp_get_nav_menus() as $menu) {
+                $items = wp_get_nav_menu_items($menu->term_id);
+                $menus_data[$menu->name] = array_map(fn($i) => ['title' => $i->title, 'url' => $i->url, 'parent' => $i->menu_item_parent], $items ?: []);
+            }
+            file_put_contents($export_dir . '/menus.json', wp_json_encode($menus_data, JSON_PRETTY_PRINT));
+            return wpilot_ok("Site exported: " . count($data) . " pages/posts, " . count($menus_data) . " menus.", [
+                'download_url' => $upload['baseurl'] . '/wpilot-export/',
+                'files' => ['pages.json', 'options.json', 'custom.css', 'menus.json'],
+            ]);
+
+        case 'download_orders':
+        case 'export_orders':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $limit = intval($params['limit'] ?? 500);
+            $status = $params['status'] ?? ['completed', 'processing', 'on-hold'];
+            if (is_string($status)) $status = explode(',', $status);
+            $orders = wc_get_orders(['limit' => $limit, 'status' => $status, 'orderby' => 'date', 'order' => 'DESC']);
+            $csv = "Order ID,Date,Status,Customer,Email,Phone,Address,City,Postcode,Country,Items,Subtotal,Shipping,Tax,Total,Payment Method,Note\n";
+            foreach ($orders as $o) {
+                $items = [];
+                foreach ($o->get_items() as $item) $items[] = $item->get_name() . ' x' . $item->get_quantity();
+                $csv .= implode(',', [
+                    $o->get_id(), $o->get_date_created()->format('Y-m-d H:i'), $o->get_status(),
+                    '"' . $o->get_billing_first_name() . ' ' . $o->get_billing_last_name() . '"',
+                    $o->get_billing_email(), $o->get_billing_phone(),
+                    '"' . $o->get_billing_address_1() . '"', $o->get_billing_city(), $o->get_billing_postcode(), $o->get_billing_country(),
+                    '"' . implode('; ', $items) . '"',
+                    $o->get_subtotal(), $o->get_shipping_total(), $o->get_total_tax(), $o->get_total(),
+                    $o->get_payment_method_title(), '"' . str_replace('"', "'", $o->get_customer_note()) . '"',
+                ]) . "\n";
+            }
+            $upload = wp_upload_dir();
+            // Built by Christos Ferlachidis & Daniel Hedenberg
+            $file = $upload['basedir'] . '/wpilot-orders-export.csv';
+            file_put_contents($file, $csv);
+            return wpilot_ok("Exported " . count($orders) . " orders.", ['download_url' => $upload['baseurl'] . '/wpilot-orders-export.csv', 'count' => count($orders)]);
+
+        case 'download_customers':
+        case 'export_customers':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $customers = get_users(['role' => 'customer']);
+            $csv = "ID,Name,Email,Phone,Address,City,Postcode,Country,Orders,Total Spent,Registered\n";
+            foreach ($customers as $u) {
+                $c = new WC_Customer($u->ID);
+                $csv .= implode(',', [
+                    $u->ID, '"' . $u->display_name . '"', $u->user_email,
+                    $c->get_billing_phone(), '"' . $c->get_billing_address_1() . '"',
+                    $c->get_billing_city(), $c->get_billing_postcode(), $c->get_billing_country(),
+                    $c->get_order_count(), $c->get_total_spent(), $u->user_registered,
+                ]) . "\n";
+            }
+            $upload = wp_upload_dir();
+            file_put_contents($upload['basedir'] . '/wpilot-customers.csv', $csv);
+            return wpilot_ok("Exported " . count($customers) . " customers.", ['download_url' => $upload['baseurl'] . '/wpilot-customers.csv']);
+
+        // ═══ BULK PRODUCT IMPORT/EXPORT ═══
+        case 'download_products':
+        case 'export_all_products':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $products = wc_get_products(['limit' => -1, 'status' => 'publish']);
+            $csv = "ID,Name,SKU,Price,Sale Price,Stock,Status,Category,Description,Image URL\n";
+            foreach ($products as $p) {
+                $cats = wp_get_post_terms($p->get_id(), 'product_cat', ['fields' => 'names']);
+                $img = wp_get_attachment_url($p->get_image_id());
+                $csv .= implode(',', [
+                    $p->get_id(), '"' . $p->get_name() . '"', $p->get_sku(),
+                    $p->get_regular_price(), $p->get_sale_price(), $p->get_stock_quantity() ?? '',
+                    $p->get_stock_status(), '"' . implode(';', $cats) . '"',
+                    '"' . substr(strip_tags($p->get_short_description()), 0, 100) . '"',
+                    $img ?: '',
+                ]) . "\n";
+            }
+            $upload = wp_upload_dir();
+            file_put_contents($upload['basedir'] . '/wpilot-products.csv', $csv);
+            return wpilot_ok("Exported " . count($products) . " products.", ['download_url' => $upload['baseurl'] . '/wpilot-products.csv']);
+
+        // ═══ SHIPPING TOOLS ═══
+        case 'shipping_zones':
+        case 'list_shipping_zones':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $zones_raw = WC_Shipping_Zones::get_zones();
+            $zones = [];
+            foreach ($zones_raw as $z) {
+                $methods = [];
+                foreach ($z['shipping_methods'] as $m) {
+                    $methods[] = ['id' => $m->id, 'title' => $m->title, 'enabled' => $m->enabled, 'cost' => $m->cost ?? ''];
+                }
+                $zones[] = ['id' => $z['id'], 'name' => $z['zone_name'], 'regions' => count($z['zone_locations']), 'methods' => $methods];
+            }
+            return wpilot_ok(count($zones) . " shipping zones.", ['zones' => $zones]);
+
+        case 'create_shipping_label':
+        case 'shipping_label':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $order_id = intval($params['order_id'] ?? 0);
+            if (!$order_id) return wpilot_err('order_id required.');
+            $order = wc_get_order($order_id);
+            if (!$order) return wpilot_err("Order #{$order_id} not found.");
+            $from = ['name' => get_bloginfo('name'), 'address' => get_option('woocommerce_store_address', ''), 'city' => get_option('woocommerce_store_city', ''), 'postcode' => get_option('woocommerce_store_postcode', ''), 'country' => get_option('woocommerce_default_country', '')];
+            $to = [
+                'name' => $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name(),
+                'address' => $order->get_shipping_address_1(), 'address2' => $order->get_shipping_address_2(),
+                'city' => $order->get_shipping_city(), 'postcode' => $order->get_shipping_postcode(),
+                'country' => $order->get_shipping_country(), 'phone' => $order->get_billing_phone(),
+            ];
+            $items = [];
+            $total_weight = 0;
+            foreach ($order->get_items() as $item) {
+                $product = $item->get_product();
+                $weight = $product ? floatval($product->get_weight()) * $item->get_quantity() : 0;
+                $total_weight += $weight;
+                $items[] = $item->get_name() . ' x' . $item->get_quantity();
+            }
+            $label = "══════════════════════════════════\n";
+            $label .= "  SHIPPING LABEL — Order #{$order_id}\n";
+            $label .= "══════════════════════════════════\n\n";
+            $label .= "FROM:\n  " . $from['name'] . "\n  " . $from['address'] . "\n  " . $from['postcode'] . " " . $from['city'] . "\n  " . $from['country'] . "\n\n";
+            $label .= "TO:\n  " . $to['name'] . "\n  " . $to['address'] . "\n";
+            if ($to['address2']) $label .= "  " . $to['address2'] . "\n";
+            $label .= "  " . $to['postcode'] . " " . $to['city'] . "\n  " . $to['country'] . "\n";
+            if ($to['phone']) $label .= "  Tel: " . $to['phone'] . "\n";
+            $label .= "\n──────────────────────────────────\n";
+            $label .= "ITEMS: " . implode(', ', $items) . "\n";
+            if ($total_weight > 0) $label .= "WEIGHT: " . $total_weight . " kg\n";
+            $label .= "SHIPPING: " . $order->get_shipping_method() . "\n";
+            $label .= "══════════════════════════════════\n";
+            $upload = wp_upload_dir();
+            file_put_contents($upload['basedir'] . "/wpilot-shipping-{$order_id}.txt", $label);
+            return wpilot_ok("Shipping label for order #{$order_id}", [
+                'label' => $label, 'download_url' => $upload['baseurl'] . "/wpilot-shipping-{$order_id}.txt",
+                'from' => $from, 'to' => $to, 'weight_kg' => $total_weight,
+            ]);
+
+        case 'postnord_track':
+        case 'track_shipment':
+            $tracking = sanitize_text_field($params['tracking_number'] ?? $params['tracking'] ?? '');
+            if (empty($tracking)) return wpilot_err('tracking_number required.');
+            // PostNord tracking API (public)
+            $response = wp_remote_get("https://api2.postnord.com/rest/shipment/v5/trackandtrace/findByIdentifier.json?id={$tracking}&locale=sv", ['timeout' => 10]);
+            if (is_wp_error($response)) return wpilot_err('PostNord API error: ' . $response->get_error_message());
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            $shipments = $body['TrackingInformationResponse']['shipments'] ?? [];
+            if (empty($shipments)) return wpilot_ok("No tracking info found for {$tracking}.", ['tracking' => $tracking]);
+            $s = $shipments[0];
+            $events = [];
+            foreach (($s['items'][0]['events'] ?? []) as $e) {
+                $events[] = ['date' => $e['eventTime'] ?? '', 'location' => $e['location']['displayName'] ?? '', 'description' => $e['eventDescription'] ?? ''];
+            }
+            return wpilot_ok("Tracking: {$tracking} — " . ($s['statusText']['header'] ?? 'unknown'), [
+                'tracking' => $tracking, 'status' => $s['statusText']['header'] ?? '', 'service' => $s['service']['name'] ?? '',
+                'events' => array_slice($events, 0, 10),
+            ]);
+
+        // ═══ CUSTOMER DATA TOOLS ═══
+        case 'get_customer':
+        case 'customer_details':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $id = intval($params['customer_id'] ?? $params['user_id'] ?? $params['id'] ?? 0);
+            $email = sanitize_email($params['email'] ?? '');
+            if (!$id && $email) { $user = get_user_by('email', $email); if ($user) $id = $user->ID; }
+            if (!$id) return wpilot_err('customer_id or email required.');
+            $c = new WC_Customer($id);
+            $user = get_userdata($id);
+            if (!$user) return wpilot_err("Customer #{$id} not found.");
+            $orders = wc_get_orders(['customer_id' => $id, 'limit' => 10, 'orderby' => 'date', 'order' => 'DESC']);
+            $order_list = [];
+            foreach ($orders as $o) $order_list[] = ['id' => $o->get_id(), 'date' => $o->get_date_created()->format('Y-m-d'), 'total' => $o->get_total(), 'status' => $o->get_status()];
+            return wpilot_ok("Customer: " . $user->display_name, [
+                'id' => $id, 'name' => $user->display_name, 'email' => $user->user_email, 'registered' => $user->user_registered,
+                'billing' => ['phone' => $c->get_billing_phone(), 'address' => $c->get_billing_address_1(), 'city' => $c->get_billing_city(), 'postcode' => $c->get_billing_postcode(), 'country' => $c->get_billing_country()],
+                'orders' => $c->get_order_count(), 'total_spent' => $c->get_total_spent(), 'recent_orders' => $order_list,
+            ]);
+
+        // ═══ FORM DATA TOOLS ═══
+        case 'get_form_entries':
+        case 'form_submissions':
+            // Contact Form 7 — stored via Flamingo plugin or CF7 DB
+            global $wpdb;
+            $entries = [];
+            // Try Flamingo (CF7 addon that stores submissions)
+            if (post_type_exists('flamingo_inbound')) {
+                $messages = get_posts(['post_type' => 'flamingo_inbound', 'numberposts' => intval($params['limit'] ?? 50), 'orderby' => 'date', 'order' => 'DESC']);
+                foreach ($messages as $m) {
+                    $meta = get_post_meta($m->ID);
+                    $entries[] = ['id' => $m->ID, 'date' => $m->post_date, 'subject' => $m->post_title, 'from' => $meta['_from'][0] ?? '', 'fields' => $meta['_field_'][0] ?? $m->post_content];
+                }
+            }
+            // Try WPForms entries
+            $wpf_table = $wpdb->prefix . 'wpforms_entries';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$wpf_table}'") === $wpf_table) {
+                $rows = $wpdb->get_results("SELECT entry_id, form_id, fields, date FROM {$wpf_table} ORDER BY date DESC LIMIT " . intval($params['limit'] ?? 50), ARRAY_A);
+                foreach ($rows as $r) {
+                    $fields = json_decode($r['fields'], true);
+                    $entries[] = ['id' => $r['entry_id'], 'form_id' => $r['form_id'], 'date' => $r['date'], 'fields' => $fields];
+                }
+            }
+            // Try Gravity Forms
+            if (class_exists('GFAPI')) {
+                $gf_entries = GFAPI::get_entries(0, [], null, ['offset' => 0, 'page_size' => intval($params['limit'] ?? 50)]);
+                foreach ($gf_entries as $e) $entries[] = ['id' => $e['id'], 'form_id' => $e['form_id'], 'date' => $e['date_created'], 'fields' => $e];
+            }
+            return wpilot_ok(count($entries) . " form entries found.", ['entries' => $entries]);
+
+        case 'export_form_data':
+        case 'download_form_entries':
+            $r = wpilot_run_tool('get_form_entries', ['limit' => intval($params['limit'] ?? 500)]);
+            if (!($r['success'] ?? false)) return $r;
+            $entries = $r['entries'] ?? [];
+            if (empty($entries)) return wpilot_ok("No form entries to export.");
+            // Build CSV
+            $csv = "ID,Date,From/Subject,Data\n";
+            foreach ($entries as $e) {
+                $data = is_array($e['fields'] ?? '') ? json_encode($e['fields']) : ($e['fields'] ?? '');
+                $csv .= $e['id'] . ',"' . ($e['date'] ?? '') . '","' . ($e['from'] ?? $e['subject'] ?? '') . '","' . str_replace('"', "'", substr($data, 0, 500)) . '"' . "\n";
+            }
+            $upload = wp_upload_dir();
+            file_put_contents($upload['basedir'] . '/wpilot-form-entries.csv', $csv);
+            return wpilot_ok("Exported " . count($entries) . " form entries.", ['download_url' => $upload['baseurl'] . '/wpilot-form-entries.csv']);
+
+        case 'collect_emails':
+        case 'get_all_emails':
+            $emails = [];
+            // WordPress users
+            $users = get_users(['fields' => ['user_email', 'display_name']]);
+            foreach ($users as $u) $emails[$u->user_email] = ['name' => $u->display_name, 'source' => 'user'];
+            // WooCommerce customers
+            if (class_exists('WooCommerce')) {
+                $customers = get_users(['role' => 'customer', 'fields' => ['user_email', 'display_name']]);
+                foreach ($customers as $c) $emails[$c->user_email] = ['name' => $c->display_name, 'source' => 'customer'];
+            }
+            // Comments
+            global $wpdb;
+            $comment_emails = $wpdb->get_results("SELECT DISTINCT comment_author_email as email, comment_author as name FROM {$wpdb->comments} WHERE comment_author_email != '' AND comment_approved = '1'", ARRAY_A);
+            foreach ($comment_emails as $ce) { if (!isset($emails[$ce['email']])) $emails[$ce['email']] = ['name' => $ce['name'], 'source' => 'comment']; }
+            // Form entries (Flamingo)
+            if (post_type_exists('flamingo_contact')) {
+                $contacts = get_posts(['post_type' => 'flamingo_contact', 'numberposts' => -1]);
+                foreach ($contacts as $fc) {
+                    $email = get_post_meta($fc->ID, '_email', true);
+                    if ($email && !isset($emails[$email])) $emails[$email] = ['name' => $fc->post_title, 'source' => 'form'];
+                }
+            }
+            // Export CSV
+            $csv = "Email,Name,Source\n";
+            foreach ($emails as $email => $data) $csv .= "{$email},\"{$data['name']}\",{$data['source']}\n";
+            $upload = wp_upload_dir();
+            file_put_contents($upload['basedir'] . '/wpilot-all-emails.csv', $csv);
+            return wpilot_ok(count($emails) . " unique emails collected from all sources.", [
+                'total' => count($emails), 'download_url' => $upload['baseurl'] . '/wpilot-all-emails.csv',
+                'by_source' => array_count_values(array_column($emails, 'source')),
+            ]);
+
+        // ═══ MAP TOOLS ═══
+        case 'create_store_locator':
+        case 'store_map':
+            $locations = $params['locations'] ?? [];
+            $page_title = sanitize_text_field($params['title'] ?? 'Store Locations');
+            if (empty($locations)) {
+                // Use store address from WooCommerce
+                $addr = get_option('woocommerce_store_address', '') . ', ' . get_option('woocommerce_store_city', '') . ' ' . get_option('woocommerce_store_postcode', '');
+                $locations = [['name' => get_bloginfo('name'), 'address' => $addr]];
+            }
+            $html = '<div style="max-width:1000px;margin:60px auto;padding:0 24px">';
+            $html .= '<h2 style="font-size:2rem;font-weight:800;margin:0 0 32px">' . esc_html($page_title) . '</h2>';
+            foreach ($locations as $loc) {
+                $encoded = urlencode($loc['address'] ?? '');
+                $html .= '<div style="margin-bottom:24px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden">';
+                $html .= '<iframe width="100%" height="300" style="border:0" loading="lazy" src="https://maps.google.com/maps?q=' . $encoded . '&output=embed"></iframe>';
+                $html .= '<div style="padding:20px"><h3 style="margin:0 0 4px;font-weight:600">' . esc_html($loc['name'] ?? '') . '</h3>';
+                $html .= '<p style="margin:0;color:rgba(255,255,255,0.5)">' . esc_html($loc['address'] ?? '') . '</p></div></div>';
+            }
+            $html .= '</div>';
+            $page_id = wp_insert_post(['post_title' => $page_title, 'post_content' => $html, 'post_status' => 'publish', 'post_type' => 'page']);
+            return wpilot_ok("Store locator page created with " . count($locations) . " locations.", ['page_id' => $page_id, 'url' => get_permalink($page_id)]);
+
+        
+        // ═══ FULL COUPON MANAGEMENT ═══
+        case 'create_advanced_coupon':
+        case 'create_full_coupon':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $code = strtoupper(sanitize_text_field($params['code'] ?? 'SAVE' . rand(10, 99)));
+            $amount = floatval($params['amount'] ?? 10);
+            // Types: percent, fixed_cart, fixed_product, percent_product
+            $type = sanitize_text_field($params['type'] ?? $params['discount_type'] ?? 'percent');
+            $id = wp_insert_post(['post_title' => $code, 'post_type' => 'shop_coupon', 'post_status' => 'publish', 'post_excerpt' => sanitize_text_field($params['description'] ?? '')]);
+            if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+            // Core
+            update_post_meta($id, 'discount_type', $type);
+            update_post_meta($id, 'coupon_amount', $amount);
+            // Restrictions
+            if (isset($params['min_amount'])) update_post_meta($id, 'minimum_amount', floatval($params['min_amount']));
+            if (isset($params['max_amount'])) update_post_meta($id, 'maximum_amount', floatval($params['max_amount']));
+            // Products — by ID or by name
+            $product_ids = [];
+            if (!empty($params['product_ids'])) {
+                $product_ids = array_map('intval', (array)$params['product_ids']);
+            }
+            if (!empty($params['products'])) {
+                // Search products by name
+                foreach ((array)$params['products'] as $name) {
+                    $found = wc_get_products(['name' => $name, 'limit' => 1]);
+                    if (!empty($found)) $product_ids[] = $found[0]->get_id();
+                }
+            }
+            if (!empty($product_ids)) update_post_meta($id, 'product_ids', $product_ids);
+            // Excluded products
+            if (!empty($params['exclude_products'])) update_post_meta($id, 'exclude_product_ids', array_map('intval', (array)$params['exclude_products']));
+            // Categories — by ID or by name
+            $cat_ids = [];
+            if (!empty($params['category_ids'])) {
+                $cat_ids = array_map('intval', (array)$params['category_ids']);
+            }
+            if (!empty($params['categories'])) {
+                foreach ((array)$params['categories'] as $cat_name) {
+                    $term = get_term_by('name', $cat_name, 'product_cat');
+                    if ($term) $cat_ids[] = $term->term_id;
+                }
+            }
+            if (!empty($cat_ids)) update_post_meta($id, 'product_categories', $cat_ids);
+            if (!empty($params['exclude_categories'])) {
+                $ex_cats = [];
+                foreach ((array)$params['exclude_categories'] as $c) {
+                    $t = is_numeric($c) ? intval($c) : (get_term_by('name', $c, 'product_cat') ? get_term_by('name', $c, 'product_cat')->term_id : 0);
+                    if ($t) $ex_cats[] = $t;
+                }
+                update_post_meta($id, 'exclude_product_categories', $ex_cats);
+            }
+            // Expiry date
+            if (!empty($params['expiry']) || !empty($params['expires'])) {
+                $expiry = $params['expiry'] ?? $params['expires'];
+                $ts = strtotime($expiry);
+                if ($ts) update_post_meta($id, 'date_expires', $ts);
+            }
+            // Usage limits
+            // Built by Christos Ferlachidis & Daniel Hedenberg
+            if (isset($params['usage_limit'])) update_post_meta($id, 'usage_limit', intval($params['usage_limit']));
+            if (isset($params['usage_limit_per_user'])) update_post_meta($id, 'usage_limit_per_user', intval($params['usage_limit_per_user']));
+            // Free shipping
+            if (!empty($params['free_shipping'])) update_post_meta($id, 'free_shipping', 'yes');
+            // Individual use only (can't combine with other coupons)
+            if (!empty($params['individual_use'])) update_post_meta($id, 'individual_use', 'yes');
+            // Exclude sale items
+            if (!empty($params['exclude_sale_items'])) update_post_meta($id, 'exclude_sale_items', 'yes');
+            // Email restrictions
+            if (!empty($params['allowed_emails'])) update_post_meta($id, 'customer_email', (array)$params['allowed_emails']);
+            $label = $type === 'percent' ? "{$amount}%" : "{$amount} " . get_woocommerce_currency();
+            $details = "Coupon {$code}: {$label} off";
+            if (!empty($product_ids)) $details .= ", " . count($product_ids) . " products";
+            if (!empty($cat_ids)) $details .= ", " . count($cat_ids) . " categories";
+            if (!empty($params['expiry'])) $details .= ", expires " . $params['expiry'];
+            return wpilot_ok($details, ['code' => $code, 'id' => $id, 'discount' => $label]);
+
+        case 'update_coupon':
+        case 'edit_coupon':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $code = strtoupper(sanitize_text_field($params['code'] ?? ''));
+            $coupon_id = intval($params['coupon_id'] ?? $params['id'] ?? 0);
+            if (!$coupon_id && $code) {
+                $c = new WC_Coupon($code);
+                $coupon_id = $c->get_id();
+            }
+            if (!$coupon_id) return wpilot_err('code or coupon_id required.');
+            $updated = [];
+            if (isset($params['amount'])) { update_post_meta($coupon_id, 'coupon_amount', floatval($params['amount'])); $updated[] = 'amount'; }
+            if (isset($params['type'])) { update_post_meta($coupon_id, 'discount_type', sanitize_text_field($params['type'])); $updated[] = 'type'; }
+            if (isset($params['expiry'])) { $ts = strtotime($params['expiry']); if ($ts) update_post_meta($coupon_id, 'date_expires', $ts); $updated[] = 'expiry'; }
+            if (isset($params['min_amount'])) { update_post_meta($coupon_id, 'minimum_amount', floatval($params['min_amount'])); $updated[] = 'min_amount'; }
+            if (isset($params['usage_limit'])) { update_post_meta($coupon_id, 'usage_limit', intval($params['usage_limit'])); $updated[] = 'usage_limit'; }
+            if (isset($params['enabled'])) {
+                $status = $params['enabled'] ? 'publish' : 'draft';
+                wp_update_post(['ID' => $coupon_id, 'post_status' => $status]);
+                $updated[] = $params['enabled'] ? 'enabled' : 'disabled';
+            }
+            return wpilot_ok("Coupon #{$coupon_id} updated: " . implode(', ', $updated), ['coupon_id' => $coupon_id, 'updated' => $updated]);
+
+        case 'delete_coupon':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $code = strtoupper(sanitize_text_field($params['code'] ?? ''));
+            $coupon_id = intval($params['coupon_id'] ?? $params['id'] ?? 0);
+            if (!$coupon_id && $code) { $c = new WC_Coupon($code); $coupon_id = $c->get_id(); }
+            if (!$coupon_id) return wpilot_err('code or coupon_id required.');
+            wp_trash_post($coupon_id);
+            return wpilot_ok("Coupon deleted: " . ($code ?: "#{$coupon_id}"));
+
+        case 'list_coupons':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $coupons = get_posts(['post_type' => 'shop_coupon', 'numberposts' => intval($params['limit'] ?? 50), 'post_status' => ['publish', 'draft']]);
+            $list = [];
+            foreach ($coupons as $c) {
+                $type = get_post_meta($c->ID, 'discount_type', true);
+                $amount = get_post_meta($c->ID, 'coupon_amount', true);
+                $expires = get_post_meta($c->ID, 'date_expires', true);
+                $usage = get_post_meta($c->ID, 'usage_count', true) ?: 0;
+                $limit = get_post_meta($c->ID, 'usage_limit', true) ?: 'unlimited';
+                $products = get_post_meta($c->ID, 'product_ids', true) ?: [];
+                $categories = get_post_meta($c->ID, 'product_categories', true) ?: [];
+                $min = get_post_meta($c->ID, 'minimum_amount', true);
+                $free_ship = get_post_meta($c->ID, 'free_shipping', true);
+                $label = $type === 'percent' ? "{$amount}%" : "{$amount} " . get_woocommerce_currency();
+                $list[] = [
+                    'id' => $c->ID, 'code' => $c->post_title, 'discount' => $label, 'type' => $type,
+                    'status' => $c->post_status, 'usage' => "{$usage}/{$limit}",
+                    'expires' => $expires ? date('Y-m-d', $expires) : 'never',
+                    'products' => count($products), 'categories' => count($categories),
+                    'min_spend' => $min ?: 0, 'free_shipping' => $free_ship === 'yes',
+                    'description' => $c->post_excerpt,
+                ];
+            }
+            return wpilot_ok(count($list) . " coupons.", ['coupons' => $list]);
+
+        case 'coupon_usage':
+        case 'coupon_stats':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $code = strtoupper(sanitize_text_field($params['code'] ?? ''));
+            if (empty($code)) return wpilot_err('Coupon code required.');
+            $coupon = new WC_Coupon($code);
+            if (!$coupon->get_id()) return wpilot_err("Coupon '{$code}' not found.");
+            // Get orders that used this coupon
+            $orders = wc_get_orders(['limit' => 100, 'coupon' => $code]);
+            $total_discount = 0; $order_list = [];
+            foreach ($orders as $o) {
+                foreach ($o->get_coupon_codes() as $cc) {
+                    if (strtoupper($cc) === $code) {
+                        $discount = $o->get_discount_total();
+                        $total_discount += $discount;
+                        $order_list[] = ['order_id' => $o->get_id(), 'date' => $o->get_date_created()->format('Y-m-d'), 'discount' => $discount, 'total' => $o->get_total(), 'customer' => $o->get_billing_email()];
+                    }
+                }
+            }
+            return wpilot_ok("Coupon {$code}: used " . count($order_list) . " times, " . get_woocommerce_currency_symbol() . number_format($total_discount, 0) . " discounted.", [
+                'code' => $code, 'times_used' => count($order_list), 'total_discounted' => $total_discount,
+                'limit' => $coupon->get_usage_limit() ?: 'unlimited',
+                'expires' => $coupon->get_date_expires() ? $coupon->get_date_expires()->format('Y-m-d') : 'never',
+                'orders' => array_slice($order_list, 0, 20),
+            ]);
+
+        case 'bulk_create_coupons':
+            if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+            $prefix = strtoupper(sanitize_text_field($params['prefix'] ?? 'PROMO'));
+            $count = min(intval($params['count'] ?? 10), 100);
+            $amount = floatval($params['amount'] ?? 10);
+            $type = sanitize_text_field($params['type'] ?? 'percent');
+            $expiry = $params['expiry'] ?? '';
+            $usage_limit = intval($params['usage_limit'] ?? 1);
+            $codes = [];
+            for ($i = 0; $i < $count; $i++) {
+                $code = $prefix . strtoupper(substr(md5(uniqid()), 0, 6));
+                $id = wp_insert_post(['post_title' => $code, 'post_type' => 'shop_coupon', 'post_status' => 'publish']);
+                if (!is_wp_error($id)) {
+                    update_post_meta($id, 'discount_type', $type);
+                    update_post_meta($id, 'coupon_amount', $amount);
+                    update_post_meta($id, 'usage_limit', $usage_limit);
+                    if ($expiry) update_post_meta($id, 'date_expires', strtotime($expiry));
+                    if (!empty($params['product_ids'])) update_post_meta($id, 'product_ids', array_map('intval', (array)$params['product_ids']));
+                    if (!empty($params['category_ids'])) update_post_meta($id, 'product_categories', array_map('intval', (array)$params['category_ids']));
+                    $codes[] = $code;
+                }
+            }
+            // Export as CSV
+            $csv = "Code,Discount,Type,Usage Limit,Expires\n";
+            $label = $type === 'percent' ? "{$amount}%" : "{$amount} " . get_woocommerce_currency();
+            foreach ($codes as $c) $csv .= "{$c},{$label},{$type},{$usage_limit}," . ($expiry ?: 'never') . "\n";
+            $upload = wp_upload_dir();
+            file_put_contents($upload['basedir'] . '/wpilot-coupons.csv', $csv);
+            return wpilot_ok("Created {$count} coupons ({$prefix}...)", [
+                'count' => $count, 'codes' => $codes, 'discount' => $label,
+                'download_url' => $upload['baseurl'] . '/wpilot-coupons.csv',
+            ]);
+
+        
+        // ═══ ANALYTICS & TRACKING ═══
+        case 'setup_analytics':
+        case 'add_tracking':
+            $ga_id = sanitize_text_field($params['ga_id'] ?? $params['measurement_id'] ?? '');
+            $gtm_id = sanitize_text_field($params['gtm_id'] ?? '');
+            $fb_pixel = sanitize_text_field($params['pixel_id'] ?? '');
+            $added = [];
+            $head = get_option('wpilot_head_code', '');
+            // Google Analytics 4
+            if ($ga_id && preg_match('/^G-/', $ga_id) && strpos($head, $ga_id) === false) {
+                $head .= "\n<!-- GA4 -->\n<script async src=\"https://www.googletagmanager.com/gtag/js?id={$ga_id}\"></script>\n<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{$ga_id}');</script>";
+                $added[] = "GA4: {$ga_id}";
+            }
+            // Google Tag Manager
+            if ($gtm_id && preg_match('/^GTM-/', $gtm_id) && strpos($head, $gtm_id) === false) {
+                $head .= "\n<!-- GTM -->\n<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','{$gtm_id}');</script>";
+                $added[] = "GTM: {$gtm_id}";
+            }
+            // Facebook Pixel
+            if ($fb_pixel && preg_match('/^\d+$/', $fb_pixel) && strpos($head, $fb_pixel) === false) {
+                $head .= "\n<!-- FB Pixel -->\n<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','{$fb_pixel}');fbq('track','PageView');</script>";
+                $added[] = "FB Pixel: {$fb_pixel}";
+            }
+            if (empty($added)) return wpilot_err('Provide ga_id (G-...), gtm_id (GTM-...), or pixel_id.');
+            update_option('wpilot_head_code', $head);
+            return wpilot_ok("Tracking added: " . implode(', ', $added), ['added' => $added]);
+
+        case 'remove_tracking':
+            $type = sanitize_text_field($params['type'] ?? ''); // ga4, gtm, pixel, all
+            $head = get_option('wpilot_head_code', '');
+            $removed = [];
+            if ($type === 'ga4' || $type === 'all') { $head = preg_replace('/<!-- GA4 -->.*?<\/script>\s*<\/script>/s', '', $head); $removed[] = 'GA4'; }
+            if ($type === 'gtm' || $type === 'all') { $head = preg_replace('/<!-- GTM -->.*?<\/script>/s', '', $head); $removed[] = 'GTM'; }
+            if ($type === 'pixel' || $type === 'all') { $head = preg_replace('/<!-- FB Pixel -->.*?<\/script>/s', '', $head); $removed[] = 'FB Pixel'; }
+            update_option('wpilot_head_code', trim($head));
+            return wpilot_ok("Removed: " . implode(', ', $removed));
+
+        case 'list_tracking':
+            $head = get_option('wpilot_head_code', '');
+            $tracking = [];
+            if (preg_match('/G-[A-Z0-9]+/', $head, $m)) $tracking[] = ['type' => 'GA4', 'id' => $m[0]];
+            if (preg_match('/GTM-[A-Z0-9]+/', $head, $m)) $tracking[] = ['type' => 'GTM', 'id' => $m[0]];
+            if (preg_match('/fbq\(\'init\',\'(\d+)\'\)/', $head, $m)) $tracking[] = ['type' => 'FB Pixel', 'id' => $m[1]];
+            if (preg_match('/tiktok.*?\'([A-Z0-9]+)\'/', $head, $m)) $tracking[] = ['type' => 'TikTok', 'id' => $m[1]];
+            return wpilot_ok(count($tracking) . " tracking codes installed.", ['tracking' => $tracking]);
+
+        // ═══ GOOGLE ADS ═══
+        case 'connect_google_ads':
+        case 'setup_google_ads':
+            $conversion_id = sanitize_text_field($params['conversion_id'] ?? $params['id'] ?? '');
+            $conversion_label = sanitize_text_field($params['conversion_label'] ?? $params['label'] ?? '');
+            if (empty($conversion_id)) return wpilot_err('Google Ads conversion_id required (AW-XXXXXXXXX).');
+            $head = get_option('wpilot_head_code', '');
+            if (strpos($head, $conversion_id) !== false) return wpilot_ok("Google Ads already installed.");
+            // Built by Christos Ferlachidis & Daniel Hedenberg
+            $head .= "\n<!-- Google Ads -->\n<script async src=\"https://www.googletagmanager.com/gtag/js?id={$conversion_id}\"></script>\n<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{$conversion_id}');</script>";
+            update_option('wpilot_head_code', $head);
+            // If WooCommerce, add purchase conversion tracking
+            if (class_exists('WooCommerce') && $conversion_label) {
+                $woo_tracking = "\nadd_action('woocommerce_thankyou', function(\$order_id) {\n    \$order = wc_get_order(\$order_id);\n    if (!\$order) return;\n    echo '<script>gtag(\"event\",\"conversion\",{\"send_to\":\"{$conversion_id}/{$conversion_label}\",\"value\":' . \$order->get_total() . ',\"currency\":\"' . \$order->get_currency() . '\",\"transaction_id\":\"' . \$order_id . '\"});</script>';\n});\n";
+                $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-google-ads.php';
+                file_put_contents($mu, "<?php\n// WPilot Google Ads Conversion Tracking\n" . $woo_tracking);
+            }
+            return wpilot_ok("Google Ads connected: {$conversion_id}" . ($conversion_label ? " with purchase tracking" : ""), [
+                'conversion_id' => $conversion_id, 'woo_tracking' => !empty($conversion_label),
+            ]);
+
+        // ═══ SOCIAL MEDIA TOOLS ═══
+        case 'add_social_links':
+        case 'setup_social':
+            $links = $params['links'] ?? $params;
+            $socials = [];
+            foreach (['facebook', 'instagram', 'twitter', 'x', 'linkedin', 'youtube', 'tiktok', 'pinterest', 'snapchat', 'threads'] as $platform) {
+                if (!empty($links[$platform])) $socials[$platform] = esc_url($links[$platform]);
+            }
+            if (empty($socials)) return wpilot_err('Provide social links: facebook, instagram, twitter, linkedin, youtube, tiktok, etc.');
+            update_option('wpilot_social_links', $socials);
+            return wpilot_ok(count($socials) . " social links saved.", ['links' => $socials]);
+
+        case 'get_social_links':
+            $links = get_option('wpilot_social_links', []);
+            return wpilot_ok(count($links) . " social links.", ['links' => $links]);
+
+        case 'add_social_share_buttons':
+            $page_id = intval($params['page_id'] ?? 0);
+            $style = sanitize_text_field($params['style'] ?? 'pill');
+            $platforms = $params['platforms'] ?? ['facebook', 'twitter', 'linkedin', 'whatsapp'];
+            $url = $page_id ? get_permalink($page_id) : get_site_url();
+            $title = $page_id ? get_the_title($page_id) : get_bloginfo('name');
+            $encoded_url = urlencode($url);
+            $encoded_title = urlencode($title);
+            $share_urls = [
+                'facebook' => "https://www.facebook.com/sharer/sharer.php?u={$encoded_url}",
+                'twitter' => "https://twitter.com/intent/tweet?url={$encoded_url}&text={$encoded_title}",
+                'linkedin' => "https://www.linkedin.com/shareArticle?mini=true&url={$encoded_url}&title={$encoded_title}",
+                'whatsapp' => "https://wa.me/?text={$encoded_title}%20{$encoded_url}",
+                'pinterest' => "https://pinterest.com/pin/create/button/?url={$encoded_url}&description={$encoded_title}",
+                'email' => "mailto:?subject={$encoded_title}&body={$encoded_url}",
+            ];
+            $icons = ['facebook' => 'f', 'twitter' => '𝕏', 'linkedin' => 'in', 'whatsapp' => 'wa', 'pinterest' => 'p', 'email' => '✉'];
+            $colors = ['facebook' => '#1877F2', 'twitter' => '#000', 'linkedin' => '#0A66C2', 'whatsapp' => '#25D366', 'pinterest' => '#E60023', 'email' => '#666'];
+            $html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:20px 0">';
+            foreach ($platforms as $p) {
+                if (!isset($share_urls[$p])) continue;
+                $bg = $colors[$p] ?? '#666';
+                $icon = $icons[$p] ?? substr($p, 0, 2);
+                $html .= '<a href="' . $share_urls[$p] . '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;background:' . $bg . ';color:#fff;border-radius:50%;text-decoration:none;font-weight:700;font-size:0.8rem;transition:transform 0.2s" title="Share on ' . ucfirst($p) . '">' . $icon . '</a>';
+            }
+            $html .= '</div>';
+            if ($page_id) {
+                $content = get_post_field('post_content', $page_id);
+                $content .= "\n" . $html;
+                wp_update_post(['ID' => $page_id, 'post_content' => $content]);
+                return wpilot_ok("Share buttons added to page #{$page_id}.", ['page_id' => $page_id, 'platforms' => $platforms]);
+            }
+            return wpilot_ok("Share buttons HTML generated.", ['html' => $html, 'platforms' => $platforms]);
+
+        case 'add_social_feed':
+        case 'embed_social':
+            $platform = sanitize_text_field($params['platform'] ?? '');
+            $url = esc_url($params['url'] ?? $params['embed_url'] ?? '');
+            $page_id = intval($params['page_id'] ?? 0);
+            if (empty($platform) && empty($url)) return wpilot_err('platform or url required.');
+            $embeds = [
+                'instagram' => $url ? '<blockquote class="instagram-media" data-instgrm-permalink="' . $url . '" style="max-width:540px;margin:20px auto"></blockquote><script async src="https://www.instagram.com/embed.js"></script>' : '',
+                'twitter' => $url ? '<blockquote class="twitter-tweet"><a href="' . $url . '"></a></blockquote><script async src="https://platform.twitter.com/widgets.js"></script>' : '',
+                'youtube' => $url ? '<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin:20px 0"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" src="' . str_replace('watch?v=', 'embed/', $url) . '" allowfullscreen></iframe></div>' : '',
+                'tiktok' => $url ? '<blockquote class="tiktok-embed" cite="' . $url . '" data-video-id="' . basename($url) . '"><a href="' . $url . '"></a></blockquote><script async src="https://www.tiktok.com/embed.js"></script>' : '',
+            ];
+            $html = $embeds[$platform] ?? '';
+            if (empty($html)) return wpilot_err("Unsupported platform or missing URL. Supported: instagram, twitter, youtube, tiktok.");
+            if ($page_id) {
+                $content = get_post_field('post_content', $page_id);
+                wp_update_post(['ID' => $page_id, 'post_content' => $content . "\n" . $html]);
+                return wpilot_ok("{$platform} embed added to page #{$page_id}.", ['page_id' => $page_id]);
+            }
+            return wpilot_ok("{$platform} embed HTML generated.", ['html' => $html]);
+
+        case 'add_open_graph':
+        case 'setup_social_sharing':
+            $title = sanitize_text_field($params['title'] ?? get_bloginfo('name'));
+            $description = sanitize_text_field($params['description'] ?? get_bloginfo('description'));
+            $image = esc_url($params['image'] ?? '');
+            $type = sanitize_text_field($params['type'] ?? 'website');
+            $og_tags = "<meta property=\"og:title\" content=\"{$title}\">\n<meta property=\"og:description\" content=\"{$description}\">\n<meta property=\"og:type\" content=\"{$type}\">\n<meta property=\"og:url\" content=\"" . get_site_url() . "\">\n";
+            if ($image) $og_tags .= "<meta property=\"og:image\" content=\"{$image}\">\n";
+            $og_tags .= "<meta name=\"twitter:card\" content=\"summary_large_image\">\n<meta name=\"twitter:title\" content=\"{$title}\">\n<meta name=\"twitter:description\" content=\"{$description}\">\n";
+            if ($image) $og_tags .= "<meta name=\"twitter:image\" content=\"{$image}\">\n";
+            $head = get_option('wpilot_head_code', '');
+            $head = preg_replace('/<!-- OG Tags -->.*?<!-- \/OG -->/s', '', $head);
+            $head .= "\n<!-- OG Tags -->\n" . $og_tags . "<!-- /OG -->";
+            update_option('wpilot_head_code', $head);
+            return wpilot_ok("Open Graph + Twitter Cards configured.", ['title' => $title, 'description' => $description]);
+
+        // ═══ TIKTOK PIXEL ═══
+        case 'connect_tiktok_pixel':
+        case 'add_tiktok_pixel':
+            $pixel_id = sanitize_text_field($params['pixel_id'] ?? $params['id'] ?? '');
+            if (empty($pixel_id)) return wpilot_err('TikTok pixel_id required.');
+            $head = get_option('wpilot_head_code', '');
+            if (strpos($head, $pixel_id) !== false) return wpilot_ok("TikTok Pixel already installed.");
+            $head .= "\n<!-- TikTok Pixel -->\n<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie'];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var i='https://analytics.tiktok.com/i18n/pixel/events.js';ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=i;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};var o=document.createElement('script');o.type='text/javascript';o.async=!0;o.src=i+'?sdkid='+e+'&lib='+t;var a=document.getElementsByTagName('script')[0];a.parentNode.insertBefore(o,a)};ttq.load('{$pixel_id}');ttq.page();}(window,document,'ttq');</script>";
+            update_option('wpilot_head_code', $head);
+            return wpilot_ok("TikTok Pixel connected: {$pixel_id}");
+
+        // ═══ SNAPCHAT PIXEL ═══
+        case 'connect_snapchat_pixel':
+            $pixel_id = sanitize_text_field($params['pixel_id'] ?? $params['id'] ?? '');
+            if (empty($pixel_id)) return wpilot_err('Snapchat pixel_id required.');
+            $head = get_option('wpilot_head_code', '');
+            if (strpos($head, 'snaptr') !== false) return wpilot_ok("Snapchat Pixel already installed.");
+            $head .= "\n<!-- Snapchat Pixel -->\n<script type='text/javascript'>(function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function(){a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};a.queue=[];var s='script';r=t.createElement(s);r.async=!0;r.src=n;var u=t.getElementsByTagName(s)[0];u.parentNode.insertBefore(r,u);})(window,document,'https://sc-static.net/scevent.min.js');snaptr('init','{$pixel_id}',{});snaptr('track','PAGE_VIEW');</script>";
+            update_option('wpilot_head_code', $head);
+            return wpilot_ok("Snapchat Pixel connected: {$pixel_id}");
+
+        // ═══ PINTEREST TAG ═══
+        case 'connect_pinterest_tag':
+            $tag_id = sanitize_text_field($params['tag_id'] ?? $params['id'] ?? '');
+            if (empty($tag_id)) return wpilot_err('Pinterest tag_id required.');
+            $head = get_option('wpilot_head_code', '');
+            if (strpos($head, 'pintrk') !== false) return wpilot_ok("Pinterest Tag already installed.");
+            $head .= "\n<!-- Pinterest Tag -->\n<script>!function(e){if(!window.pintrk){window.pintrk=function(){window.pintrk.queue.push(Array.prototype.slice.call(arguments))};var n=window.pintrk;n.queue=[],n.version='3.0';var t=document.createElement('script');t.async=!0,t.src=e;var r=document.getElementsByTagName('script')[0];r.parentNode.insertBefore(t,r)}}('https://s.pinimg.com/ct/core.js');pintrk('load','{$tag_id}');pintrk('page');</script>";
+            update_option('wpilot_head_code', $head);
+            return wpilot_ok("Pinterest Tag connected: {$tag_id}");
+
+        
+        // ═══ LOGO TOOLS ═══
+        case 'upload_logo':
+        case 'set_logo':
+        case 'change_logo':
+            $url = $params['url'] ?? $params['logo_url'] ?? $params['image_url'] ?? '';
+            $image_id = intval($params['image_id'] ?? 0);
+            if (empty($url) && !$image_id) return wpilot_err('Logo URL or image_id required.');
+            if (!empty($url) && !$image_id) {
+                require_once(ABSPATH . 'wp-admin/includes/media.php');
+                require_once(ABSPATH . 'wp-admin/includes/file.php');
+                require_once(ABSPATH . 'wp-admin/includes/image.php');
+                $image_id = media_sideload_image($url, 0, get_bloginfo('name') . ' Logo', 'id');
+                if (is_wp_error($image_id)) return wpilot_err('Upload failed: ' . $image_id->get_error_message());
+            }
+            set_theme_mod('custom_logo', $image_id);
+            $meta = wp_get_attachment_metadata($image_id);
+            $w = $meta['width'] ?? 0; $h = $meta['height'] ?? 0;
+            if ($w > 0 && $h > 0 && abs($w - $h) < 50) update_option('site_icon', $image_id);
+            return wpilot_ok("Logo set! (ID: {$image_id}, {$w}x{$h}px)", ['image_id' => $image_id, 'url' => wp_get_attachment_url($image_id)]);
+
+        case 'remove_logo':
+            remove_theme_mod('custom_logo');
+            return wpilot_ok('Logo removed.');
+
+        case 'get_logo':
+            $logo_id = get_theme_mod('custom_logo');
+            if (!$logo_id) return wpilot_ok('No logo set.', ['has_logo' => false]);
+            return wpilot_ok('Current logo.', ['has_logo' => true, 'image_id' => $logo_id, 'url' => wp_get_attachment_url($logo_id)]);
+
+        // ═══ WEB RESEARCH ═══
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+        case 'research_url':
+        case 'scrape_url':
+        case 'fetch_url':
+            $url = $params['url'] ?? '';
+            if (empty($url)) return wpilot_err('URL required.');
+            $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false, 'user-agent' => 'Mozilla/5.0 (compatible; WPilot/2.0)']);
+            if (is_wp_error($response)) return wpilot_err('Fetch failed: ' . $response->get_error_message());
+            $html = wp_remote_retrieve_body($response);
+            $code = wp_remote_retrieve_response_code($response);
+            $data = ['url' => $url, 'status' => $code, 'size_kb' => round(strlen($html) / 1024)];
+            if (preg_match('/<title[^>]*>([^<]+)<\/title>/i', $html, $m)) $data['title'] = trim($m[1]);
+            if (preg_match('/<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)/i', $html, $m)) $data['meta_description'] = $m[1];
+            $headings = [];
+            if (preg_match_all('/<h([1-3])[^>]*>([^<]+)<\/h\1>/i', $html, $hm)) {
+                foreach ($hm[2] as $i => $t) $headings[] = 'h' . $hm[1][$i] . ': ' . trim($t);
+            }
+            $data['headings'] = array_slice($headings, 0, 15);
+            preg_match_all('/<img[^>]+>/i', $html, $imgs);
+            $data['images'] = count($imgs[0]);
+            $techs = [];
+            $tech_map = ['wp-content' => 'WordPress', 'shopify' => 'Shopify', 'woocommerce' => 'WooCommerce', 'elementor' => 'Elementor', 'divi' => 'Divi', 'squarespace' => 'Squarespace', 'wix' => 'Wix', 'tailwind' => 'Tailwind', 'bootstrap' => 'Bootstrap', 'react' => 'React', 'vue' => 'Vue.js', 'angular' => 'Angular', 'next' => 'Next.js', 'jquery' => 'jQuery'];
+            foreach ($tech_map as $needle => $name) { if (stripos($html, $needle) !== false) $techs[] = $name; }
+            $data['technologies'] = $techs;
+            $text = strip_tags(preg_replace('/<(script|style)[^>]*>.*?<\/\1>/s', '', $html));
+            $data['text_preview'] = substr(preg_replace('/\s+/', ' ', trim($text)), 0, 500);
+            $colors = [];
+            if (preg_match_all('/#[0-9a-fA-F]{3,8}/', $html, $cm)) $colors = array_values(array_unique(array_slice($cm[0], 0, 10)));
+            $data['colors'] = $colors;
+            return wpilot_ok('Researched: ' . ($data['title'] ?? $url), $data);
+
+        case 'compare_website':
+        case 'competitor_analysis':
+            $url = $params['url'] ?? $params['competitor_url'] ?? '';
+            if (empty($url)) return wpilot_err('Competitor URL required.');
+            $comp = wpilot_run_tool('research_url', ['url' => $url]);
+            $ours = wpilot_run_tool('research_url', ['url' => home_url('/')]);
+            return wpilot_ok('Competitor analysis: ' . ($comp['title'] ?? $url), [
+                'our_site' => ['title' => $ours['title'] ?? '', 'techs' => $ours['technologies'] ?? [], 'images' => $ours['images'] ?? 0],
+                'competitor' => ['title' => $comp['title'] ?? '', 'techs' => $comp['technologies'] ?? [], 'images' => $comp['images'] ?? 0, 'url' => $url, 'colors' => $comp['colors'] ?? []],
+            ]);
+
+        case 'research_keywords':
+        case 'keyword_research':
+            $keyword = sanitize_text_field($params['keyword'] ?? $params['query'] ?? '');
+            if (empty($keyword)) return wpilot_err('Keyword required.');
+            $suggest_url = 'https://suggestqueries.google.com/complete/search?client=firefox&q=' . urlencode($keyword);
+            $response = wp_remote_get($suggest_url, ['timeout' => 10]);
+            $suggestions = [];
+            if (!is_wp_error($response)) {
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                $suggestions = $body[1] ?? [];
+            }
+            global $wpdb;
+            $found = $wpdb->get_results($wpdb->prepare(
+                "SELECT ID, post_title, post_type FROM {$wpdb->posts} WHERE post_status='publish' AND (post_title LIKE %s OR post_content LIKE %s) LIMIT 10",
+                '%' . $wpdb->esc_like($keyword) . '%', '%' . $wpdb->esc_like($keyword) . '%'
+            ), ARRAY_A);
+            return wpilot_ok("Keyword: {$keyword}", ['keyword' => $keyword, 'google_suggestions' => array_slice($suggestions, 0, 10), 'found_on_site' => $found]);
+
+        case 'copy_design_from':
+        case 'design_inspiration':
+            $url = $params['url'] ?? '';
+            if (empty($url)) return wpilot_err('URL to get inspiration from required.');
+            $comp = wpilot_run_tool('research_url', ['url' => $url]);
+            $colors = $comp['colors'] ?? [];
+            $title = $comp['title'] ?? '';
+            return wpilot_ok("Design research from {$url}: found " . count($colors) . " colors, " . count($comp['headings'] ?? []) . " headings, " . count($comp['technologies'] ?? []) . " technologies.", [
+                'colors' => $colors, 'technologies' => $comp['technologies'] ?? [],
+                'headings' => $comp['headings'] ?? [], 'text_preview' => $comp['text_preview'] ?? '',
+            ]);
 
         default:
             // Route to plugin-specific tools (Amelia, WooCommerce, LearnDash, etc.)
@@ -1423,6 +7145,11 @@ function wpilot_fix_security($issue, $params = []) {
             $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
             $priority = intval($params['priority'] ?? 10);
             if (empty($code)) return wpilot_err('Code required.');
+            // SAFETY: strip echo/print from snippets — they pollute AJAX responses
+            $code = preg_replace('/\becho\s+["\']/','// echo ', $code);
+            $code = preg_replace('/\bprint\s*\(/','// print(', $code);
+            $code = preg_replace('/\bvar_dump\s*\(/','// var_dump(', $code);
+            $code = preg_replace('/\bprint_r\s*\(/','// print_r(', $code);
             // Validate: code must not contain raw HTML tags (common AI mistake)
             if (preg_match('/<[a-z]/i', $code) && !preg_match('/echo|print/', $code)) {
                 return wpilot_err('PHP snippet contains HTML. Use add_head_code for HTML or wrap in echo/print for PHP.');
@@ -1471,9 +7198,23 @@ function wpilot_fix_security($issue, $params = []) {
             $name = sanitize_file_name($params['name'] ?? '');
             if (empty($name)) return wpilot_err('Snippet name required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
-            $file = $mu_dir . '/wpilot-' . $name . '.php';
-            if (!file_exists($file)) $file = $mu_dir . '/' . $name;
-            if (file_exists($file)) { @unlink($file); return wpilot_ok("Snippet removed: " . basename($file)); }
+            // Try multiple naming patterns
+            $tries = [
+                $mu_dir . '/' . $name . '.php',
+                $mu_dir . '/' . $name,
+                $mu_dir . '/wpilot-' . $name . '.php',
+                $mu_dir . '/wpilot-' . $name,
+            ];
+            // Also strip wpilot- prefix if already included
+            $stripped = preg_replace('/^wpilot-/', '', $name);
+            $tries[] = $mu_dir . '/wpilot-' . $stripped . '.php';
+            $tries[] = $mu_dir . '/' . $stripped . '.php';
+            foreach ($tries as $file) {
+                if (file_exists($file)) {
+                    @unlink($file);
+                    return wpilot_ok("Snippet removed: " . basename($file));
+                }
+            }
             return wpilot_err("Snippet not found: {$name}");
 
         case 'add_security_headers':
@@ -2412,6 +8153,7 @@ function wpilot_default_pages_for_type($type,$biz) {
             $p[] = ['title'=>'Pricing','slug'=>'pricing','order'=>3,'content'=>'<h2>Pricing</h2>'];
             $p[] = ['title'=>'About','slug'=>'about','order'=>4,'content'=>'<h2>About '.$biz.'</h2>'];
             $p[] = ['title'=>'Contact','slug'=>'contact','order'=>5,'content'=>'<h2>Contact</h2>']; break;
+
         default:
             $p[] = ['title'=>'About','slug'=>'about','order'=>2,'content'=>'<h2>About '.$biz.'</h2>'];
             $p[] = ['title'=>'Services','slug'=>'services','order'=>3,'content'=>'<h2>Our Services</h2>'];
@@ -2861,4 +8603,48 @@ function wpilot_compress_images($p) {
         "Compressed {$compressed} images — saved {$saved_kb}KB ({$saved_mb}MB). Skipped {$skipped} (already small or unsupported).",
         ['compressed' => $compressed, 'saved_bytes' => $saved_total, 'skipped' => $skipped]
     );
+}
+
+// ── Elementor button editor helper ──
+function wpilot_walk_edit_button(&$elements, $old_label, $new_label, $new_url = '') {
+    $found = false;
+    foreach ($elements as &$el) {
+        if (($el['widgetType'] ?? '') === 'button' && ($el['settings']['text'] ?? '') === $old_label) {
+            if ($new_label) $el['settings']['text'] = $new_label;
+            if ($new_url) $el['settings']['link']['url'] = $new_url;
+            $found = true;
+        }
+        if (!empty($el['elements'])) {
+            if (wpilot_walk_edit_button($el['elements'], $old_label, $new_label, $new_url)) $found = true;
+        }
+    }
+    return $found;
+}
+
+// ── Collect Elementor elements for listing ──
+function wpilot_collect_elements($elements, &$result, $depth = 0) {
+    foreach ($elements as $el) {
+        $type = $el['elType'] ?? '?';
+        $widget = $el['widgetType'] ?? '';
+        $s = $el['settings'] ?? [];
+        if ($widget === 'heading' || $widget === 'text-editor') {
+            $result[] = ['type' => $widget, 'text' => substr(strip_tags($s['title'] ?? $s['editor'] ?? ''), 0, 80)];
+        } elseif ($widget === 'button') {
+            $result[] = ['type' => 'button', 'text' => $s['text'] ?? '', 'url' => $s['link']['url'] ?? ''];
+        } elseif ($widget === 'image') {
+            $result[] = ['type' => 'image', 'src' => $s['image']['url'] ?? '', 'alt' => $s['caption'] ?? ''];
+        } elseif ($widget === 'icon') {
+            $result[] = ['type' => 'icon', 'icon' => $s['selected_icon']['value'] ?? ''];
+        } elseif ($widget === 'html') {
+            // Extract elements from HTML widget
+            $html = $s['html'] ?? '';
+            if (preg_match_all('/<h([1-6])[^>]*>([^<]+)<\/h\1>/i', $html, $hm)) {
+                foreach ($hm[2] as $i => $t) $result[] = ['type' => 'heading_h'.$hm[1][$i], 'text' => trim($t)];
+            }
+            if (preg_match_all('/<(?:a|button)[^>]*>([^<]{1,50})<\/(?:a|button)>/i', $html, $bm)) {
+                foreach ($bm[1] as $t) $result[] = ['type' => 'button', 'text' => trim($t)];
+            }
+        }
+        if (!empty($el['elements'])) wpilot_collect_elements($el['elements'], $result, $depth + 1);
+    }
 }

@@ -45,8 +45,20 @@ function wpilot_run_plugin_tool( $tool, $params ) {
         case 'woo_create_shipping_class':
             return wpilot_woo_create_shipping_class( $params );
 
+        case 'bulk_import_products':
+            return wpilot_bulk_import_products($params);
+
         case 'woo_update_store_settings':
             return wpilot_woo_update_store_settings( $params );
+
+        case 'woo_configure_stripe':
+            return wpilot_woo_configure_stripe( $params );
+
+        case 'woo_configure_email':
+            return wpilot_woo_configure_email( $params );
+
+        case 'woo_setup_checkout':
+            return wpilot_woo_setup_checkout( $params );
 
         // ══ LEARNDASH ══════════════════════════════════════════
 
@@ -162,6 +174,20 @@ function wpilot_run_plugin_tool( $tool, $params ) {
         case 'pwa_configure':
             return wpilot_pwa_configure($params);
 
+        // ══ CONTACT FORM 7 ════════════════════════════════════════
+
+        case 'cf7_create_form':
+            return wpilot_cf7_create_form( $params );
+
+        case 'cf7_list_forms':
+            return wpilot_cf7_list_forms( $params );
+
+        case 'cf7_get_form':
+            return wpilot_cf7_get_form( $params );
+
+        case 'cf7_update_form':
+            return wpilot_cf7_update_form( $params );
+
         default:
             return wpilot_err( "Unknown plugin tool: {$tool}" );
     }
@@ -179,7 +205,7 @@ function wpilot_amelia_create_service( $p ) {
     if ( !wpilot_amelia_installed() ) return wpilot_err('Amelia is not installed. Install it first from Plugins → Add New → search "Amelia".');
     global $wpdb;
     $table = $wpdb->prefix . 'amelia_services';
-    if ( $wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table )
+    if ( $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table ) ) !== $table )
         return wpilot_err('Amelia database tables not found. Deactivate and reactivate Amelia to rebuild them.');
 
     $name     = sanitize_text_field( $p['name']     ?? 'New Service' );
@@ -326,26 +352,63 @@ function wpilot_woo_create_product( $p ) {
 function wpilot_woo_enable_payment( $p ) {
     if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
     $gateway   = sanitize_text_field($p['gateway'] ?? '');
-    $enabled   = $p['enabled'] ?? true;
-    if ( !$gateway ) return wpilot_err('gateway parameter required. E.g. "stripe", "paypal", "klarna", "cod".');
+    $enabled   = isset($p['enabled']) ? (bool)$p['enabled'] : true;
+    if ( !$gateway ) return wpilot_err('gateway parameter required. E.g. "stripe", "stripe_klarna", "cod", "bacs".');
     $option_key = 'woocommerce_'.$gateway.'_settings';
     $settings   = get_option($option_key, []);
     $settings['enabled'] = $enabled ? 'yes' : 'no';
+
+    // Optional: set title and description
+    if ( !empty($p['title']) )       $settings['title']       = sanitize_text_field($p['title']);
+    if ( !empty($p['description']) ) $settings['description'] = sanitize_text_field($p['description']);
+
+    // BACS / Bank Transfer: store account details
+    if ( $gateway === 'bacs' && !empty($p['account_details']) ) {
+        // account_details: array of {account_name, account_number, sort_code, bank_name, iban, bic}
+        $settings['accounts'] = array_map(function($acc) {
+            return array_map('sanitize_text_field', (array)$acc);
+        }, (array)$p['account_details']);
+    }
+
     update_option($option_key, $settings);
     $status = $enabled ? 'enabled' : 'disabled';
-    return wpilot_ok("✅ WooCommerce payment gateway \"{$gateway}\" {$status}. Go to WooCommerce → Settings → Payments to configure details.");
+    return wpilot_ok("✅ WooCommerce payment gateway \"{$gateway}\" {$status}." . ($enabled ? " Configure API keys with woo_configure_stripe if using Stripe." : ''));
 }
 
 function wpilot_woo_set_tax_rate( $p ) {
     if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
-    // Enable taxes first
+    // Enable taxes and configure display
     update_option('woocommerce_calc_taxes', 'yes');
+    $prices_include_tax = sanitize_text_field($p['prices_include_tax'] ?? 'no');
+    update_option('woocommerce_prices_include_tax', $prices_include_tax);
+    $tax_display = sanitize_text_field($p['tax_display'] ?? 'excl');
+    update_option('woocommerce_tax_display_shop', $tax_display);
+    update_option('woocommerce_tax_display_cart', $tax_display);
+
     global $wpdb;
     $rate     = (float)($p['rate']     ?? 25);
     $country  = strtoupper(sanitize_text_field($p['country'] ?? 'SE'));
     $name     = sanitize_text_field($p['name'] ?? 'VAT');
     $class    = sanitize_text_field($p['class'] ?? '');
-    // Insert tax rate
+
+    // Check for existing rate with same country+name+class to avoid duplicates
+    $existing = $wpdb->get_var($wpdb->prepare(
+        "SELECT tax_rate_id FROM {$wpdb->prefix}woocommerce_tax_rates
+         WHERE tax_rate_country=%s AND tax_rate_name=%s AND tax_rate_class=%s LIMIT 1",
+        $country, $name, $class
+    ));
+
+    if ( $existing ) {
+        $wpdb->update(
+            $wpdb->prefix.'woocommerce_tax_rates',
+            ['tax_rate' => $rate, 'tax_rate_priority' => 1, 'tax_rate_shipping' => 1],
+            ['tax_rate_id' => $existing]
+        );
+        WC_Cache_Helper::invalidate_cache_group('taxes');
+        return wpilot_ok("✅ Tax rate {$rate}% ({$name}) updated for {$country} (ID: {$existing}). Taxes enabled, prices shown {$tax_display}uding VAT.");
+    }
+
+    // Insert new tax rate
     $wpdb->insert($wpdb->prefix.'woocommerce_tax_rates', [
         'tax_rate_country'  => $country,
         'tax_rate'          => $rate,
@@ -356,52 +419,321 @@ function wpilot_woo_set_tax_rate( $p ) {
         'tax_rate_order'    => 0,
         'tax_rate_class'    => $class,
     ]);
-    return wpilot_ok("✅ Tax rate {$rate}% ({$name}) added for {$country}. WooCommerce taxes are now enabled.");
+    $rate_id = $wpdb->insert_id;
+    WC_Cache_Helper::invalidate_cache_group('taxes');
+    return wpilot_ok("✅ Tax rate {$rate}% ({$name}) created for {$country} (ID: {$rate_id}). Taxes enabled, prices shown {$tax_display}uding VAT.");
 }
 
 function wpilot_woo_update_store_settings( $p ) {
     if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
     $map = [
-        'currency'         => 'woocommerce_currency',
-        'country'          => 'woocommerce_default_country',
-        'shop_page'        => 'woocommerce_shop_page_id',
-        'cart_page'        => 'woocommerce_cart_page_id',
-        'checkout_page'    => 'woocommerce_checkout_page_id',
-        'price_thousand'   => 'woocommerce_price_thousand_sep',
-        'price_decimal'    => 'woocommerce_price_decimal_sep',
-        'currency_pos'     => 'woocommerce_currency_pos',
+        'currency'              => 'woocommerce_currency',
+        'country'               => 'woocommerce_default_country',
+        'shop_page'             => 'woocommerce_shop_page_id',
+        'cart_page'             => 'woocommerce_cart_page_id',
+        'checkout_page'         => 'woocommerce_checkout_page_id',
+        'price_thousand'        => 'woocommerce_price_thousand_sep',
+        'price_decimal'         => 'woocommerce_price_decimal_sep',
+        'currency_pos'          => 'woocommerce_currency_pos',
+        'prices_include_tax'    => 'woocommerce_prices_include_tax',
+        'tax_display_shop'      => 'woocommerce_tax_display_shop',
+        'tax_display_cart'      => 'woocommerce_tax_display_cart',
+        'email_from_name'       => 'woocommerce_email_from_name',
+        'email_from_address'    => 'woocommerce_email_from_address',
+        'store_name'            => 'blogname',
+        'store_address'         => 'woocommerce_store_address',
+        'store_city'            => 'woocommerce_store_city',
+        'store_postcode'        => 'woocommerce_store_postcode',
+        'weight_unit'           => 'woocommerce_weight_unit',
+        'dimension_unit'        => 'woocommerce_dimension_unit',
+        'manage_stock'          => 'woocommerce_manage_stock',
+        'hold_stock_minutes'    => 'woocommerce_hold_stock_minutes',
+        'notify_low_stock'      => 'woocommerce_notify_low_stock',
+        'notify_no_stock'       => 'woocommerce_notify_no_stock',
+        'low_stock_amount'      => 'woocommerce_notify_low_stock_amount',
     ];
     $updated = [];
     foreach ($map as $key => $option) {
-        if ( isset($p[$key]) ) { update_option($option, sanitize_text_field($p[$key])); $updated[] = $key; }
+        if ( isset($p[$key]) ) {
+            update_option($option, sanitize_text_field($p[$key]));
+            $updated[] = $key;
+        }
     }
     return empty($updated)
-        ? wpilot_err('No valid settings provided.')
+        ? wpilot_err('No valid settings provided. Supported: currency, country, shop_page, cart_page, checkout_page, price_thousand, price_decimal, currency_pos, prices_include_tax, tax_display_shop, tax_display_cart, email_from_name, email_from_address, store_address, weight_unit, dimension_unit, manage_stock.')
         : wpilot_ok("✅ WooCommerce settings updated: " . implode(', ', $updated));
 }
 
 function wpilot_woo_update_shipping_zone( $p ) {
     if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
-    $zone = new WC_Shipping_Zone();
-    $zone->set_zone_name( sanitize_text_field($p['name'] ?? 'Shipping Zone') );
+
+    $zone_name = sanitize_text_field($p['name'] ?? 'Shipping Zone');
+
+    // Reuse existing zone if zone_id given, otherwise create new
+    if ( !empty($p['zone_id']) ) {
+        $zone = WC_Shipping_Zones::get_zone( (int)$p['zone_id'] );
+        if ( !$zone ) return wpilot_err("Shipping zone ID {$p['zone_id']} not found.");
+    } else {
+        $zone = new WC_Shipping_Zone();
+        $zone->set_zone_name( $zone_name );
+    }
+
     if ( !empty($p['countries']) ) {
+        // Remove existing locations first to avoid duplicates
+        $zone->clear_locations(['country']);
         foreach ((array)$p['countries'] as $country) {
-            $zone->add_location(strtoupper($country), 'country');
+            $zone->add_location(strtoupper(sanitize_text_field($country)), 'country');
         }
     }
-    $zone_id = $zone->save();
-    if ( !empty($p['method']) ) {
-        $zone->add_shipping_method(sanitize_text_field($p['method']));
+    if ( !empty($p['states']) ) {
+        foreach ((array)$p['states'] as $state) {
+            $zone->add_location(sanitize_text_field($state), 'state');
+        }
     }
-    return wpilot_ok("✅ Shipping zone \"{$p['name']}\" created (ID: {$zone_id}). Go to WooCommerce → Settings → Shipping to set rates.");
+
+    $zone_id = $zone->save();
+    $result_details = [];
+
+    // Add shipping method with rates
+    if ( !empty($p['method']) ) {
+        $method_type = sanitize_text_field($p['method']); // flat_rate, free_shipping, local_pickup
+        $instance_id = $zone->add_shipping_method($method_type);
+
+        if ( $instance_id ) {
+            $result_details[] = "method: {$method_type}";
+
+            // Configure flat rate cost
+            if ( $method_type === 'flat_rate' && isset($p['cost']) ) {
+                $option_key = "woocommerce_flat_rate_{$instance_id}_settings";
+                $settings = get_option($option_key, []);
+                $settings['cost'] = sanitize_text_field($p['cost']);
+                $settings['title'] = sanitize_text_field($p['method_title'] ?? 'Flat Rate');
+                if ( isset($p['tax_status']) ) $settings['tax_status'] = sanitize_text_field($p['tax_status']);
+                update_option($option_key, $settings);
+                $result_details[] = "cost: {$p['cost']}";
+            }
+
+            // Configure free shipping minimum
+            if ( $method_type === 'free_shipping' && isset($p['min_amount']) ) {
+                $option_key = "woocommerce_free_shipping_{$instance_id}_settings";
+                $settings = get_option($option_key, []);
+                $settings['min_amount'] = sanitize_text_field($p['min_amount']);
+                $settings['requires'] = 'min_amount';
+                $settings['title'] = sanitize_text_field($p['method_title'] ?? 'Free Shipping');
+                update_option($option_key, $settings);
+                $result_details[] = "free over: {$p['min_amount']}";
+            }
+
+            // Local pickup title/cost
+            if ( $method_type === 'local_pickup' ) {
+                $option_key = "woocommerce_local_pickup_{$instance_id}_settings";
+                $settings = get_option($option_key, []);
+                $settings['title'] = sanitize_text_field($p['method_title'] ?? 'Local Pickup');
+                if ( isset($p['cost']) ) $settings['cost'] = sanitize_text_field($p['cost']);
+                update_option($option_key, $settings);
+            }
+        }
+    }
+
+    $detail_str = empty($result_details) ? '' : ' (' . implode(', ', $result_details) . ')';
+    return wpilot_ok("✅ Shipping zone \"{$zone_name}\" saved (ID: {$zone_id}){$detail_str}.", ['zone_id' => $zone_id]);
 }
 
 function wpilot_woo_create_shipping_class( $p ) {
     if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
     $name = sanitize_text_field($p['name'] ?? 'Shipping Class');
     $term = wp_insert_term($name, 'product_shipping_class', ['description'=>$p['description']??'','slug'=>sanitize_title($name)]);
-    if ( is_wp_error($term) ) return wpilot_err($term->get_error_message());
-    return wpilot_ok("✅ Shipping class \"{$name}\" created.");
+    if ( is_wp_error($term) ) {
+        // If term already exists, return its ID
+        if ( $term->get_error_code() === 'term_exists' ) {
+            $existing = get_term_by('slug', sanitize_title($name), 'product_shipping_class');
+            return wpilot_ok("Shipping class \"{$name}\" already exists (ID: {$existing->term_id}).", ['term_id' => $existing->term_id]);
+        }
+        return wpilot_err($term->get_error_message());
+    }
+    return wpilot_ok("✅ Shipping class \"{$name}\" created (ID: {$term['term_id']}).", ['term_id' => $term['term_id']]);
+}
+
+function wpilot_woo_configure_stripe( $p ) {
+    if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
+    if ( !class_exists('WC_Stripe') && !defined('WC_STRIPE_VERSION') ) {
+        return wpilot_err('WooCommerce Stripe plugin is not installed. Install "WooCommerce Stripe Payment Gateway" from Plugins → Add New.');
+    }
+
+    $test_mode         = isset($p['test_mode']) ? (bool)$p['test_mode'] : true;
+    $pub_key           = sanitize_text_field($p['publishable_key']      ?? '');
+    $secret_key        = sanitize_text_field($p['secret_key']           ?? '');
+    $test_pub_key      = sanitize_text_field($p['test_publishable_key'] ?? '');
+    $test_secret_key   = sanitize_text_field($p['test_secret_key']      ?? '');
+    $webhook_secret    = sanitize_text_field($p['webhook_secret']       ?? '');
+    $test_webhook      = sanitize_text_field($p['test_webhook_secret']  ?? '');
+    $statement_desc    = sanitize_text_field($p['statement_descriptor'] ?? '');
+
+    // Validate key prefixes
+    if ( $pub_key && strpos($pub_key, 'pk_live_') !== 0 )
+        return wpilot_err('publishable_key must start with "pk_live_".');
+    if ( $secret_key && strpos($secret_key, 'sk_live_') !== 0 && strpos($secret_key, 'rk_live_') !== 0 )
+        return wpilot_err('secret_key must start with "sk_live_" or "rk_live_".');
+    if ( $test_pub_key && strpos($test_pub_key, 'pk_test_') !== 0 )
+        return wpilot_err('test_publishable_key must start with "pk_test_".');
+    if ( $test_secret_key && strpos($test_secret_key, 'sk_test_') !== 0 && strpos($test_secret_key, 'rk_test_') !== 0 )
+        return wpilot_err('test_secret_key must start with "sk_test_" or "rk_test_".');
+
+    $settings = get_option('woocommerce_stripe_settings', []);
+    $settings['enabled']    = 'yes';
+    $settings['testmode']   = $test_mode ? 'yes' : 'no';
+
+    if ( $pub_key )         $settings['publishable_key']      = $pub_key;
+    if ( $secret_key )      $settings['secret_key']           = $secret_key;
+    if ( $test_pub_key )    $settings['test_publishable_key'] = $test_pub_key;
+    if ( $test_secret_key ) $settings['test_secret_key']      = $test_secret_key;
+    if ( $webhook_secret )  $settings['webhook_secret']       = $webhook_secret;
+    if ( $test_webhook )    $settings['test_webhook_secret']  = $test_webhook;
+    if ( $statement_desc )  $settings['statement_descriptor'] = $statement_desc;
+
+    // Optional features
+    if ( isset($p['saved_cards']) )    $settings['saved_cards']    = $p['saved_cards']    ? 'yes' : 'no';
+    if ( isset($p['apple_pay']) )      $settings['express_checkout'] = $p['apple_pay']    ? 'yes' : 'no';
+    if ( isset($p['capture']) )        $settings['capture']          = $p['capture']       ? 'yes' : 'no';
+
+    // Enable Klarna if requested
+    if ( !empty($p['enable_klarna']) ) {
+        $klarna = get_option('woocommerce_stripe_klarna_settings', []);
+        $klarna['enabled'] = 'yes';
+        update_option('woocommerce_stripe_klarna_settings', $klarna);
+    }
+
+    update_option('woocommerce_stripe_settings', $settings);
+    $mode = $test_mode ? 'TEST mode' : 'LIVE mode';
+    return wpilot_ok("✅ Stripe configured ({$mode}). Card payments enabled." . (!empty($p['enable_klarna']) ? ' Klarna also enabled.' : '') . "\n\nIMPORTANT: Set up a webhook in your Stripe Dashboard → Developers → Webhooks pointing to: " . get_home_url(null, '/?wc-api=wc_stripe'), [
+        'webhook_url' => get_home_url(null, '/?wc-api=wc_stripe'),
+        'mode' => $test_mode ? 'test' : 'live',
+    ]);
+}
+
+function wpilot_woo_configure_email( $p ) {
+    if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
+
+    $updated = [];
+
+    // From name and address
+    if ( !empty($p['from_name']) ) {
+        update_option('woocommerce_email_from_name', sanitize_text_field($p['from_name']));
+        $updated[] = 'from_name';
+    }
+    if ( !empty($p['from_email']) ) {
+        update_option('woocommerce_email_from_address', sanitize_email($p['from_email']));
+        $updated[] = 'from_email';
+    }
+
+    // Email header image and footer text
+    if ( !empty($p['header_image']) ) {
+        update_option('woocommerce_email_header_image', esc_url_raw($p['header_image']));
+        $updated[] = 'header_image';
+    }
+    if ( !empty($p['footer_text']) ) {
+        update_option('woocommerce_email_footer_text', wp_kses_post($p['footer_text']));
+        $updated[] = 'footer_text';
+    }
+    if ( !empty($p['base_color']) ) {
+        update_option('woocommerce_email_base_color', sanitize_hex_color($p['base_color']) ?: '#7f54b3');
+        $updated[] = 'base_color';
+    }
+    if ( !empty($p['bg_color']) ) {
+        update_option('woocommerce_email_background_color', sanitize_hex_color($p['bg_color']) ?: '#f7f7f7');
+        $updated[] = 'bg_color';
+    }
+    if ( !empty($p['body_bg_color']) ) {
+        update_option('woocommerce_email_body_background_color', sanitize_hex_color($p['body_bg_color']) ?: '#ffffff');
+        $updated[] = 'body_bg_color';
+    }
+
+    // Per-email type settings: new_order, customer_processing_order, customer_completed_order, etc.
+    $email_types = [
+        'new_order', 'cancelled_order', 'failed_order',
+        'customer_on_hold_order', 'customer_processing_order',
+        'customer_completed_order', 'customer_refunded_order',
+        'customer_invoice', 'customer_note', 'customer_reset_password',
+        'customer_new_account',
+    ];
+
+    if ( !empty($p['email_type']) && !empty($p['recipient']) && in_array($p['email_type'], $email_types) ) {
+        $key = 'woocommerce_' . $p['email_type'] . '_settings';
+        $opts = get_option($key, []);
+        $opts['recipient'] = sanitize_text_field($p['recipient']);
+        if ( isset($p['enabled']) ) $opts['enabled'] = $p['enabled'] ? 'yes' : 'no';
+        if ( !empty($p['subject']) ) $opts['subject'] = sanitize_text_field($p['subject']);
+        update_option($key, $opts);
+        $updated[] = "email/{$p['email_type']}";
+    }
+
+    if ( empty($updated) ) {
+        return wpilot_err('No email settings provided. Supported: from_name, from_email, header_image, footer_text, base_color, bg_color, body_bg_color, email_type+recipient+subject.');
+    }
+
+    return wpilot_ok("✅ WooCommerce email settings updated: " . implode(', ', $updated));
+}
+
+function wpilot_woo_setup_checkout( $p ) {
+    if ( !wpilot_woo_installed() ) return wpilot_err('WooCommerce is not installed.');
+
+    $updated = [];
+
+    // Guest checkout
+    if ( isset($p['guest_checkout']) ) {
+        update_option('woocommerce_enable_guest_checkout', $p['guest_checkout'] ? 'yes' : 'no');
+        $updated[] = 'guest_checkout: ' . ($p['guest_checkout'] ? 'on' : 'off');
+    }
+
+    // Login at checkout
+    if ( isset($p['login_reminder']) ) {
+        update_option('woocommerce_enable_checkout_login_reminder', $p['login_reminder'] ? 'yes' : 'no');
+        $updated[] = 'login_reminder';
+    }
+
+    // Account creation
+    if ( isset($p['registration_at_checkout']) ) {
+        update_option('woocommerce_enable_signup_and_login_from_checkout', $p['registration_at_checkout'] ? 'yes' : 'no');
+        $updated[] = 'registration_at_checkout';
+    }
+    if ( isset($p['auto_generate_username']) ) {
+        update_option('woocommerce_registration_generate_username', $p['auto_generate_username'] ? 'yes' : 'no');
+        $updated[] = 'auto_generate_username';
+    }
+    if ( isset($p['auto_generate_password']) ) {
+        update_option('woocommerce_registration_generate_password', $p['auto_generate_password'] ? 'yes' : 'no');
+        $updated[] = 'auto_generate_password';
+    }
+
+    // Terms page
+    if ( !empty($p['terms_page_id']) ) {
+        update_option('woocommerce_terms_page_id', (int)$p['terms_page_id']);
+        $updated[] = 'terms_page';
+    }
+
+    // Force SSL at checkout
+    if ( isset($p['force_ssl'] ) ) {
+        update_option('woocommerce_force_ssl_checkout', $p['force_ssl'] ? 'yes' : 'no');
+        $updated[] = 'force_ssl: ' . ($p['force_ssl'] ? 'on' : 'off');
+    }
+
+    // Checkout page
+    if ( !empty($p['checkout_page_id']) ) {
+        update_option('woocommerce_checkout_page_id', (int)$p['checkout_page_id']);
+        $updated[] = 'checkout_page';
+    }
+
+    // My Account page
+    if ( !empty($p['myaccount_page_id']) ) {
+        update_option('woocommerce_myaccount_page_id', (int)$p['myaccount_page_id']);
+        $updated[] = 'myaccount_page';
+    }
+
+    if ( empty($updated) ) {
+        return wpilot_err('No checkout settings provided. Supported: guest_checkout, login_reminder, registration_at_checkout, auto_generate_username, auto_generate_password, terms_page_id, force_ssl, checkout_page_id, myaccount_page_id.');
+    }
+
+    return wpilot_ok("✅ Checkout configured: " . implode(', ', $updated));
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -720,17 +1052,39 @@ function wpilot_plugin_update_option( $p ) {
 // ══════════════════════════════════════════════════════════════
 
 function wpilot_plugin_install( $p ) {
-    $slug = sanitize_text_field($p['slug'] ?? $p['plugin'] ?? $p['plugin_slug'] ?? $p['name'] ?? $p['plugin_name'] ?? '');
+    $slug     = sanitize_text_field($p['slug'] ?? '');
+    $activate = ! empty($p['activate']);
     if ( !$slug ) return wpilot_err('Plugin slug required. E.g. "amelia", "woocommerce", "learndash".');
     require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
     require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
     $api = plugins_api('plugin_information',['slug'=>$slug,'fields'=>['sections'=>false]]);
     if ( is_wp_error($api) ) return wpilot_err("Plugin \"{$slug}\" not found on WordPress.org: " . $api->get_error_message());
     $skin     = new Automatic_Upgrader_Skin();
     $upgrader = new Plugin_Upgrader($skin);
     $result   = $upgrader->install($api->download_link);
     if ( is_wp_error($result) ) return wpilot_err("Install failed: " . $result->get_error_message());
-    return wpilot_ok("✅ Plugin \"{$api->name}\" installed successfully. Activate it to start using it.");
+    if ( $result === false )    return wpilot_err("Install failed: unknown error.");
+
+    // Find the installed plugin file and optionally activate
+    wp_clean_plugins_cache( false );
+    $all_plugins = get_plugins();
+    $plugin_file = null;
+    foreach ( $all_plugins as $file => $data ) {
+        if ( strpos($file, $slug . '/') === 0 || $file === $slug . '.php' ) {
+            $plugin_file = $file; break;
+        }
+    }
+
+    if ( $activate && $plugin_file ) {
+        $act_result = activate_plugin( $plugin_file );
+        if ( is_wp_error($act_result) ) {
+            return wpilot_ok("✅ Plugin \"{$api->name}\" installed but activation failed: " . $act_result->get_error_message(), ['plugin_file' => $plugin_file]);
+        }
+        return wpilot_ok("✅ Plugin \"{$api->name}\" installed and activated.", ['plugin_file' => $plugin_file, 'activated' => true]);
+    }
+
+    return wpilot_ok("✅ Plugin \"{$api->name}\" installed successfully.", ['plugin_file' => $plugin_file ?? $slug]);
 }
 
 function wpilot_plugin_activate( $p ) {
@@ -966,22 +1320,38 @@ function wpilot_smtp_configure($p) {
 
 function wpilot_smtp_test($p) {
     $to = sanitize_email($p['to'] ?? get_option('admin_email'));
+    if ( !$to ) return wpilot_err('No recipient email address. Provide "to" parameter or set admin email in WordPress settings.');
     $subject = 'WPilot SMTP Test — ' . date('Y-m-d H:i');
-    $body = 'This is a test email sent by WPilot to verify your SMTP configuration is working correctly. If you received this, your email delivery is set up properly!';
+    $body    = '<p>This is a test email sent by <strong>WPilot</strong> to verify your SMTP configuration is working correctly.</p><p>If you received this, your email delivery is set up properly!</p>';
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
-    $result = wp_mail($to, $subject, $body, $headers);
+    // Capture PHPMailer error — WP 5.5+ uses $wp_phpmailer
+    $mailer_error = '';
+    $capture_error = function( $wp_error ) use ( &$mailer_error ) {
+        if ( is_wp_error( $wp_error ) ) {
+            $mailer_error = $wp_error->get_error_message();
+        }
+    };
+    add_action( 'wp_mail_failed', $capture_error );
 
-    if ($result) {
-        return wpilot_ok("Test email sent to {$to}. Check your inbox (and spam folder).");
+    $result = wp_mail( $to, $subject, $body, $headers );
+
+    remove_action( 'wp_mail_failed', $capture_error );
+
+    if ( $result ) {
+        return wpilot_ok("✅ Test email sent to {$to}. Check your inbox (and spam folder). If it ends up in spam, configure SPF/DKIM records for your domain.");
     }
 
-    global $phpmailer;
-    $error = '';
-    if (isset($phpmailer) && is_object($phpmailer) && !empty($phpmailer->ErrorInfo)) {
-        $error = $phpmailer->ErrorInfo;
+    // Also check legacy $phpmailer / $wp_phpmailer globals as fallback
+    if ( !$mailer_error ) {
+        global $wp_phpmailer, $phpmailer;
+        $pm = $wp_phpmailer ?? $phpmailer ?? null;
+        if ( $pm && is_object($pm) && !empty($pm->ErrorInfo) ) {
+            $mailer_error = $pm->ErrorInfo;
+        }
     }
-    return wpilot_err("Email failed to send." . ($error ? " Error: {$error}" : " Check SMTP settings or install WP Mail SMTP."));
+
+    return wpilot_err("Email failed to send." . ($mailer_error ? " PHPMailer error: {$mailer_error}" : " Check your SMTP settings or install WP Mail SMTP plugin."));
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1492,3 +1862,404 @@ add_action('wp_footer', function() {
     echo '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("' . esc_url(get_site_url() . '/sw.js') . '")}</script>' . "\n";
 });
 
+// ══════════════════════════════════════════════════════════════
+//  CONTACT FORM 7 (CF7)
+//  5M+ active installs — most installed WordPress plugin.
+//  Uses wpcf7_contact_form post type + meta for form body/mail.
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_cf7_installed() {
+    return defined('WPCF7_VERSION') || class_exists('WPCF7') || function_exists('wpcf7');
+}
+
+/**
+ * Build a CF7 shortcode tag for a single field definition.
+ * CF7 tag format: [type* name "placeholder"] or [type name "placeholder"]
+ * For select/checkbox/radio: [select name "opt1" "opt2"]
+ */
+function wpilot_cf7_build_tag( $field, $index ) {
+    $label    = sanitize_text_field( $field['label']    ?? 'Field ' . $index );
+    $type     = sanitize_text_field( $field['type']     ?? 'text' );
+    $required = ! empty( $field['required'] );
+    $options  = $field['options'] ?? [];
+
+    // Derive a machine-safe name from the label
+    $name = strtolower( preg_replace( '/[^a-z0-9]+/i', '-', $label ) );
+    $name = trim( $name, '-' ) ?: 'field-' . $index;
+
+    // Map friendly type names to CF7 tag types
+    $type_map = [
+        'text'     => 'text',
+        'email'    => 'email',
+        'tel'      => 'tel',
+        'phone'    => 'tel',
+        'textarea' => 'textarea',
+        'select'   => 'select',
+        'checkbox' => 'checkbox',
+        'radio'    => 'radio',
+        'file'     => 'file',
+        'date'     => 'date',
+        'number'   => 'number',
+        'url'      => 'url',
+    ];
+    $cf7_type = $type_map[ $type ] ?? 'text';
+
+    $req_mark = $required ? '*' : '';
+
+    if ( in_array( $cf7_type, [ 'select', 'checkbox', 'radio' ], true ) ) {
+        // Options are quoted strings after the name
+        if ( empty( $options ) ) {
+            $options = [ 'Option 1', 'Option 2', 'Option 3' ];
+        }
+        $opts_str = implode( ' ', array_map( function( $o ) {
+            return '"' . esc_attr( $o ) . '"';
+        }, (array) $options ) );
+        return "[{$cf7_type}{$req_mark} {$name} {$opts_str}]";
+    }
+
+    if ( $cf7_type === 'textarea' ) {
+        return "[textarea{$req_mark} {$name}]";
+    }
+
+    if ( $cf7_type === 'file' ) {
+        return "[file{$req_mark} {$name} limit:5mb filetypes:pdf|doc|docx|jpg|png]";
+    }
+
+    return "[{$cf7_type}{$req_mark} {$name}]";
+}
+
+/**
+ * Build the full CF7 form body from a fields array.
+ * Returns an HTML string with <p>Label [tag]</p> rows + submit button.
+ */
+function wpilot_cf7_build_form_body( $fields ) {
+    $rows   = [];
+    $index  = 1;
+    foreach ( $fields as $field ) {
+        $label = sanitize_text_field( $field['label'] ?? 'Field ' . $index );
+        $tag   = wpilot_cf7_build_tag( $field, $index );
+        $rows[] = "<p><label>{$label}<br />\n    {$tag}</label></p>";
+        $index++;
+    }
+    $rows[] = '<p>[submit "Send"]</p>';
+    return implode( "\n", $rows );
+}
+
+/**
+ * Build the mail body listing all fields.
+ * CF7 uses [field-name] placeholders in mail templates.
+ */
+function wpilot_cf7_build_mail_body( $fields ) {
+    $lines = [];
+    $index = 1;
+    foreach ( $fields as $field ) {
+        $label = sanitize_text_field( $field['label'] ?? 'Field ' . $index );
+        $name  = strtolower( preg_replace( '/[^a-z0-9]+/i', '-', $label ) );
+        $name  = trim( $name, '-' ) ?: 'field-' . $index;
+        $lines[] = "{$label}: [{$name}]";
+        $index++;
+    }
+    return implode( "\n", $lines );
+}
+
+// Built by Christos Ferlachidis & Daniel Hedenberg
+
+function wpilot_cf7_create_form( $p ) {
+    if ( ! wpilot_cf7_installed() ) {
+        return wpilot_err( 'Contact Form 7 is not installed. Install it from Plugins → Add New → search "Contact Form 7" (free, 5M+ installs).' );
+    }
+
+    $title  = sanitize_text_field( $p['title'] ?? 'Contact Form' );
+    $fields = (array) ( $p['fields'] ?? [
+        [ 'label' => 'Your Name',    'type' => 'text',     'required' => true  ],
+        [ 'label' => 'Your Email',   'type' => 'email',    'required' => true  ],
+        [ 'label' => 'Your Message', 'type' => 'textarea', 'required' => false ],
+    ] );
+
+    $form_body = wpilot_cf7_build_form_body( $fields );
+    $mail_body = wpilot_cf7_build_mail_body( $fields );
+    $admin_email = get_option( 'admin_email' );
+    $site_title  = get_bloginfo( 'name' );
+
+    // Mail settings stored as post meta '_mail'
+    $mail = [
+        'subject'    => "New message from [{$site_title}]: {$title}",
+        'sender'     => "{$site_title} <wordpress@" . parse_url( get_home_url(), PHP_URL_HOST ) . ">",
+        'recipient'  => $admin_email,
+        'body'       => "From: [your-name] <[your-email]>\nSubject: " . $title . "\n\n{$mail_body}\n\n--\nThis email was sent via Contact Form 7 on {$site_title}.",
+        'additional_headers' => 'Reply-To: [your-email]',
+        'attachments'        => '',
+        'use_html'           => false,
+        'exclude_blank'      => false,
+    ];
+
+    // Fallback: direct wp_insert_post (works even if CF7 class not fully loaded)
+    $post_id = wp_insert_post( [
+        'post_type'   => 'wpcf7_contact_form',
+        'post_title'  => $title,
+        'post_status' => 'publish',
+        'post_name'   => sanitize_title( $title ),
+    ] );
+
+    if ( is_wp_error( $post_id ) ) {
+        return wpilot_err( 'Could not create CF7 form: ' . $post_id->get_error_message() );
+    }
+
+    update_post_meta( $post_id, '_form',     $form_body );
+    update_post_meta( $post_id, '_mail',     $mail );
+    update_post_meta( $post_id, '_messages', [
+        'mail_sent_ok'     => 'Thank you for your message. It has been sent.',
+        'mail_sent_ng'     => 'There was an error trying to send your message. Please try again later.',
+        'validation_error' => 'One or more fields have an error. Please check and try again.',
+    ] );
+    update_post_meta( $post_id, '_locale',   get_locale() );
+
+    $shortcode = '[contact-form-7 id="' . $post_id . '" title="' . esc_attr( $title ) . '"]';
+    return wpilot_ok(
+        "Contact Form 7 form \"{$title}\" created (ID: {$post_id}). Embed it on any page with:\n\n{$shortcode}",
+        [ 'form_id' => $post_id, 'shortcode' => $shortcode ]
+    );
+}
+
+function wpilot_cf7_list_forms( $p ) {
+    if ( ! wpilot_cf7_installed() ) {
+        return wpilot_err( 'Contact Form 7 is not installed.' );
+    }
+
+    $posts = get_posts( [
+        'post_type'      => 'wpcf7_contact_form',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'orderby'        => 'title',
+        'order'          => 'ASC',
+    ] );
+
+    if ( empty( $posts ) ) {
+        return wpilot_ok( 'No Contact Form 7 forms found. Create one with cf7_create_form.', [ 'forms' => [] ] );
+    }
+
+    global $wpdb;
+    $forms = [];
+    foreach ( $posts as $post ) {
+        $form_id   = $post->ID;
+        $shortcode = '[contact-form-7 id="' . $form_id . '" title="' . esc_attr( $post->post_title ) . '"]';
+
+        // Count submissions via flamingo (CF7 companion plugin) or meta
+        $submission_count = 0;
+        if ( post_type_exists( 'flamingo_inbound' ) ) {
+            $submission_count = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+                 WHERE p.post_type = 'flamingo_inbound'
+                 AND pm.meta_key = '_meta' AND pm.meta_value LIKE %s",
+                '%' . $wpdb->esc_like( '"contact-form-id";i:' . $form_id ) . '%'
+            ) );
+        }
+
+        $forms[] = [
+            'id'               => $form_id,
+            'title'            => $post->post_title,
+            'shortcode'        => $shortcode,
+            'submission_count' => $submission_count,
+            'edit_url'         => admin_url( 'admin.php?page=wpcf7&action=edit&post=' . $form_id ),
+        ];
+    }
+
+    $count = count( $forms );
+    return wpilot_ok(
+        "{$count} Contact Form 7 form(s) found.",
+        [ 'forms' => $forms, 'count' => $count ]
+    );
+}
+
+function wpilot_cf7_get_form( $p ) {
+    if ( ! wpilot_cf7_installed() ) {
+        return wpilot_err( 'Contact Form 7 is not installed.' );
+    }
+
+    $form_id = (int) ( $p['form_id'] ?? 0 );
+    if ( ! $form_id ) {
+        return wpilot_err( 'form_id is required.' );
+    }
+
+    $post = get_post( $form_id );
+    if ( ! $post || $post->post_type !== 'wpcf7_contact_form' ) {
+        return wpilot_err( "CF7 form #{$form_id} not found. Use cf7_list_forms to see available forms." );
+    }
+
+    $form_body = get_post_meta( $form_id, '_form',     true );
+    $mail      = get_post_meta( $form_id, '_mail',     true );
+    $messages  = get_post_meta( $form_id, '_messages', true );
+
+    // Also try CF7 API for richer data
+    if ( class_exists( 'WPCF7_ContactForm' ) ) {
+        $cf7 = WPCF7_ContactForm::get_instance( $form_id );
+        if ( $cf7 ) {
+            $form_body = $cf7->prop( 'form' ) ?: $form_body;
+            $mail      = $cf7->prop( 'mail' ) ?: $mail;
+            $messages  = $cf7->prop( 'messages' ) ?: $messages;
+        }
+    }
+
+    $shortcode = '[contact-form-7 id="' . $form_id . '" title="' . esc_attr( $post->post_title ) . '"]';
+
+    return wpilot_ok(
+        "CF7 form \"{$post->post_title}\" (ID: {$form_id}) retrieved.",
+        [
+            'form_id'   => $form_id,
+            'title'     => $post->post_title,
+            'shortcode' => $shortcode,
+            'form_body' => $form_body,
+            'mail'      => $mail,
+            'messages'  => $messages,
+            'edit_url'  => admin_url( 'admin.php?page=wpcf7&action=edit&post=' . $form_id ),
+        ]
+    );
+}
+
+function wpilot_cf7_update_form( $p ) {
+    if ( ! wpilot_cf7_installed() ) {
+        return wpilot_err( 'Contact Form 7 is not installed.' );
+    }
+
+    $form_id = (int) ( $p['form_id'] ?? 0 );
+    if ( ! $form_id ) {
+        return wpilot_err( 'form_id is required.' );
+    }
+
+    $post = get_post( $form_id );
+    if ( ! $post || $post->post_type !== 'wpcf7_contact_form' ) {
+        return wpilot_err( "CF7 form #{$form_id} not found. Use cf7_list_forms to see available forms." );
+    }
+
+    $updated = [];
+
+    // Update title
+    if ( ! empty( $p['title'] ) ) {
+        wp_update_post( [ 'ID' => $form_id, 'post_title' => sanitize_text_field( $p['title'] ) ] );
+        $updated[] = 'title';
+    }
+
+    // Rebuild form body from new fields array
+    if ( ! empty( $p['fields'] ) ) {
+        $form_body = wpilot_cf7_build_form_body( (array) $p['fields'] );
+        update_post_meta( $form_id, '_form', $form_body );
+        $updated[] = 'form_body';
+    }
+
+    // Update raw form body directly (overrides fields rebuild)
+    if ( ! empty( $p['form_body'] ) ) {
+        update_post_meta( $form_id, '_form', wp_kses_post( $p['form_body'] ) );
+        $updated[] = 'form_body';
+    }
+
+    // Update mail settings (merge, not replace)
+    if ( ! empty( $p['mail'] ) ) {
+        $existing_mail = get_post_meta( $form_id, '_mail', true ) ?: [];
+        $new_mail = array_merge( (array) $existing_mail, (array) $p['mail'] );
+        // Sanitize mail fields
+        if ( ! empty( $new_mail['recipient'] ) )  $new_mail['recipient']  = sanitize_email( $new_mail['recipient'] );
+        if ( ! empty( $new_mail['subject'] ) )    $new_mail['subject']    = sanitize_text_field( $new_mail['subject'] );
+        if ( ! empty( $new_mail['sender'] ) )     $new_mail['sender']     = sanitize_text_field( $new_mail['sender'] );
+        update_post_meta( $form_id, '_mail', $new_mail );
+        $updated[] = 'mail';
+    }
+
+    // Update messages
+    if ( ! empty( $p['messages'] ) ) {
+        $existing_msgs = get_post_meta( $form_id, '_messages', true ) ?: [];
+        $new_msgs = array_merge( (array) $existing_msgs, array_map( 'sanitize_text_field', (array) $p['messages'] ) );
+        update_post_meta( $form_id, '_messages', $new_msgs );
+        $updated[] = 'messages';
+    }
+
+    // Sync via CF7 API if available (flushes CF7 caches)
+    if ( class_exists( 'WPCF7_ContactForm' ) ) {
+        $cf7 = WPCF7_ContactForm::get_instance( $form_id );
+        if ( $cf7 ) {
+            $props = [];
+            if ( in_array( 'form_body', $updated, true ) ) {
+                $props['form'] = get_post_meta( $form_id, '_form', true );
+            }
+            if ( in_array( 'mail', $updated, true ) ) {
+                $props['mail'] = get_post_meta( $form_id, '_mail', true );
+            }
+            if ( in_array( 'messages', $updated, true ) ) {
+                $props['messages'] = get_post_meta( $form_id, '_messages', true );
+            }
+            if ( ! empty( $props ) ) {
+                $cf7->set_properties( $props );
+                $cf7->save();
+            }
+        }
+    }
+
+    if ( empty( $updated ) ) {
+        return wpilot_err( 'No update parameters provided. Supported: title, fields, form_body, mail (recipient/subject/body/sender), messages.' );
+    }
+
+    $title = get_the_title( $form_id );
+    return wpilot_ok(
+        "CF7 form \"{$title}\" (ID: {$form_id}) updated: " . implode( ', ', $updated ) . '.',
+        [ 'form_id' => $form_id, 'updated' => $updated ]
+    );
+}
+
+function wpilot_bulk_import_products($params) {
+    if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce required.');
+    $csv = $params['csv'] ?? '';
+    if (empty($csv)) return wpilot_err('CSV data required. Format: name,price,description,sku,category,image_url,stock');
+
+    $lines = preg_split("/\r\n|\r|\n/", trim($csv));
+    if (count($lines) < 2) return wpilot_err('CSV must have header row + at least 1 data row.');
+
+    $headers = array_map('strtolower', array_map('trim', str_getcsv(array_shift($lines))));
+    $created = 0; $failed = 0; $errors = [];
+
+    foreach ($lines as $i => $line) {
+        $line = trim($line);
+        if (empty($line)) continue;
+        $cols = str_getcsv($line);
+        $row = [];
+        foreach ($headers as $j => $h) { $row[$h] = $cols[$j] ?? ''; }
+
+        $name = sanitize_text_field($row['name'] ?? '');
+        if (empty($name)) { $failed++; $errors[] = "Row " . ($i+2) . ": missing name"; continue; }
+
+        try {
+            $product = new WC_Product_Simple();
+            $product->set_name($name);
+            if (!empty($row['price'])) $product->set_regular_price(sanitize_text_field($row['price']));
+            if (!empty($row['description'])) $product->set_description(wp_kses_post($row['description']));
+            if (!empty($row['sku'])) $product->set_sku(sanitize_text_field($row['sku']));
+            if (!empty($row['stock'])) { $product->set_manage_stock(true); $product->set_stock_quantity(intval($row['stock'])); }
+            if (!empty($row['sale_price'])) $product->set_sale_price(sanitize_text_field($row['sale_price']));
+            $product->set_status('publish');
+            $pid = $product->save();
+
+            if (!empty($row['category'])) {
+                $cat_name = sanitize_text_field($row['category']);
+                $term = get_term_by('name', $cat_name, 'product_cat');
+                if (!$term) { $result = wp_insert_term($cat_name, 'product_cat'); $term_id = is_array($result) ? $result['term_id'] : 0; }
+                else { $term_id = $term->term_id; }
+                if ($term_id) wp_set_object_terms($pid, [$term_id], 'product_cat');
+            }
+
+            if (!empty($row['image_url'])) {
+                require_once(ABSPATH . 'wp-admin/includes/media.php');
+                require_once(ABSPATH . 'wp-admin/includes/file.php');
+                require_once(ABSPATH . 'wp-admin/includes/image.php');
+                $img_id = media_sideload_image(esc_url_raw($row['image_url']), $pid, $name, 'id');
+                if (!is_wp_error($img_id)) set_post_thumbnail($pid, $img_id);
+            }
+            $created++;
+        } catch (\Throwable $e) {
+            $failed++;
+            $errors[] = "Row " . ($i+2) . ": " . $e->getMessage();
+        }
+    }
+
+    return wpilot_ok("Imported {$created} products" . ($failed ? ", {$failed} failed" : "") . ".", [
+        'created' => $created, 'failed' => $failed, 'errors' => array_slice($errors, 0, 5),
+    ]);
+}

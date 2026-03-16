@@ -12,218 +12,26 @@ function wpilot_user_can_admin() {
 // ── Parse [ACTION:...] cards from AI text ──────────────────────
 function wpilot_parse_actions( $text ) {
     $actions = [];
-    $pos = 0;
-    while (($start = strpos($text, '[ACTION:', $pos)) !== false) {
-        $i = $start + 8;
-        $depth = 1;
-        $in_string = false;
-        $len = strlen($text);
-        while ($i < $len && $depth > 0) {
-            $ch = $text[$i];
-            if ($ch === chr(34) && ($i === 0 || $text[$i-1] !== chr(92))) $in_string = !$in_string;
-            if (!$in_string) {
-                if ($ch === chr(91) || $ch === chr(123)) $depth++;
-                if ($ch === chr(93) || $ch === chr(125)) $depth--;
-            }
-            $i++;
-        }
-        $content = substr($text, $start + 8, $i - $start - 9);
-        $parts = [];
-        $current = '';
-        $jd = 0;
-        $is = false;
-        for ($j = 0; $j < strlen($content); $j++) {
-            $c = $content[$j];
-            if ($c === chr(34) && ($j === 0 || $content[$j-1] !== chr(92))) $is = !$is;
-            if (!$is && ($c === chr(123) || $c === chr(91))) $jd++;
-            if (!$is && ($c === chr(125) || $c === chr(93))) $jd--;
-            if ($c === chr(124) && $jd === 0 && !$is) {
-                $parts[] = trim($current);
-                $current = '';
-            } else {
-                $current .= $c;
-            }
-        }
-        $parts[] = trim($current);
-        if (count($parts) >= 4) {
-            $params = [];
-            if (count($parts) >= 5) {
-                $decoded = json_decode(trim($parts[4]), true);
-                if (is_array($decoded)) $params = $decoded;
-            }
-            if (empty($params) && function_exists('wpilot_infer_params')) {
-                $params = wpilot_infer_params(trim($parts[0]), trim($parts[2]));
-            }
+    // Flexible: matches [ACTION: tool], [ACTION: tool | label], [ACTION: tool | label | desc | icon]
+    if ( preg_match_all( '/\[ACTION:\s*([^\]\|]+?)(?:\|([^\]\|]*?))?(?:\|([^\]\|]*?))?(?:\|([^\]]*?))?\]/', $text, $m, PREG_SET_ORDER ) ) {
+        foreach ( $m as $match ) {
             $actions[] = [
-                'tool'        => trim($parts[0]),
-                'label'       => trim($parts[1]),
-                'description' => trim($parts[2]),
-                'icon'        => trim($parts[3]),
-                'params'      => $params,
+                'tool'        => trim( $match[1] ),
+                'label'       => trim( $match[2] ),
+                'description' => trim( $match[3] ),
+                'icon'        => trim( $match[4] ),
+                'params'      => [],
             ];
         }
-        $pos = $i;
     }
     return $actions;
-}
-
-
-// Auto-infer params from tool name and description when AI doesn't provide explicit JSON
-function wpilot_infer_params( $tool, $description ) {
-    $params = [];
-
-    // Tools that need no params (they scan/audit everything)
-    $no_params = ['security_scan','seo_audit','bulk_fix_alt_text','bulk_fix_seo',
-                  'convert_all_images_webp','site_health_check','database_cleanup',
-                  'check_broken_links','cache_configure','cache_purge',
-                  'newsletter_list_subscribers','list_users'];
-    if (in_array($tool, $no_params)) return $params;
-
-    // Plugin install: extract slug from description
-    if ($tool === 'plugin_install') {
-        // Try to find a plugin name in the description
-        $known_slugs = [
-            'rank math' => 'seo-by-rank-math', 'yoast' => 'wordpress-seo',
-            'wordfence' => 'wordfence', 'litespeed' => 'litespeed-cache',
-            'wp rocket' => 'wp-rocket', 'w3 total' => 'w3-total-cache',
-            'wp super cache' => 'wp-super-cache', 'wp mail smtp' => 'wp-mail-smtp',
-            'fluentsmtp' => 'fluent-smtp', 'updraftplus' => 'updraftplus',
-            'contact form 7' => 'contact-form-7', 'wpforms' => 'wpforms-lite',
-            'elementor' => 'elementor', 'polylang' => 'polylang',
-            'woocommerce' => 'woocommerce', 'amelia' => 'ameliabooking',
-            'hello dolly' => 'hello-dolly',
-            'contact form 7' => 'contact-form-7', 'contact form' => 'contact-form-7',
-            'smush' => 'wp-smushit', 'shortpixel' => 'shortpixel-image-optimiser',
-            'autoptimize' => 'autoptimize', 'jetpack' => 'jetpack',
-            'akismet' => 'akismet', 'site kit' => 'google-site-kit',
-            'classic editor' => 'classic-editor', 'duplicate post' => 'duplicate-post',
-            'redirection' => 'redirection', 'really simple ssl' => 'really-simple-ssl',
-            'all in one seo' => 'all-in-one-seo-pack', 'sucuri' => 'sucuri-scanner',
-            'mailpoet' => 'mailpoet', 'newsletter' => 'developer',
-        ];
-        $desc_lower = strtolower($description);
-        foreach ($known_slugs as $name => $slug) {
-            if (strpos($desc_lower, $name) !== false) {
-                $params['slug'] = $slug;
-                break;
-            }
-        }
-    }
-
-    // Plugin activate/deactivate: try to find file
-    if (in_array($tool, ['activate_plugin', 'deactivate_plugin', 'delete_plugin'])) {
-        if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        $desc_lower = strtolower($description);
-        foreach (get_plugins() as $file => $data) {
-            if (strpos($desc_lower, strtolower($data['Name'])) !== false) {
-                $params['file'] = $file;
-                break;
-            }
-        }
-    }
-
-    // Update tagline
-    if ($tool === 'update_tagline') {
-        // Extract quoted text from description
-        if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
-            $params['tagline'] = $m[1];
-        } else {
-            $params['tagline'] = $description;
-        }
-    }
-
-    // Update blogname
-    if ($tool === 'update_blogname') {
-        if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
-            $params['name'] = $m[1];
-        }
-    }
-
-    // SEO tools: try to find page ID
-    if (in_array($tool, ['update_meta_desc','update_seo_title','fix_heading_structure','set_open_graph'])) {
-        if (preg_match('/(?:#|ID[: ]|page )(\d+)/', $description, $m)) {
-            $params['id'] = intval($m[1]);
-        }
-        if ($tool === 'update_meta_desc' && empty($params['id'])) {
-            // Try to find page by name in description
-            $pages = get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>50]);
-            $desc_lower = strtolower($description);
-            foreach ($pages as $p) {
-                if (strpos($desc_lower, strtolower($p->post_title)) !== false) {
-                    $params['id'] = $p->ID;
-                    // Extract the actual meta description from the description text
-                    if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
-                        $params['desc'] = $m[1];
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    // Create page
-    if ($tool === 'create_page' || $tool === 'create_post') {
-        if (preg_match('/["\'](.*?)[\"\']/', $description, $m)) {
-            $params['title'] = $m[1];
-        }
-        $params['status'] = 'publish';
-    }
-
-    // CSS tools
-    if (in_array($tool, ['update_custom_css','append_custom_css'])) {
-        // The CSS content should be in the description
-        $params['css'] = $description;
-    }
-
-    // Image alt text
-    if ($tool === 'update_image_alt') {
-        if (preg_match('/(?:#|ID )(\d+)/', $description, $m)) {
-            $params['id'] = intval($m[1]);
-        }
-        if (preg_match('/alt[: ]+"?([^"]+)"?/', $description, $m)) {
-            $params['alt'] = trim($m[1]);
-        }
-    }
-
-    // Generate full site
-    if ($tool === 'generate_full_site') {
-        $params['business_name'] = get_bloginfo('name');
-        $desc_lower = strtolower($description);
-        $types = ['booking','ecommerce','restaurant','portfolio','education','membership','events','realestate'];
-        foreach ($types as $t) {
-            if (strpos($desc_lower, $t) !== false) { $params['site_type'] = $t; break; }
-        }
-        if (empty($params['site_type'])) $params['site_type'] = 'general';
-    }
-
-    // Security fix
-    if ($tool === 'fix_security_issue') {
-        $desc_lower = strtolower($description);
-        if (strpos($desc_lower, 'header') !== false) $params['issue'] = 'add_security_headers';
-        elseif (strpos($desc_lower, 'xml') !== false) $params['issue'] = 'disable_xmlrpc';
-        elseif (strpos($desc_lower, 'readme') !== false) $params['issue'] = 'delete_readme';
-        elseif (strpos($desc_lower, 'registr') !== false) $params['issue'] = 'disable_registration';
-    }
-
-    // Redirect
-    if ($tool === 'create_redirect') {
-        if (preg_match('/from\s+([^\s]+)\s+to\s+([^\s]+)/i', $description, $m)) {
-            $params['from'] = $m[1];
-            $params['to'] = $m[2];
-        }
-    }
-
-    return $params;
 }
 
 // ── Main chat (admin + editor) ─────────────────────────────────
 add_action( 'wp_ajax_ca_chat', function () {
     check_ajax_referer( 'ca_nonce', 'nonce' );
     if ( ! wpilot_user_has_access() ) wp_send_json_error( 'You don\'t have WPilot access. Ask your admin to grant it.', 403 );
-    if ( wpilot_is_locked() ) {
-        $used = wpilot_prompts_used();
-        wp_send_json_error( 'You have used all ' . CA_FREE_LIMIT . ' free prompts. Activate a license to continue. Visit WPilot > License.' );
-    }
+    if ( wpilot_is_locked() )       wp_send_json_error( 'Free limit reached. Please activate your license.' );
 
     $message = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
     $mode    = sanitize_text_field( wp_unslash( $_POST['mode']    ?? 'chat' ) );
@@ -238,17 +46,8 @@ add_action( 'wp_ajax_ca_chat', function () {
     $context = json_decode( wp_unslash( $_POST['context'] ?? '{}' ), true ) ?: [];
 
     if ( empty( $message ) ) wp_send_json_error( 'Empty message.' );
-    // Capture page-specific context from the bubble (which page the user is on)
-    $page_context = $context;
-    // Build fresh site context (pages, plugins, SEO, media)
-    // Always send full context so AI sees EVERYTHING (SEO, images, performance, plugins, CSS)
-    $context = wpilot_build_context( 'full' );
-    // Merge in the current page info from the bubble so AI knows WHERE the user is
-    if ( !empty($page_context['post_id']) ) $context['current_page_id'] = intval($page_context['post_id']);
-    if ( !empty($page_context['url']) )     $context['current_url'] = sanitize_url($page_context['url']);
-    if ( !empty($page_context['page']) )    $context['current_page_title'] = sanitize_text_field($page_context['page']);
-    if ( !empty($page_context['is_front_page']) ) $context['is_front_page'] = $page_context['is_front_page'] === 'yes';
-    if ( !empty($page_context['post_type']) ) $context['current_post_type'] = sanitize_text_field($page_context['post_type']);
+    // Always build fresh context so the AI sees the current site state
+    $context = wpilot_build_context( $mode === 'chat' ? 'general' : $mode );
 
     // ── Smart routing: Brain → WPilot AI → Claude ─────────────
     $result = wpilot_smart_answer( $message, $mode, $context, $history );
@@ -259,11 +58,76 @@ add_action( 'wp_ajax_ca_chat', function () {
     $mem_id   = is_array($result) ? ($result['memory_id'] ?? null) : null;
 
     // Only count against prompt limit if Claude was used
-    if ( $source === 'claude' ) { wpilot_bump_prompts(); if (function_exists('wpilot_track_usage')) wpilot_track_usage(); }
+    if ( $source === 'claude' ) wpilot_bump_prompts();
 
     $actions = wpilot_parse_actions( $response );
+    if (empty($actions) && function_exists("wpilot_parse_compact_actions")) $actions = wpilot_parse_compact_actions($response);
+    if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($actions, $response);
 
-    // Persist history (tag source so UI can show brain/webleas badge)
+    // Collect training data (before history — uses $actions early)
+    $pair_id = null;
+    if ( function_exists('wpilot_collect_exchange') && $source === 'claude' ) {
+        $tools_used  = array_map(function($a) { return $a['tool']; }, $actions);
+        $auto_rating = function_exists('wpilot_auto_rate') ? wpilot_auto_rate($message, $response, $tools_used) : 3;
+        $pair_id     = wpilot_collect_exchange($message, $response, $mode, $auto_rating, [
+            'tools_used'         => $tools_used,
+            'actions_count'      => count($actions),
+            'site_type'          => function_exists('wpilot_detect_site_type') ? wpilot_detect_site_type() : 'unknown',
+            'source'             => $source,
+        ]);
+    }
+
+    // ── Auto-approve: execute all actions, collect results, append summary ──
+    $auto_summary = '';
+    if ( wpilot_user_can_admin() && wpilot_auto_approve() && ! empty( $actions ) ) {
+        $total      = count( $actions );
+        $ok_count   = 0;
+        $result_lines = [];
+
+        foreach ( $actions as &$a ) {
+            $tool   = $a['tool'];
+            $params = $a['params'] ?? [];
+            $label  = $a['label'] ?? $tool;
+
+            // Log backup before execution
+            $backup_id = function_exists('wpilot_backup_log') ? wpilot_backup_log( $tool, $params ) : null;
+
+            // Execute
+            $r = wpilot_safe_run_tool( $tool, $params );
+
+            if ( ! empty( $r['success'] ) ) {
+                $ok_count++;
+                $result_lines[] = $label . ': OK';
+                $a['auto_status']    = 'done';
+                $a['auto_backup_id'] = $backup_id;
+
+                // Activity log
+                if ( function_exists('wpilot_log_activity') ) {
+                    wpilot_log_activity( $tool, '[Auto] ' . $label, $r['message'] ?? '', $backup_id, 'ok' );
+                }
+            } else {
+                $err_msg        = $r['message'] ?? 'Failed';
+                $result_lines[] = $label . ': ✕ ' . $err_msg;
+                $a['auto_status'] = 'failed';
+                $a['auto_error']  = $err_msg;
+
+                if ( function_exists('wpilot_log_activity') ) {
+                    wpilot_log_activity( $tool, '[Auto] ' . $label, $err_msg, $backup_id, 'error' );
+                }
+            }
+        }
+        unset( $a );
+
+        // Build summary line appended to AI response
+        $summary_emoji  = ( $ok_count === $total ) ? '✅' : '⚠️';
+        $auto_summary   = "\n\n" . $summary_emoji . ' Auto-approved: ' . $ok_count . '/' . $total . ' actions completed';
+        if ( ! empty( $result_lines ) ) {
+            $auto_summary .= ' — ' . implode( ', ', $result_lines );
+        }
+        $response .= $auto_summary;
+    }
+
+    // Persist history after auto-approve so response & action statuses are final
     $hist   = get_option( 'ca_chat_history', [] );
     $hist[] = ['role'=>'user',      'content'=>$message,  'time'=>current_time('H:i'), 'mode'=>$mode];
     $hist[] = ['role'=>'assistant', 'content'=>$response, 'time'=>current_time('H:i'),
@@ -271,86 +135,39 @@ add_action( 'wp_ajax_ca_chat', function () {
     if ( count($hist) > 60 ) $hist = array_slice($hist,-60);
     update_option( 'ca_chat_history', $hist, false );
 
-    // Collect training data
-    if ( function_exists('wpilot_collect_exchange') && $source === 'claude' ) {
-        $tools_used = array_map(function($a) { return $a['tool']; }, $actions);
-        $auto_rating = function_exists('wpilot_auto_rate') ? wpilot_auto_rate($message, $response, $tools_used) : 3;
-        $pair_id = wpilot_collect_exchange($message, $response, $mode, $auto_rating, [
-            'tools_used'         => $tools_used,
-            'actions_count'      => count($actions),
-            'conversation_depth' => count($hist) / 2,
-            'site_type'          => function_exists('wpilot_detect_site_type') ? wpilot_detect_site_type() : 'unknown',
-            'source'             => $source,
-        ]);
-    }
-
-
-    // Auto-approve (admin only)
-    if ( wpilot_user_can_admin() && wpilot_auto_approve() && $actions ) {
-        foreach ( $actions as $a ) wpilot_safe_run_tool( $a['tool'], $a['params'] ?? [] );
-    }
-
     wp_send_json_success( [
-        'response'  => $response,
-        'actions'   => $actions,
-        'source'    => $source,       // 'brain' | 'webleas' | 'claude'
-        'memory_id' => $mem_id,
-        'used'      => wpilot_prompts_used(),
-        'remaining' => wpilot_prompts_remaining(),
-        'locked'    => wpilot_is_locked(),
-        'savings'   => wpilot_estimate_savings(),
-        'pair_id'   => $pair_id ?? null,
+        'response'      => $response,
+        'actions'       => $actions,
+        'source'        => $source,       // 'brain' | 'webleas' | 'claude'
+        'memory_id'     => $mem_id,
+        'auto_approved' => ! empty( $auto_summary ),
+        'used'          => wpilot_prompts_used(),
+        'remaining'     => wpilot_prompts_remaining(),
+        'locked'        => wpilot_is_locked(),
+        'savings'       => wpilot_estimate_savings(),
+        'pair_id'       => $pair_id ?? null,
     ] );
 } );
 
 // ── Execute a tool (admin only — tools modify the site) ────────
 add_action( 'wp_ajax_ca_tool', function () {
+    // Lazy-load only needed module for this tool
+    if (function_exists('wpilot_ensure_module')) wpilot_ensure_module(sanitize_text_field($_POST['tool'] ?? ''));
     check_ajax_referer( 'ca_nonce', 'nonce' );
     if ( ! wpilot_user_can_modify() ) wp_send_json_error( 'You need editor or admin role to apply changes.', 403 );
 
     $tool   = sanitize_text_field( wp_unslash( $_POST['tool']   ?? '' ) );
     $params = json_decode( wp_unslash( $_POST['params'] ?? '{}' ), true ) ?: [];
 
-    // If params empty, infer from tool name + description sent by JS
-    if ( empty($params) || (count($params) === 0) ) {
-        $desc = sanitize_text_field( wp_unslash( $_POST["description"] ?? "" ) );
-        $label = sanitize_text_field( wp_unslash( $_POST["label"] ?? "" ) );
-        if ( function_exists("wpilot_infer_params") ) {
-            $inferred = wpilot_infer_params( $tool, $desc ?: $label ?: $tool );
-            if ( !empty($inferred) ) $params = $inferred;
-        }
-    }
-
-    // Extract CSS from AI response if update_custom_css has empty css param
-    if (in_array($tool, ['update_custom_css', 'append_custom_css']) && empty($params['css'])) {
-        $hist = get_option('ca_chat_history', []);
-        if (!empty($hist)) {
-            $last_ai = '';
-            foreach (array_reverse($hist) as $h) {
-                if (($h['role'] ?? '') === 'assistant') { $last_ai = $h['content'] ?? ''; break; }
-            }
-            if (preg_match('/```css\s*(.*?)```/s', $last_ai, $m)) {
-                $params['css'] = $m[1];
-            } elseif (preg_match('/```\s*(.*?)```/s', $last_ai, $m) && strpos($m[1], '{') !== false) {
-                $params['css'] = $m[1];
-            }
-        }
-    }
-
     // Log backup BEFORE running the tool — so we always have backup_id
     $backup_id = wpilot_backup_log( $tool, $params );
 
     $result = wpilot_safe_run_tool( $tool, $params );
 
-    // Save tool result to chat history so AI knows what happened
-    $hist = get_option( 'ca_chat_history', [] );
     if ( $result['success'] ) {
-        $hist[] = ['role'=>'assistant', 'content'=>'[TOOL EXECUTED] ' . $tool . ': ' . ($result['message'] ?? 'Done'), 'time'=>current_time('H:i'), 'source'=>'tool'];
-        update_option( 'ca_chat_history', $hist, false );
         wp_send_json_success( array_merge( $result, ['backup_id' => $backup_id] ) );
     } else {
-        $hist[] = ['role'=>'assistant', 'content'=>'[TOOL FAILED] ' . $tool . ': ' . ($result['message'] ?? 'Error'), 'time'=>current_time('H:i'), 'source'=>'tool'];
-        update_option( 'ca_chat_history', $hist, false );
+        // On error: always return backup_id so UI can show Restore button
         wp_send_json_error( [
             'message'   => $result['message'],
             'backup_id' => $backup_id,
@@ -365,7 +182,7 @@ add_action( 'wp_ajax_ca_save_setting', function () {
     if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.', 403 );
     if ( ! wpilot_user_can_admin() ) wp_send_json_error( 'Unauthorized.' );
 
-    $allowed = ['wpilot_theme', 'wpilot_auto_approve', 'ca_custom_instructions', 'wpi_google_api_key'];
+    $allowed = ['wpilot_theme', 'wpilot_auto_approve', 'ca_custom_instructions'];
     $key     = sanitize_key( wp_unslash( $_POST['key']   ?? '' ) );
     $value   = sanitize_textarea_field( wp_unslash( $_POST['value'] ?? '' ) );
 
@@ -471,7 +288,28 @@ add_action( 'wp_ajax_ca_restore_backup', function () {
 } );
 
 // ── Smart site scan — AI proactively reviews installed plugins ──
+add_action('wp_ajax_wpi_smart_scan', function() {
+    check_ajax_referer('ca_nonce','nonce');
+    if ( ! wpilot_user_has_access() ) wp_send_json_error('You don\'t have WPilot access. Ask your admin to grant it.', 403);
+    if (!wpilot_is_connected()) wp_send_json_error('Not connected');
+    if (wpilot_is_locked()) wp_send_json_error('Free limit reached. Please activate your license.');
 
+    $ctx  = wpilot_build_context('plugins');
+    $lang = function_exists('wpilot_get_lang') ? wpilot_get_lang() : 'en';
+
+    if ( $lang === 'sv' ) {
+        $prompt = "Jag har precis öppnat WPilot och vill ha en snabb genomgång av min WordPress-sajt.\n\nTitta på:\n1. Vilka plugins jag har installerade och aktiverade\n2. Vilka essentiella plugins som saknas (SEO, backup, säkerhet, prestanda, formulär)\n3. Plugins som jag har men kanske inte använder optimalt\n4. Om det finns plugins som överlappar varandra\n\nSvara strukturerat:\n- Börja med en kort sammanfattning (1-2 meningar) om sajten\n- Lista vad som fungerar bra ✅\n- Lista vad som saknas eller kan förbättras ⚠️\n- Avsluta med: \"Vad vill du att jag ska hjälpa dig med först?\"\n\nVar alltid ärlig om vad som är gratis och vad som kostar. Håll det kort och konkret — max 200 ord.";
+    } else {
+        $prompt = "I just opened WPilot and want a quick review of my WordPress site.\n\nLook at:\n1. Which plugins I have installed and active\n2. Which essential plugins are missing (SEO, backup, security, performance, forms)\n3. Plugins I have but may not be using optimally\n4. Plugins that overlap or conflict with each other\n\nRespond in a structured way:\n- Start with a brief 1-2 sentence summary of the site\n- List what is working well ✅\n- List what is missing or could be improved ⚠️\n- End with: \"What would you like me to help with first?\"\n\nAlways be honest about what is free vs paid. Keep it short and concrete — max 200 words.";
+    }
+
+    $result = wpilot_smart_answer($prompt, 'plugins', $ctx, []);
+    if (is_wp_error($result)) wp_send_json_error($result->get_error_message());
+    $response = is_array($result) ? $result['text'] : $result;
+    $source   = is_array($result) ? $result['source'] : 'claude';
+    if ($source === 'claude') wpilot_bump_prompts();
+    wp_send_json_success(['scan' => $response]);
+});
 
 // ── Load chat history (admin only) ─────────────────────────────
 add_action( 'wp_ajax_wpi_load_history', function () {
@@ -534,409 +372,4 @@ add_action('wp_ajax_wpi_get_roles', function() {
         ];
     }
     wp_send_json_success($result);
-});
-
-// ── Test connection (moved here so it works before heavy modules load) ──
-add_action( 'wp_ajax_ca_test_connection', function () {
-    check_ajax_referer( 'ca_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.' );
-
-    $key = sanitize_text_field( wp_unslash( $_POST['key'] ?? get_option( 'ca_api_key', '' ) ) );
-    if ( empty( $key ) ) wp_send_json_error( 'No API key provided.' );
-
-    $res = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
-        'timeout' => 20,
-        'headers' => [
-            'Content-Type'      => 'application/json',
-            'x-api-key'         => $key,
-            'anthropic-version' => '2023-06-01',
-        ],
-        'body' => wp_json_encode( [
-            'model'      => defined('CA_MODEL') ? CA_MODEL : 'claude-sonnet-4-6',
-            'max_tokens' => 10,
-            'messages'   => [['role' => 'user', 'content' => 'Reply: OK']],
-        ] ),
-    ] );
-
-    if ( is_wp_error( $res ) ) wp_send_json_error( 'Connection failed: ' . $res->get_error_message() );
-
-    $code = wp_remote_retrieve_response_code( $res );
-    $body = json_decode( wp_remote_retrieve_body( $res ), true );
-
-    if ( $code === 200 ) {
-        update_option( 'ca_api_key',  $key );
-        update_option( 'ca_onboarded', 'yes' );
-        wp_send_json_success( ['message' => 'Claude connected successfully!', 'model' => defined('CA_MODEL') ? CA_MODEL : 'claude-sonnet-4-6'] );
-    }
-
-    wp_send_json_error( $body['error']['message'] ?? 'API error (HTTP ' . $code . ')' );
-} );
-
-// ── Debug endpoint for troubleshooting ────────────────────
-add_action('wp_ajax_wpi_debug', function() {
-    check_ajax_referer('ca_nonce', 'nonce');
-    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized.');
-    
-    wp_send_json_success([
-        'php_version'     => PHP_VERSION,
-        'wp_version'      => get_bloginfo('version'),
-        'plugin_version'  => defined('CA_VERSION') ? CA_VERSION : 'unknown',
-        'connected'       => wpilot_is_connected(),
-        'api_key_set'     => !empty(get_option('ca_api_key', '')),
-        'has_access'      => wpilot_user_has_access(),
-        'can_use'         => wpilot_can_use(),
-        'is_locked'       => wpilot_is_locked(),
-        'allowed_roles'   => wpilot_allowed_roles(),
-        'user_roles'      => wp_get_current_user()->roles,
-        'prompts_used'    => wpilot_prompts_used(),
-        'license_type'    => wpilot_license_type(),
-        'ca_model'        => defined('CA_MODEL') ? CA_MODEL : 'undefined',
-        'heavy_loaded'    => function_exists('wpilot_call_claude'),
-        'bubble_exists'   => function_exists('wpilot_render_bubble'),
-        'jquery_version'  => wp_scripts()->registered['jquery-core']->ver ?? 'unknown',
-    ]);
-});
-
-// ── Smart scan — FREE, local analysis only ─────────────────
-add_action('wp_ajax_wpi_smart_scan', function() {
-    check_ajax_referer('ca_nonce', 'nonce');
-    if ( ! wpilot_user_has_access() && ! current_user_can('manage_options') ) {
-        wp_send_json_error('Unauthorized.', 403);
-    }
-    // Load heavy modules for context building
-    if (function_exists('wpilot_load_heavy')) wpilot_load_heavy();
-    $ctx = function_exists('wpilot_build_context') ? wpilot_build_context('full') : [];
-    $scan = wpilot_free_site_scan($ctx);
-    wp_send_json_success(['scan' => $scan]);
-});
-
-function wpilot_free_site_scan($ctx) {
-    $site_name = get_bloginfo('name');
-    $good = [];
-    $warn = [];
-    $info = [];
-
-    // Plugins
-    $active = isset($ctx['plugins']['active_count']) ? $ctx['plugins']['active_count'] : count(get_option('active_plugins', []));
-    $inactive = $ctx['plugins']['inactive_count'] ?? 0;
-    $missing = $ctx['plugins']['missing_essentials'] ?? [];
-    if ($active > 0) $good[] = $active . ' active plugins';
-    if ($active > 25) $warn[] = $active . ' plugins is a lot — consider deactivating unused ones';
-    if ($inactive > 3) $info[] = $inactive . ' inactive plugins — consider removing them';
-    foreach ($missing as $m) $warn[] = 'Missing: ' . $m;
-
-    // Pages
-    $pages = $ctx['pages'] ?? [];
-    $page_count = count($pages);
-    if ($page_count > 0) $good[] = $page_count . ' pages published';
-    if ($page_count == 0) $warn[] = 'No pages found — need to create site content';
-
-    // SEO
-    $seo = $ctx['seo'] ?? [];
-    $seo_plugin = $seo['seo_plugin'] ?? 'None detected';
-    if ($seo_plugin !== 'None detected') $good[] = $seo_plugin . ' installed';
-    else $warn[] = 'No SEO plugin — install Rank Math (free) for better Google rankings';
-    $missing_meta = ($seo['pages_missing_meta'] ?? 0) + ($seo['posts_missing_meta'] ?? 0);
-    if ($missing_meta > 0) $warn[] = $missing_meta . ' pages/posts missing meta description';
-
-    // Images
-    $images = $ctx['images'] ?? [];
-    $missing_alt = 0;
-    foreach ($images as $img) { if (!empty($img['missing_alt'])) $missing_alt++; }
-    if (count($images) > 0 && $missing_alt == 0) $good[] = 'All images have alt text';
-
-    // Performance from context
-    $perf = function_exists('wpilot_ctx_performance') ? wpilot_ctx_performance() : [];
-    if (!empty($perf)) {
-        if ($perf['not_webp'] > 0) $warn[] = $perf['not_webp'] . ' images are JPEG/PNG (not WebP) — convert to save ' . round($perf['total_size_mb'] * 0.4, 1) . 'MB';
-        if (!empty($perf['large_images'])) $warn[] = count($perf['large_images']) . ' images are over 200KB — should be optimized';
-        $good[] = 'PHP ' . $perf['php_version'] . ' | Memory: ' . $perf['memory_limit'] . ' | ' . $perf['active_plugins'] . ' plugins';
-        if ($perf['has_cache']) $good[] = 'Cache: ' . $perf['cache_plugin'] . ' active';
-        else $warn[] = 'No cache plugin — install LiteSpeed Cache (free) for faster loading';
-    }
-    if ($missing_alt > 0) $warn[] = $missing_alt . ' images missing alt text';
-
-    // Theme + builder
-    $theme = $ctx['theme']['name'] ?? wp_get_theme()->get('Name');
-    $builder = $ctx['builder'] ?? 'gutenberg';
-    $good[] = 'Theme: ' . $theme . ' | Builder: ' . ucfirst($builder);
-
-    // Tagline
-    $tagline = get_bloginfo('description');
-    if (empty($tagline) || $tagline === 'Just another WordPress site') {
-        $warn[] = 'Default tagline — update it for better SEO';
-    }
-
-    // SSL
-    if (!is_ssl()) $warn[] = 'No HTTPS/SSL — important for security and SEO';
-
-    // WooCommerce
-    if (class_exists('WooCommerce') && isset($ctx['woocommerce'])) {
-        $products = $ctx['woocommerce']['product_count'] ?? 0;
-        $good[] = 'WooCommerce active with ' . $products . ' products';
-    }
-
-    // Build response
-    $r = '**' . $site_name . '** — Site Overview' . "
-";
-    if (!empty($good)) { $r .= "
-"; foreach ($good as $g) $r .= '✅ ' . $g . "
-"; }
-    if (!empty($warn)) { $r .= "
-"; foreach ($warn as $w) $r .= '⚠️ ' . $w . "
-"; }
-    if (!empty($info)) { $r .= "
-"; foreach ($info as $i) $r .= '💡 ' . $i . "
-"; }
-    $r .= "
-What would you like me to help with first?";
-    return $r;
-}
-
-
-// ── File upload in chat (Pro/Team/Lifetime only) ───────────
-add_action('wp_ajax_wpi_upload_file', function() {
-    check_ajax_referer('ca_nonce', 'nonce');
-    if ( ! wpilot_user_has_access() && ! current_user_can('manage_options') ) {
-        wp_send_json_error('Unauthorized.', 403);
-    }
-
-    // Pro/Team/Lifetime only
-    if ( ! wpilot_is_licensed() ) {
-        wp_send_json_error('File upload requires a Pro, Team, or Lifetime license.');
-    }
-
-    if ( empty($_FILES['file']) ) {
-        wp_send_json_error('No file uploaded.');
-    }
-
-    $file = $_FILES['file'];
-    $max_size = 10 * 1024 * 1024; // 10MB
-    if ($file['size'] > $max_size) {
-        wp_send_json_error('File too large. Max 10MB.');
-    }
-
-    $allowed_types = [
-        // Images
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        // Documents
-        'text/csv', 'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/pdf',
-        'text/plain',
-        'application/json',
-    ];
-
-    $mime = wp_check_filetype($file['name']);
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-    // Process based on file type
-    $result = [];
-
-    // IMAGES — upload to media library
-    if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
-        require_once ABSPATH . 'wp-admin/includes/image.php';
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        require_once ABSPATH . 'wp-admin/includes/media.php';
-
-        $attachment_id = media_handle_upload('file', 0);
-        if (is_wp_error($attachment_id)) {
-            wp_send_json_error('Upload failed: ' . $attachment_id->get_error_message());
-        }
-
-        $url = wp_get_attachment_url($attachment_id);
-        $meta = wp_get_attachment_metadata($attachment_id);
-
-        $result = [
-            'type' => 'image',
-            'id' => $attachment_id,
-            'url' => $url,
-            'filename' => $file['name'],
-            'width' => $meta['width'] ?? 0,
-            'height' => $meta['height'] ?? 0,
-            'size_kb' => round($file['size'] / 1024),
-            'message' => 'Image uploaded: ' . $file['name'] . ' (' . round($file['size']/1024) . 'KB)',
-        ];
-    }
-
-    // CSV/EXCEL — parse for product import
-    elseif (in_array($ext, ['csv', 'xls', 'xlsx'])) {
-        $csv_data = [];
-        if ($ext === 'csv') {
-            $handle = fopen($file['tmp_name'], 'r');
-            $headers = fgetcsv($handle);
-            $row_count = 0;
-            while (($row = fgetcsv($handle)) !== false && $row_count < 500) {
-                $item = [];
-                foreach ($headers as $i => $h) {
-                    $item[trim(strtolower($h))] = $row[$i] ?? '';
-                }
-                $csv_data[] = $item;
-                $row_count++;
-            }
-            fclose($handle);
-        }
-
-        $result = [
-            'type' => 'csv',
-            'filename' => $file['name'],
-            'rows' => count($csv_data),
-            'columns' => !empty($csv_data) ? array_keys($csv_data[0]) : [],
-            'preview' => array_slice($csv_data, 0, 5),
-            'all_data' => $csv_data,
-            'message' => 'CSV parsed: ' . count($csv_data) . ' rows, columns: ' . implode(', ', !empty($csv_data) ? array_keys($csv_data[0]) : []),
-        ];
-    }
-
-    // PDF/TXT — extract text
-    elseif (in_array($ext, ['pdf', 'txt'])) {
-        $text = '';
-        if ($ext === 'txt') {
-            $text = file_get_contents($file['tmp_name']);
-        } elseif ($ext === 'pdf') {
-            $text = '[PDF file: ' . $file['name'] . ' (' . round($file['size']/1024) . 'KB). PDF text extraction not available — upload as CSV or TXT for data import.]';
-        }
-
-        $result = [
-            'type' => 'text',
-            'filename' => $file['name'],
-            'content' => substr($text, 0, 10000),
-            'size_kb' => round($file['size'] / 1024),
-            'message' => 'File uploaded: ' . $file['name'],
-        ];
-    }
-
-    // JSON
-    elseif ($ext === 'json') {
-        $json = json_decode(file_get_contents($file['tmp_name']), true);
-        $result = [
-            'type' => 'json',
-            'filename' => $file['name'],
-            'data' => $json,
-            'message' => 'JSON parsed: ' . (is_array($json) ? count($json) . ' items' : 'object'),
-        ];
-    }
-
-    else {
-        wp_send_json_error('Unsupported file type: ' . $ext);
-    }
-
-    // Save to chat history
-    $hist = get_option('ca_chat_history', []);
-    $hist[] = ['role' => 'user', 'content' => '[FILE UPLOADED] ' . $result['message'], 'time' => current_time('H:i')];
-    update_option('ca_chat_history', $hist, false);
-
-    wp_send_json_success($result);
-});
-
-// ── Bulk create WooCommerce products from uploaded data ────
-add_action('wp_ajax_wpi_bulk_create_products', function() {
-    check_ajax_referer('ca_nonce', 'nonce');
-    if ( ! wpilot_user_can_modify() ) wp_send_json_error('Unauthorized.', 403);
-    if ( ! wpilot_is_licensed() ) wp_send_json_error('Bulk import requires a license.');
-    if ( ! class_exists('WooCommerce') ) wp_send_json_error('WooCommerce not installed.');
-
-    $products = json_decode(wp_unslash($_POST['products'] ?? '[]'), true);
-    if (empty($products)) wp_send_json_error('No products to create.');
-
-    wpilot_load_heavy();
-
-    $created = 0;
-    $failed = 0;
-    $errors = [];
-
-    foreach (array_slice($products, 0, 100) as $p) {
-        $name = sanitize_text_field($p['name'] ?? $p['title'] ?? $p['product'] ?? '');
-        if (empty($name)) { $failed++; continue; }
-
-        $price = sanitize_text_field($p['price'] ?? $p['pris'] ?? '0');
-        $desc = wp_kses_post($p['description'] ?? $p['beskrivning'] ?? '');
-        $sku = sanitize_text_field($p['sku'] ?? $p['artikelnummer'] ?? '');
-        $stock = isset($p['stock']) || isset($p['lager']) ? intval($p['stock'] ?? $p['lager'] ?? 0) : null;
-        $category = sanitize_text_field($p['category'] ?? $p['kategori'] ?? '');
-        $image_url = esc_url_raw($p['image'] ?? $p['bild'] ?? '');
-
-        $id = wp_insert_post([
-            'post_title' => $name,
-            'post_content' => $desc,
-            'post_status' => 'publish',
-            'post_type' => 'product',
-        ]);
-
-        if (is_wp_error($id)) { $failed++; $errors[] = $name; continue; }
-
-        wp_set_object_terms($id, 'simple', 'product_type');
-        update_post_meta($id, '_regular_price', $price);
-        update_post_meta($id, '_price', $price);
-        update_post_meta($id, '_stock_status', 'instock');
-        if ($sku) update_post_meta($id, '_sku', $sku);
-        if ($stock !== null) {
-            update_post_meta($id, '_manage_stock', 'yes');
-            update_post_meta($id, '_stock', $stock);
-        }
-
-        // Category
-        if ($category) {
-            $term = term_exists($category, 'product_cat');
-            if (!$term) $term = wp_insert_term($category, 'product_cat');
-            if (!is_wp_error($term)) {
-                wp_set_object_terms($id, intval($term['term_id'] ?? $term), 'product_cat');
-            }
-        }
-
-        // Image from URL
-        if ($image_url) {
-            require_once ABSPATH . 'wp-admin/includes/media.php';
-            require_once ABSPATH . 'wp-admin/includes/file.php';
-            require_once ABSPATH . 'wp-admin/includes/image.php';
-            $img_id = media_sideload_image($image_url, $id, $name, 'id');
-            if (!is_wp_error($img_id)) set_post_thumbnail($id, $img_id);
-        }
-
-        $created++;
-    }
-
-    wp_send_json_success([
-        'created' => $created,
-        'failed' => $failed,
-        'errors' => array_slice($errors, 0, 10),
-        'message' => "Created {$created} products." . ($failed > 0 ? " {$failed} failed." : ''),
-    ]);
-});
-
-
-// ── User Feedback ──────────────────────────────────────────
-add_action('wp_ajax_wpi_send_feedback', function() {
-    check_ajax_referer('ca_nonce', 'nonce');
-    if ( ! wpilot_user_has_access() && ! current_user_can('manage_options') ) {
-        wp_send_json_error('Unauthorized.', 403);
-    }
-
-    $message = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
-    $type = sanitize_text_field($_POST['type'] ?? 'feedback');
-    if (empty($message)) wp_send_json_error('Message required.');
-
-    $feedback = get_option('wpi_feedback', []);
-    $feedback[] = [
-        'message' => $message,
-        'type' => $type,
-        'email' => wp_get_current_user()->user_email,
-        'site' => get_site_url(),
-        'date' => current_time('mysql'),
-        'version' => defined('CA_VERSION') ? CA_VERSION : '?',
-    ];
-    if (count($feedback) > 200) $feedback = array_slice($feedback, -200);
-    update_option('wpi_feedback', $feedback, false);
-
-    wp_remote_post('https://weblease.se/api/plugin/feedback', [
-        'timeout' => 5,
-        'body' => wp_json_encode([
-            'message' => $message, 'type' => $type,
-            'email' => wp_get_current_user()->user_email,
-            'site' => get_site_url(), 'version' => defined('CA_VERSION') ? CA_VERSION : '?',
-        ]),
-        'headers' => ['Content-Type' => 'application/json'],
-    ]);
-
-    wp_send_json_success('Feedback sent. Thank you!');
 });
