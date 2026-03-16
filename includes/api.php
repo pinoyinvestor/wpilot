@@ -129,6 +129,7 @@ function wpilot_system_prompt( $mode = 'chat' ) {
         . "Logo: upload_logo, set_logo, remove_logo, get_logo | "
         . "Research: research_url, fetch_url, compare_website, competitor_analysis, research_keywords, copy_design_from, design_inspiration | "
         . "Pixels: connect_tiktok_pixel, connect_snapchat_pixel, connect_pinterest_tag | "
+        . "Newsletter Pro: create_subscribe_form, add_subscribe_button, list_subscribers, send_newsletter_to_all, create_discount_popup, exit_intent_popup | "
         . "Coupons: create_advanced_coupon, update_coupon, delete_coupon, list_coupons, coupon_usage, coupon_stats, bulk_create_coupons | "
         . "Logs: read_log, error_log | "
         . "API: api_call, http_request, save_api_key, list_api_keys, delete_api_key, create_webhook, list_webhooks, delete_webhook | "

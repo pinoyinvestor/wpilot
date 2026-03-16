@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:      2.0.1
+ * Version:      2.1.1
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -45,7 +45,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( 'CA_VERSION',    '2.0.1' );
+define( 'CA_VERSION',    '2.1.1' );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required

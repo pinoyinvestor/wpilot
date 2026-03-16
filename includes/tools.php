@@ -6252,6 +6252,26 @@ case 'seo_redirect_check':
                     $entries[] = ['id' => $r['entry_id'], 'form_id' => $r['form_id'], 'date' => $r['date'], 'fields' => $fields];
                 }
             }
+            // Try Fluent Forms
+            $ff_table = $wpdb->prefix . 'fluentform_submissions';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$ff_table}'") === $ff_table) {
+                $ff_rows = $wpdb->get_results("SELECT id, form_id, response, created_at, status FROM {$ff_table} ORDER BY created_at DESC LIMIT " . intval($params['limit'] ?? 50), ARRAY_A);
+                foreach ($ff_rows as $r) {
+                    $fields = json_decode($r['response'], true);
+                    $email = '';
+                    $name = '';
+                    // Extract email and name from fields
+                    if (is_array($fields)) {
+                        foreach ($fields as $k => $v) {
+                            if (stripos($k, 'email') !== false && filter_var($v, FILTER_VALIDATE_EMAIL)) $email = $v;
+                            if (stripos($k, 'name') !== false && is_string($v)) $name = $v;
+                            // Fluent Forms nested name fields
+                            if (is_array($v) && isset($v['first_name'])) $name = trim($v['first_name'] . ' ' . ($v['last_name'] ?? ''));
+                        }
+                    }
+                    $entries[] = ['id' => $r['id'], 'form_id' => $r['form_id'], 'date' => $r['created_at'], 'status' => $r['status'], 'email' => $email, 'name' => $name, 'fields' => $fields, 'source' => 'fluentform'];
+                }
+            }
             // Try Gravity Forms
             if (class_exists('GFAPI')) {
                 $gf_entries = GFAPI::get_entries(0, [], null, ['offset' => 0, 'page_size' => intval($params['limit'] ?? 50)]);
@@ -6298,6 +6318,56 @@ case 'seo_redirect_check':
                     if ($email && !isset($emails[$email])) $emails[$email] = ['name' => $fc->post_title, 'source' => 'form'];
                 }
             }
+            // Fluent Forms emails
+            $ff_table = $wpdb->prefix . 'fluentform_submissions';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$ff_table}'") === $ff_table) {
+                $ff_rows = $wpdb->get_results("SELECT response FROM {$ff_table} WHERE status != 'trashed' LIMIT 1000", ARRAY_A);
+                foreach ($ff_rows as $r) {
+                    $fields = json_decode($r['response'], true);
+                    if (is_array($fields)) foreach ($fields as $k => $v) {
+                        if (is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) && !isset($emails[$v])) {
+                            $name = '';
+                            foreach ($fields as $nk => $nv) { if (stripos($nk, 'name') !== false && is_string($nv)) { $name = $nv; break; } }
+                            $emails[$v] = ['name' => $name, 'source' => 'fluentform'];
+                        }
+                    }
+                }
+            }
+            // WPForms emails
+            $wpf_table = $wpdb->prefix . 'wpforms_entries';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$wpf_table}'") === $wpf_table) {
+                $wpf_rows = $wpdb->get_results("SELECT fields FROM {$wpf_table} LIMIT 1000", ARRAY_A);
+                foreach ($wpf_rows as $r) {
+                    $fields = json_decode($r['fields'], true);
+                    if (is_array($fields)) foreach ($fields as $field) {
+                        $val = $field['value'] ?? '';
+                        if (filter_var($val, FILTER_VALIDATE_EMAIL) && !isset($emails[$val])) {
+                            $emails[$val] = ['name' => '', 'source' => 'wpforms'];
+                        }
+                    }
+                }
+            }
+            // Gravity Forms emails
+            if (class_exists('GFAPI')) {
+                $gf_entries = GFAPI::get_entries(0, [], null, ['offset' => 0, 'page_size' => 500]);
+                foreach ($gf_entries as $e) {
+                    foreach ($e as $k => $v) {
+                        if (is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) && !isset($emails[$v])) {
+                            $emails[$v] = ['name' => '', 'source' => 'gravityforms'];
+                        }
+                    }
+                }
+            }
+            // WooCommerce order emails (non-registered)
+            if (class_exists('WooCommerce')) {
+                $order_emails = $wpdb->get_results("SELECT DISTINCT pm.meta_value as email FROM {$wpdb->postmeta} pm JOIN {$wpdb->posts} p ON pm.post_id = p.ID WHERE pm.meta_key = '_billing_email' AND p.post_type = 'shop_order' LIMIT 1000", ARRAY_A);
+                foreach ($order_emails as $oe) {
+                    if (!empty($oe['email']) && !isset($emails[$oe['email']])) {
+                        $emails[$oe['email']] = ['name' => '', 'source' => 'order'];
+                    }
+                }
+            }
+            // Built by Christos Ferlachidis & Daniel Hedenberg
             // Export CSV
             $csv = "Email,Name,Source\n";
             foreach ($emails as $email => $data) $csv .= "{$email},\"{$data['name']}\",{$data['source']}\n";
@@ -6890,6 +6960,142 @@ case 'seo_redirect_check':
             @unlink(WP_CONTENT_DIR . '/wpilot-safe-mode.txt');
             @unlink(WP_CONTENT_DIR . '/wpilot-crash-flag.txt');
             return wpilot_ok('Safe mode reset. WPilot will load normally.');
+
+        
+        // ═══ NEWSLETTER SUBSCRIPTION SYSTEM ═══
+        case 'create_subscribe_form':
+        case 'add_subscribe_button':
+            $page_id = intval($params['page_id'] ?? 0);
+            $style = sanitize_text_field($params['style'] ?? 'inline');
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $title = sanitize_text_field($params['title'] ?? 'Subscribe to our newsletter');
+            $subtitle = sanitize_text_field($params['subtitle'] ?? 'Get exclusive deals and updates. No spam.');
+            $button_text = sanitize_text_field($params['button_text'] ?? 'Subscribe');
+            $discount = sanitize_text_field($params['discount_code'] ?? '');
+
+            if ($style === 'popup') {
+                $html = '<div id="wpilot-subscribe-popup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">';
+                $html .= '<div style="background:#0a0a0a;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:40px;max-width:440px;width:90%;text-align:center;position:relative">';
+                $html .= '<button onclick="this.parentElement.parentElement.style.display=\'none\'" style="position:absolute;top:12px;right:16px;background:none;border:none;color:rgba(255,255,255,0.3);font-size:1.5rem;cursor:pointer">&times;</button>';
+            } else {
+                $html = '<div style="max-width:500px;margin:40px auto;padding:32px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;text-align:center">';
+            }
+
+            if ($discount) $html .= '<p style="display:inline-block;padding:6px 16px;background:' . $accent . '22;color:' . $accent . ';border-radius:20px;font-size:0.85rem;font-weight:600;margin:0 0 16px">🎁 Get ' . esc_html($discount) . ' off your first order!</p>';
+            $html .= '<h3 style="font-size:1.3rem;font-weight:700;color:#fff;margin:0 0 8px">' . esc_html($title) . '</h3>';
+            $html .= '<p style="color:rgba(255,255,255,0.5);margin:0 0 20px;font-size:0.9rem">' . esc_html($subtitle) . '</p>';
+            $html .= '<form class="wpilot-subscribe-form" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">';
+            $html .= '<input type="email" name="email" placeholder="Your email" required style="flex:1;min-width:200px;padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;font-size:0.95rem">';
+            $html .= '<button type="submit" style="padding:12px 28px;background:' . $accent . ';color:#fff;border:none;border-radius:10px;font-weight:600;cursor:pointer;font-size:0.95rem">' . esc_html($button_text) . '</button>';
+            $html .= '</form>';
+            $html .= '<p class="wpilot-subscribe-msg" style="margin:12px 0 0;font-size:0.85rem;color:rgba(255,255,255,0.4);min-height:20px"></p>';
+
+            if ($style === 'popup') {
+                $html .= '</div></div>';
+                $html .= '<script>setTimeout(function(){document.getElementById("wpilot-subscribe-popup").style.display="flex"},5000);</script>';
+            } else {
+                $html .= '</div>';
+            }
+
+            // Add JS handler
+            $js = '<script>document.querySelectorAll(".wpilot-subscribe-form").forEach(function(f){f.addEventListener("submit",function(e){e.preventDefault();var email=f.querySelector("[name=email]").value;var msg=f.nextElementSibling;msg.textContent="Subscribing...";fetch("' . admin_url('admin-ajax.php') . '",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"action=wpilot_subscribe&email="+encodeURIComponent(email)}).then(r=>r.json()).then(d=>{msg.textContent=d.success?d.data.message:"Error";msg.style.color=d.success?"#10b981":"#ef4444";f.querySelector("[name=email]").value="";}).catch(()=>{msg.textContent="Error. Try again.";});});});</script>';
+            $html .= $js;
+
+            if ($page_id) {
+                $content = get_post_field('post_content', $page_id);
+                wp_update_post(['ID' => $page_id, 'post_content' => $content . "\n" . $html]);
+                return wpilot_ok("Subscribe form added to page #{$page_id}.", ['page_id' => $page_id, 'style' => $style]);
+            }
+            return wpilot_ok("Subscribe form HTML generated.", ['html' => $html, 'style' => $style]);
+
+        case 'list_subscribers':
+        case 'newsletter_subscribers':
+            $subscribers = get_option('wpilot_subscribers', []);
+            $list = [];
+            foreach ($subscribers as $email => $data) $list[] = array_merge(['email' => $email], $data);
+            // Also count WP subscribers
+            $wp_subs = get_users(['role' => 'subscriber', 'fields' => ['user_email']]);
+            return wpilot_ok(count($list) . " newsletter subscribers + " . count($wp_subs) . " WP subscribers.", [
+                'newsletter' => $list,
+                'wp_subscribers' => count($wp_subs),
+                'total' => count($list) + count($wp_subs),
+            ]);
+
+        case 'send_newsletter_to_all':
+        case 'blast_email':
+            $subject = sanitize_text_field($params['subject'] ?? '');
+            $body = wp_kses_post($params['body'] ?? $params['content'] ?? '');
+            $from_name = sanitize_text_field($params['from_name'] ?? get_bloginfo('name'));
+            if (empty($subject) || empty($body)) return wpilot_err('subject and body required.');
+            // Collect ALL emails
+            $r = wpilot_run_tool('collect_emails', []);
+            $all_emails = array_keys($r['by_source'] ?? []) ? array_keys($emails ?? []) : [];
+            // Actually get the emails from the CSV
+            $upload = wp_upload_dir();
+            $csv_file = $upload['basedir'] . '/wpilot-all-emails.csv';
+            $sent = 0; $failed = 0;
+            if (file_exists($csv_file)) {
+                $lines = file($csv_file);
+                array_shift($lines); // Remove header
+                $site_name = get_bloginfo('name');
+                $site_url = get_site_url();
+                // HTML email template
+                $html_body = "<!DOCTYPE html><html><body style=\"font-family:system-ui,sans-serif;background:#f5f5f5;padding:40px 20px\"><div style=\"max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden\">";
+                $html_body .= "<div style=\"background:#0a0a0a;padding:24px;text-align:center\"><h1 style=\"color:#fff;margin:0;font-size:1.3rem\">{$from_name}</h1></div>";
+                $html_body .= "<div style=\"padding:32px\">{$body}</div>";
+                $html_body .= "<div style=\"padding:16px 32px;background:#f9f9f9;text-align:center;font-size:0.8rem;color:#999\">{$site_name} — <a href=\"{$site_url}\">{$site_url}</a></div>";
+                $html_body .= "</div></body></html>";
+                $headers = ['Content-Type: text/html; charset=UTF-8', 'From: ' . $from_name . ' <' . get_option('admin_email') . '>'];
+                foreach ($lines as $line) {
+                    $parts = str_getcsv(trim($line));
+                    $email = $parts[0] ?? '';
+                    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        $result = wp_mail($email, $subject, $html_body, $headers);
+                        if ($result) $sent++; else $failed++;
+                        // Rate limit — 1 email per 0.5 seconds
+                        usleep(500000);
+                    }
+                    // Limit to 100 per batch to avoid timeout
+                    if ($sent + $failed >= 100) break;
+                }
+            }
+            return wpilot_ok("Newsletter sent to {$sent} recipients" . ($failed ? ", {$failed} failed" : "") . ".", ['sent' => $sent, 'failed' => $failed]);
+
+        case 'create_discount_popup':
+        case 'exit_intent_popup':
+            $discount_code = sanitize_text_field($params['code'] ?? $params['discount_code'] ?? 'WELCOME10');
+            $discount_amount = sanitize_text_field($params['amount'] ?? '10%');
+            $accent = sanitize_text_field($params['accent_color'] ?? '#E91E8C');
+            $title = sanitize_text_field($params['title'] ?? 'Wait! Get ' . $discount_amount . ' off');
+            $subtitle = sanitize_text_field($params['subtitle'] ?? 'Subscribe and get your discount code instantly.');
+            $html = '<div id="wpilot-discount-popup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(6px)">';
+            $html .= '<div style="background:#0a0a0a;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:48px 40px;max-width:440px;width:90%;text-align:center;position:relative;box-shadow:0 24px 80px rgba(0,0,0,0.5)">';
+            $html .= '<button onclick="this.parentElement.parentElement.style.display=\'none\';localStorage.setItem(\'wpilot_popup_closed\',1)" style="position:absolute;top:12px;right:16px;background:none;border:none;color:rgba(255,255,255,0.3);font-size:1.5rem;cursor:pointer">&times;</button>';
+            $html .= '<p style="font-size:3rem;margin:0 0 8px">🎁</p>';
+            $html .= '<h3 style="font-size:1.5rem;font-weight:800;color:#fff;margin:0 0 8px">' . esc_html($title) . '</h3>';
+            $html .= '<p style="color:rgba(255,255,255,0.6);margin:0 0 24px;font-size:0.95rem">' . esc_html($subtitle) . '</p>';
+            $html .= '<form class="wpilot-subscribe-form" style="display:flex;flex-direction:column;gap:10px">';
+            $html .= '<input type="email" name="email" placeholder="Your email address" required style="padding:14px 16px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;font-size:1rem;text-align:center">';
+            $html .= '<button type="submit" style="padding:14px;background:' . $accent . ';color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:1rem">Get My ' . esc_html($discount_amount) . ' Off →</button>';
+            $html .= '</form>';
+            $html .= '<p class="wpilot-subscribe-msg" style="margin:12px 0 0;font-size:0.85rem;color:rgba(255,255,255,0.4);min-height:20px"></p>';
+            $html .= '<p style="margin:16px 0 0;font-size:0.8rem;color:rgba(255,255,255,0.3)">Use code: <strong style="color:' . $accent . '">' . esc_html($discount_code) . '</strong></p>';
+            $html .= '</div></div>';
+            // Exit intent + delay trigger
+            $html .= '<script>if(!localStorage.getItem("wpilot_popup_closed")){document.addEventListener("mouseleave",function(e){if(e.clientY<5)document.getElementById("wpilot-discount-popup").style.display="flex"},{once:true});setTimeout(function(){if(!localStorage.getItem("wpilot_popup_closed"))document.getElementById("wpilot-discount-popup").style.display="flex"},15000);}';
+            $html .= 'document.querySelectorAll(".wpilot-subscribe-form").forEach(function(f){f.addEventListener("submit",function(e){e.preventDefault();var email=f.querySelector("[name=email]").value;var msg=f.nextElementSibling;msg.textContent="Subscribing...";fetch("' . admin_url('admin-ajax.php') . '",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"action=wpilot_subscribe&email="+encodeURIComponent(email)}).then(r=>r.json()).then(d=>{msg.textContent=d.success?"✅ Code: ' . $discount_code . '":"Error";msg.style.color="#10b981";}).catch(()=>{msg.textContent="Error";});});});</script>';
+            // Save as mu-plugin (loads on all pages)
+            $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-discount-popup.php';
+            $mu_code = "<?php\nadd_action('wp_footer', function() {\n    if (is_admin()) return;\n    echo '" . str_replace("'", "\\'", str_replace("\n", "", $html)) . "';\n});\n";
+            file_put_contents($mu, $mu_code);
+            // Create the coupon if it doesn't exist
+            if (!wc_get_coupon_id_by_code($discount_code) && class_exists('WooCommerce')) {
+                $coupon_id = wp_insert_post(['post_title' => $discount_code, 'post_type' => 'shop_coupon', 'post_status' => 'publish']);
+                update_post_meta($coupon_id, 'discount_type', 'percent');
+                update_post_meta($coupon_id, 'coupon_amount', intval($discount_amount));
+                update_post_meta($coupon_id, 'usage_limit_per_user', 1);
+            }
+            return wpilot_ok("Discount popup created! Code: {$discount_code} ({$discount_amount} off). Shows on exit intent + after 15s.", ['code' => $discount_code, 'amount' => $discount_amount]);
 
         default:
             // Route to plugin-specific tools (Amelia, WooCommerce, LearnDash, etc.)

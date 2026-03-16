@@ -403,3 +403,31 @@ add_action('wp_ajax_wpi_send_feedback', function() {
 
     wp_send_json_success(['message' => 'Feedback sent. Thank you!']);
 });
+
+// Newsletter subscribe AJAX (public — no login needed)
+add_action('wp_ajax_wpilot_subscribe', 'wpilot_handle_subscribe');
+add_action('wp_ajax_nopriv_wpilot_subscribe', 'wpilot_handle_subscribe');
+function wpilot_handle_subscribe() {
+    $email = sanitize_email($_POST['email'] ?? '');
+    if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        wp_send_json_error(['message' => 'Valid email required.']);
+    }
+    // Rate limit
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $key = 'wpilot_sub_' . md5($ip);
+    $count = intval(get_transient($key));
+    if ($count > 5) wp_send_json_error(['message' => 'Too many attempts. Try later.']);
+    set_transient($key, $count + 1, 3600);
+    // Save subscriber
+    $subscribers = get_option('wpilot_subscribers', []);
+    if (isset($subscribers[$email])) {
+        wp_send_json_success(['message' => 'Already subscribed!']);
+    }
+    $subscribers[$email] = ['date' => date('Y-m-d H:i:s'), 'ip' => $ip, 'source' => 'popup'];
+    update_option('wpilot_subscribers', $subscribers);
+    // Also create WP user if they don't exist
+    if (!email_exists($email)) {
+        wp_create_user($email, wp_generate_password(), $email);
+    }
+    wp_send_json_success(['message' => 'Subscribed! Check your email.', 'email' => $email]);
+}
