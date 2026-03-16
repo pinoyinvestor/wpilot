@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:      2.0.0
+ * Version:           2.1.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -13,12 +13,6 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
-
-// Suppress deprecated warnings from other plugins during WPilot AJAX calls
-if ( wp_doing_ajax() && isset($_POST['action']) && ( strpos($_POST['action'], 'ca_') === 0 || strpos($_POST['action'] ?? '', 'wpi_') === 0 ) ) {
-    error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
-}
-
 
 // ── PHP version guard ─────────────────────────────────────────
 if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
@@ -35,7 +29,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( 'CA_VERSION',    '2.0.0' );
+define( "CA_VERSION", "2.1.0" );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
@@ -83,17 +77,99 @@ if ( is_admin() ) {
 // ── Heavy modules — loaded on demand ─────────────────────────
 function wpilot_load_heavy() {
     static $loaded = false;
-    if ( $loaded ) return;
+    if ($loaded) return;
     $loaded = true;
 
-    $modules = [
-        'api', 'context', 'safeguard', 'tools', 'backup',
-        'site_types', 'plugin_tools', 'builder_tools',
-        'activity_log', 'scheduler', 'shadow', 'collector',
-        'brain', 'webleas_ai', 'data_prep', 'upgrade',
+    $dir = plugin_dir_path(__FILE__) . 'includes/';
+
+    // Core modules — always needed for chat
+    $core = ['api', 'context', 'safeguard', 'tools', 'backup', 'parser_fix'];
+    foreach ($core as $m) {
+        $f = $dir . $m . '.php';
+        if (file_exists($f)) require_once $f;
+    }
+
+    // Heavy modules — load on demand
+    // These are loaded when their tools are first called
+    wpilot_register_lazy_modules();
+}
+
+/**
+ * Register which modules contain which tools — loaded on demand
+ */
+function wpilot_register_lazy_modules() {
+    global $wpilot_lazy_modules;
+    $wpilot_lazy_modules = [
+        'plugin_tools'   => ['woo_configure_stripe', 'woo_configure_email', 'woo_setup_checkout', 'cf7_create_form', 'smtp_configure', 'amelia_', 'learndash_', 'memberpress_', 'gravity_', 'wpforms_', 'bulk_import_products'],
+        'builder_tools'  => ['builder_create_page', 'builder_update_section', 'builder_add_widget', 'builder_update_css', 'builder_set_colors', 'builder_set_fonts', 'builder_create_header', 'builder_create_footer'],
+        'blueprint'      => ['wpilot_build_site_snapshot', 'wpilot_get_blueprint'],
+        'screenshot'     => ['screenshot', 'take_screenshot', 'analyze_design', 'visual_review', 'design_review', 'check_visual_bugs', 'visual_debug', 'compare_before_after', 'screenshot_before', 'screenshot_history', 'responsive_check', 'multi_device_screenshot'],
+        'templates'      => ['list_templates', 'apply_template', 'use_template'],
+        'brain'          => ['wpilot_brain_', 'wpilot_smart_answer'],
+        'webleas_ai'     => ['wpilot_check_license'],
+        'data_prep'      => ['wpilot_export_training', 'wpilot_classify_intent', 'training_stats', 'export_training_data'],
+        'site_types'     => ['wpilot_detect_site_type', 'wpilot_default_pages'],
+        'tools_snippets' => ['wpilot_tools_snippets'],
+        'upgrade'        => ['wpilot_check_updates'],
     ];
-    foreach ( $modules as $m ) {
-        require_once CA_PATH . 'includes/' . $m . '.php';
+}
+
+/**
+ * Lazy-load a module when its tool is needed
+ */
+function wpilot_ensure_module($tool) {
+    global $wpilot_lazy_modules, $wpilot_loaded_modules;
+    if (!isset($wpilot_lazy_modules)) return;
+    if (!isset($wpilot_loaded_modules)) $wpilot_loaded_modules = [];
+
+    $dir = plugin_dir_path(dirname(__FILE__) . '/wpilot.php') ?: WP_PLUGIN_DIR . '/wpilot/';
+    if (substr($dir, -1) !== '/') $dir .= '/';
+    $dir .= 'includes/';
+
+    foreach ($wpilot_lazy_modules as $module => $tools) {
+        if (isset($wpilot_loaded_modules[$module])) continue;
+        foreach ($tools as $t) {
+            if ($tool === $t || strpos($tool, $t) === 0) {
+                $file = $dir . $module . '.php';
+                if (file_exists($file)) {
+                    require_once $file;
+                    $wpilot_loaded_modules[$module] = true;
+                }
+                return;
+            }
+        }
+    }
+}
+
+/**
+ * Load ALL modules — for operations that need everything (like smart_answer)
+ */
+function wpilot_load_all_modules() {
+    static $all_loaded = false;
+    if ($all_loaded) return;
+    $all_loaded = true;
+
+    wpilot_load_heavy(); // Core first
+
+    $dir = plugin_dir_path(__FILE__) . 'includes/';
+    $mem_limit = wp_convert_hr_to_bytes(ini_get('memory_limit'));
+    $mem_used = memory_get_usage();
+    $mem_free_mb = ($mem_limit > 0) ? round(($mem_limit - $mem_used) / 1048576) : 999;
+
+    // Always load these (needed for chat)
+    $essential = ['brain', 'collector', 'shadow', 'webleas_ai', 'plugin_tools', 'blueprint', 'parser_fix'];
+    foreach ($essential as $m) {
+        $f = $dir . $m . '.php';
+        if (file_exists($f)) require_once $f;
+    }
+
+    // Load these only if we have enough memory (>64 MB free)
+    if ($mem_free_mb > 64) {
+        $optional = ['builder_tools', 'screenshot', 'templates', 'data_prep', 'site_types', 'tools_snippets', 'upgrade'];
+        foreach ($optional as $m) {
+            $f = $dir . $m . '.php';
+            if (file_exists($f)) require_once $f;
+        }
     }
 }
 
@@ -110,10 +186,10 @@ add_action( 'current_screen', function( $screen ) {
     }
 } );
 
-// 3. Frontend hooks (robots.txt, schema, PWA manifest)
+// 3. Frontend heavy modules — only for logged-in users with access (admin/editors)
+// SEO output (schema, OG, Twitter Cards, robots.txt) is handled in helpers.php for all visitors
 add_action( 'template_redirect', function() {
-    // Only load heavy modules for logged-in users with WPilot access
-    if ( is_user_logged_in() && ( wpilot_user_has_access() || current_user_can('manage_options') ) ) {
+    if ( is_user_logged_in() && ( wpilot_user_has_access() || current_user_can( 'manage_options' ) ) ) {
         wpilot_load_heavy();
     }
 }, 1 );
@@ -123,29 +199,25 @@ register_activation_hook( __FILE__, function () {
     wpilot_load_heavy(); // Ensure backup.php + brain.php are available
     add_option( 'wpilot_theme',               'dark' );
     add_option( 'wpilot_auto_approve',        'no' );
-    // Only set prompts_used if it doesn't exist (prevents reset on reinstall)
-    if (get_option('wpilot_prompts_used') === false) add_option('wpilot_prompts_used', 0);
+    add_option( 'wpilot_prompts_used',        0 );
     add_option( 'ca_custom_instructions', '' );
     add_option( 'ca_onboarded',           'no' );
-    add_option( 'wpi_data_consent',        'no' );
-    add_option( 'wpilot_allowed_roles', ['administrator', 'editor'] );   // GDPR: default to no consent
+    add_option( 'wpi_data_consent',        'no' );   // GDPR: default to no consent
     wpilot_backup_create_table();
-    // Install emergency recovery mu-plugin (works even during white screen)
-    $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
-    if ( !is_dir($mu_dir) ) wp_mkdir_p($mu_dir);
-    $recovery_src = CA_PATH . 'wpilot-recovery.php';
-    $recovery_dst = $mu_dir . '/wpilot-recovery.php';
-    if ( file_exists($recovery_src) && !file_exists($recovery_dst) ) {
-        @copy($recovery_src, $recovery_dst);
-    }
     wpilot_brain_install();
     // Track activation on weblease.se
     if ( function_exists('wpilot_track_activation') ) wpilot_track_activation();
+    // Schedule daily screenshot cleanup
+    if (!wp_next_scheduled('wpilot_daily_cleanup')) {
+        wp_schedule_event(time(), 'daily', 'wpilot_daily_cleanup');
+    }
 } );
 
 register_deactivation_hook( __FILE__, function () {
     if ( function_exists('wpilot_track_deactivation') ) wpilot_track_deactivation();
     if ( function_exists('wpilot_tracking_cleanup') ) wpilot_tracking_cleanup();
+    wp_clear_scheduled_hook('wpilot_daily_cleanup');
+    if (function_exists('wpilot_cleanup_all_screenshots')) wpilot_cleanup_all_screenshots();
 } );
 
 // ── Asset suffix (use minified unless debugging) ──────────────
@@ -155,8 +227,7 @@ function wpilot_asset_suffix() {
 
 // ── Shared enqueue helper ─────────────────────────────────────
 function wpilot_enqueue_bubble() {
-    // Load bubble for any user with access OR any admin (fallback)
-    if ( ! wpilot_user_has_access() && ! current_user_can( 'manage_options' ) ) return;
+    if ( ! wpilot_can_use() ) return;
     $sfx = wpilot_asset_suffix();
     wp_enqueue_style(  'aib-bubble', CA_URL . "assets/bubble{$sfx}.css", [], CA_VERSION );
     wp_enqueue_script( 'aib-bubble', CA_URL . "assets/bubble{$sfx}.js",  ['jquery'], CA_VERSION, true );
@@ -211,3 +282,131 @@ add_action( 'wp_enqueue_scripts', function () {
     if ( ! is_user_logged_in() ) return;
     wpilot_enqueue_bubble();
 } );
+// Execute scheduled WPilot actions
+add_action('wpilot_run_scheduled', function($id) {
+    $scheduled = get_option('wpilot_scheduled_actions', []);
+    if (!isset($scheduled[$id])) return;
+    wpilot_load_heavy();
+    $result = wpilot_run_tool($scheduled[$id]['tool'], $scheduled[$id]['params']);
+    $scheduled[$id]['status'] = ($result['success'] ?? false) ? 'completed' : 'failed';
+    $scheduled[$id]['result'] = $result['message'] ?? '';
+    $scheduled[$id]['completed_at'] = date('Y-m-d H:i:s');
+    update_option('wpilot_scheduled_actions', $scheduled);
+});
+// WPilot Webhook REST endpoints
+add_action('rest_api_init', function() {
+    register_rest_route('wpilot/v1', '/webhook/(?P<slug>[a-z0-9-]+)', [
+        'methods' => ['GET','POST'],
+        'callback' => function($request) {
+            $slug = $request['slug'];
+            $webhooks = get_option('wpilot_webhooks', []);
+            if (!isset($webhooks[$slug])) return new WP_REST_Response(['error' => 'Not found'], 404);
+            $wh = $webhooks[$slug];
+            // Verify secret if provided
+            $secret = $request->get_header('X-Webhook-Secret') ?? $request->get_param('secret');
+            if (!empty($wh['secret']) && $secret !== $wh['secret']) return new WP_REST_Response(['error' => 'Invalid secret'], 403);
+            // Increment counter
+            $webhooks[$slug]['calls'] = ($wh['calls'] ?? 0) + 1;
+            $webhooks[$slug]['last_call'] = date('Y-m-d H:i:s');
+            update_option('wpilot_webhooks', $webhooks);
+            // Execute action if configured
+            if (!empty($wh['action'])) {
+                wpilot_load_heavy();
+                $params = $request->get_json_params() ?: $request->get_query_params();
+                $result = wpilot_run_tool($wh['action'], $params);
+                return new WP_REST_Response($result, 200);
+            }
+            return new WP_REST_Response(['ok' => true, 'slug' => $slug], 200);
+        },
+        'permission_callback' => '__return_true',
+    ]);
+});
+
+/**
+ * Memory guard — check if we have enough RAM for an operation
+ */
+function wpilot_memory_ok($needed_mb = 32) {
+    $limit = wp_convert_hr_to_bytes(WP_MEMORY_LIMIT);
+    $used = memory_get_usage();
+    $available = $limit - $used;
+    return $available > ($needed_mb * 1048576);
+}
+
+/**
+ * Set optimal memory limit for WPilot operations
+ */
+function wpilot_ensure_memory() {
+    $current = wp_convert_hr_to_bytes(WP_MEMORY_LIMIT);
+    if ($current < 128 * 1048576) {
+        @ini_set('memory_limit', '128M');
+    }
+}
+/**
+ * Detect hosting tier based on PHP memory limit
+ * Returns: 'basic' (<=256MB), 'standard' (<=512MB), 'premium' (<=1024MB), 'dedicated' (>1024MB)
+ */
+function wpilot_hosting_tier() {
+    $limit = wp_convert_hr_to_bytes(ini_get('memory_limit'));
+    $mb = ($limit <= 0) ? 9999 : $limit / 1048576;
+    if ($mb <= 256) return 'basic';      // Privatpaket - shared hosting
+    if ($mb <= 512) return 'standard';   // Företagspaket
+    if ($mb <= 1024) return 'premium';   // Företag Plus
+    return 'dedicated';                   // VPS/dedicated
+}
+
+/**
+ * Check if a feature is available on this hosting tier
+ */
+function wpilot_can_use_feature($feature) {
+    $tier = wpilot_hosting_tier();
+    $requirements = [
+        'screenshot'       => 'standard',  // Needs 512MB+ for Chromium
+        'vision_analysis'  => 'standard',  // Screenshot + API call
+        'responsive_check' => 'standard',  // 3 screenshots
+        'full_site_audit'  => 'premium',   // Multiple screenshots + vision
+        'bulk_import'      => 'standard',  // Memory for CSV processing
+    ];
+    $tiers = ['basic' => 1, 'standard' => 2, 'premium' => 3, 'dedicated' => 4];
+    $needed = $requirements[$feature] ?? 'basic';
+    return ($tiers[$tier] ?? 1) >= ($tiers[$needed] ?? 1);
+}
+
+// ── Screenshot cleanup on cache purge ─────────────────────────
+add_action('litespeed_purged_all', 'wpilot_cleanup_all_screenshots');
+add_action('w3tc_flush_all', 'wpilot_cleanup_all_screenshots');
+add_action('wp_cache_cleared', 'wpilot_cleanup_all_screenshots');
+add_action('ce_action_cache_cleared', 'wpilot_cleanup_all_screenshots');
+add_action('breeze_clear_all_cache', 'wpilot_cleanup_all_screenshots');
+add_action('wp_rocket_after_purge_cache_all', 'wpilot_cleanup_all_screenshots');
+add_action('autoptimize_action_cachepurged', 'wpilot_cleanup_all_screenshots');
+
+function wpilot_cleanup_all_screenshots() {
+    $dir = wp_upload_dir()['basedir'] . '/wpilot-screenshots';
+    if (!is_dir($dir)) return;
+    $files = glob($dir . '/*.png');
+    $count = 0;
+    foreach ($files as $f) { @unlink($f); $count++; }
+    // Also delete receipt files
+    $receipts = glob(wp_upload_dir()['basedir'] . '/wpilot-receipt-*.txt');
+    foreach ($receipts as $r) @unlink($r);
+    // Clean CSV exports
+    $csvs = glob(wp_upload_dir()['basedir'] . '/wpilot-*.csv');
+    foreach ($csvs as $c) @unlink($c);
+}
+
+// ── Daily cleanup cron (delete screenshots older than 24h) ────
+add_action('wpilot_daily_cleanup', function() {
+    $dir = wp_upload_dir()['basedir'] . '/wpilot-screenshots';
+    if (!is_dir($dir)) return;
+    $files = glob($dir . '/*.png');
+    $cutoff = time() - 86400;
+    foreach ($files as $f) {
+        if (filemtime($f) < $cutoff) @unlink($f);
+    }
+    // Clean old receipts (7 days)
+    $receipts = glob(wp_upload_dir()['basedir'] . '/wpilot-receipt-*.txt');
+    foreach ($receipts as $r) { if (filemtime($r) < time() - 604800) @unlink($r); }
+    // Clean old CSV exports (7 days)
+    $csvs = glob(wp_upload_dir()['basedir'] . '/wpilot-*.csv');
+    foreach ($csvs as $c) { if (filemtime($c) < time() - 604800) @unlink($c); }
+});

@@ -120,18 +120,21 @@ function wpilot_render_bubble() {
                     <h3 class="cap-nc-h">Connect Claude AI</h3>
                     <?php if ( $is_admin ): ?>
                     <p class="cap-nc-sub" style="margin-bottom:12px">Paste your Claude API key to start. Get one free at <a href="https://console.anthropic.com" target="_blank" rel="noopener" style="color:#4F7EFF">console.anthropic.com</a></p>
-                    
+
                     <div style="width:100%;margin-bottom:12px">
-                        <input type="password" id="capApiKeyInput" placeholder="sk-ant-api03-..." onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('capConnectBtn').click()}" 
-                            style="width:100%;padding:10px 14px;background:var(--ca-bg3);border:1px solid var(--ca-border2);border-radius:10px;color:var(--ca-text);font-family:var(--ca-mono);font-size:12px;outline:none" />
+                        <?php /* FIX: removed inline onkeydown — bubble.js handles Enter key on #capApiKeyInput */ ?>
+                        <input type="password" id="capApiKeyInput" placeholder="sk-ant-api03-..."
+                            style="width:100%;padding:10px 14px;background:var(--ca-bg3);border:1px solid var(--ca-border2);border-radius:10px;color:var(--ca-text);font-family:var(--ca-mono);font-size:12px;outline:none;box-sizing:border-box" />
                     </div>
-                    
-                    <button id="capConnectBtn" style="width:100%;padding:10px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer" onclick="var b=this,i=document.getElementById('capApiKeyInput'),s=document.getElementById('capConnectStatus'),k=i?i.value.trim():'';if(!k||k.indexOf('sk-')!==0){if(s){s.textContent='Enter a valid key (starts with sk-)';s.style.color='#EF4444';s.style.display='block'}return}b.textContent='Connecting...';b.disabled=true;if(s){s.textContent='Testing...';s.style.color='#5E6E91';s.style.display='block'}var x=new XMLHttpRequest();x.open('POST',(typeof ajaxurl!=='undefined'?ajaxurl:'/wp-admin/admin-ajax.php'),true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r&&r.success){if(s){s.textContent='Connected! Reloading...';s.style.color='#10B981'}setTimeout(function(){location.reload()},1000)}else{if(s){s.textContent=(r&&r.data?(typeof r.data==='string'?r.data:r.data.message||'Failed'):'Failed');s.style.color='#EF4444'}b.textContent='Connect & Start';b.disabled=false}}catch(e){if(s){s.textContent='Error: '+e.message;s.style.color='#EF4444'}b.textContent='Connect & Start';b.disabled=false}};x.onerror=function(){if(s){s.textContent='Network error';s.style.color='#EF4444'}b.textContent='Connect & Start';b.disabled=false};x.send('action=ca_test_connection&nonce='+(typeof CA!=='undefined'&&CA.nonce?CA.nonce:'')+'&key='+encodeURIComponent(k))">
+
+                    <?php /* FIX: removed massive inline onclick — bubble.js handles #capConnectBtn click via event delegation.
+                              Having both caused triple AJAX calls (inline + 2 JS handlers). */ ?>
+                    <button id="capConnectBtn" style="width:100%;padding:10px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer">
                         Connect & Start
                     </button>
-                    
+
                     <p id="capConnectStatus" style="display:none;margin-top:8px;font-size:12px;text-align:center"></p>
-                    
+
                     <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--ca-border)">
                         <p style="font-size:11px;color:var(--ca-text3);text-align:center;line-height:1.6">
                             Your key stays on your server only.<br/>Never shared with Weblease.
@@ -162,7 +165,7 @@ function wpilot_render_bubble() {
                     <?php else: ?>
                     <p class="cap-nc-sub">Activate your WPilot license to continue using the AI assistant.</p>
                     <div style="font-size:13px;font-weight:700;color:#93c5fd;margin:8px 0 4px">Pro — $<?= CA_MONTHLY_PRICE ?>/month</div>
-                    
+
                     <?php if($is_admin): ?>
                     <a href="<?= esc_url(admin_url('admin.php?page='.CA_SLUG.'-license')) ?>" class="cap-nc-btn cap-nc-btn-primary" style="margin-top:4px">⚡ Activate License →</a>
                     <?php endif; ?>
@@ -228,19 +231,20 @@ function wpilot_render_bubble() {
 
             <div class="cap-footer">
                 <span>WPilot by <a href="https://weblease.se" target="_blank" rel="noopener">Weblease</a></span>
-                
+
                 <span class="cap-footer-dot">·</span>
                 <span>Powered by <a href="https://anthropic.com" target="_blank" rel="noopener">Claude AI</a></span>
                 <span class="cap-footer-dot">&middot;</span><span><a href="#" onclick="wpiShowFeedback();return false" style="color:var(--ca-text3)">Feedback</a></span>
                 <?php
-                $slots_msg = '';
+                // FIX: escape $slots_msg output — construct with allowed HTML only
                 if (!wpilot_is_licensed()) {
                     $slots_cached = get_transient('wpi_lifetime_slots');
                     if ($slots_cached !== false && (int)$slots_cached > 0) {
-                        $slots_msg = '<div class="cap-lifetime-hint">🏆 ' . (int)$slots_cached . ' Lifetime slots left</div>';
+                        $slots_count = (int)$slots_cached;
+                        // Built by Christos Ferlachidis & Daniel Hedenberg
+                        echo '<div class="cap-lifetime-hint">🏆 ' . esc_html($slots_count) . ' Lifetime slots left</div>';
                     }
                 }
-                echo $slots_msg;
                 ?>
             </div>
 
@@ -267,6 +271,8 @@ function wpilot_render_bubble() {
 
 
         // Connect API key - inline so it works without external JS
+        // FIX: wpiConnect is kept as a fallback global but is NOT called from any
+        // onclick attr — bubble.js handles the button via event delegation.
         window.wpiConnect = function() {
             var btn = document.getElementById('capConnectBtn');
             var inp = document.getElementById('capApiKeyInput');
@@ -307,8 +313,6 @@ function wpilot_render_bubble() {
             };
             xhr.send('action=ca_test_connection&nonce=' + encodeURIComponent(nonce) + '&key=' + encodeURIComponent(key));
         };
-
-        // Debug removed - was causing JS syntax errors
 
 
         // Apply tool - inline so it works without bubble.js event delegation
@@ -454,7 +458,7 @@ function wpilot_render_bubble() {
                 }, 1000);
                 // Scroll to it
                 var msgs = document.getElementById('capMsgs');
-                if (msgs) msgs.scrollTop = msgs.scrollHeight + 9999;
+                if (msgs) msgs.scrollTop = msgs.scrollHeight;
             }
         };
         window.wpiHideThinking = function() {

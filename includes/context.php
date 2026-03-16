@@ -3,6 +3,20 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ── Build site context for a given scope ───────────────────────
 function wpilot_build_context( $scope = 'general' ) {
+    // Use cached blueprint for fast context — no heavy DB queries
+    if (function_exists('wpilot_get_blueprint')) {
+        $bp = wpilot_get_blueprint();
+        if ($bp && $scope === 'general') {
+            // Ultra-fast: return compressed blueprint directly
+            $ctx = ['blueprint' => wpilot_compress_blueprint($bp)];
+            // Add only dynamic data that changes frequently
+            if (class_exists('WooCommerce')) {
+                $ctx['blueprint']['orders']['today'] = count(wc_get_orders(['date_created' => '>' . date('Y-m-d 00:00:00'), 'limit' => -1, 'return' => 'ids']));
+            }
+            return $ctx;
+        }
+    }
+    // Fallback: build context the old way
     $ctx = [
         'site'    => wpilot_ctx_site(),
         'theme'   => wpilot_ctx_theme(),
@@ -48,6 +62,20 @@ function wpilot_build_context( $scope = 'general' ) {
                         }
                     }
 
+                    // Get builder content for current page
+                    $current_builder_html = '';
+                    if (get_post_meta($current_id, '_elementor_edit_mode', true) === 'builder') {
+                        $el_data_raw = get_post_meta($current_id, '_elementor_data', true);
+                        $el_json_raw = json_decode($el_data_raw, true);
+                        if (is_array($el_json_raw)) {
+                            $current_builder_html = wpilot_extract_builder_html($el_json_raw);
+                        }
+                    } elseif (strpos($raw_content, '[et_pb_') !== false) {
+                        if (preg_match_all('/\[et_pb_(?:code|text|fullwidth_code)[^\]]*\](.*?)\[\/et_pb_/s', $raw_content, $divi_matches)) {
+                            $current_builder_html = implode(' ', $divi_matches[1]);
+                        }
+                    }
+
                     $ctx['current_page_content'] = [
                         'id' => $current_id,
                         'title' => $current_post->post_title,
@@ -56,11 +84,14 @@ function wpilot_build_context( $scope = 'general' ) {
                         'custom_css' => get_post_meta($current_id, '_ca_custom_css', true) ?: '',
                         'elementor_css' => substr($el_css, 0, 500),
                         'divi_settings' => $divi_settings,
+                        'builder_html' => substr($current_builder_html, 0, 5000),
+                        'builder_html_length' => strlen($current_builder_html),
                         'post_meta_keys' => array_keys(get_post_meta($current_id)),
                     ];
                 }
             }
-            if ( class_exists( 'WooCommerce' ) ) $ctx['woocommerce'] = wpilot_ctx_woo();
+            $ctx['file_map'] = wpilot_ctx_file_map();
+            if ( class_exists( 'WooCommerce' ) ) { $ctx['woocommerce'] = wpilot_ctx_woo(); $ctx['product_map'] = wpilot_ctx_product_map(); $ctx['business'] = wpilot_ctx_business_stats(); }
             break;
 
         case 'seo':
@@ -93,6 +124,8 @@ function wpilot_build_context( $scope = 'general' ) {
             $ctx['pages'] = wpilot_ctx_pages( 12 );
             $ctx['posts'] = wpilot_ctx_posts( 6 );
             $ctx['menus'] = wpilot_ctx_menus();
+            $ctx['file_map'] = wpilot_ctx_file_map_lite();
+            if ( class_exists( 'WooCommerce' ) ) { $ctx['product_map'] = wpilot_ctx_product_map(); }
             break;
     }
 
@@ -129,9 +162,9 @@ function wpilot_ctx_theme() {
     $custom_css_lines = $custom_css ? substr_count($custom_css, "\n") + 1 : 0;
 
     // Read theme files (truncated for context size)
-    $header_php = file_exists($theme_dir . '/header.php') ? substr(file_get_contents($theme_dir . '/header.php'), 0, 800) : '';
-    $footer_php = file_exists($theme_dir . '/footer.php') ? substr(file_get_contents($theme_dir . '/footer.php'), 0, 500) : '';
-    $functions_php = file_exists($theme_dir . '/functions.php') ? substr(file_get_contents($theme_dir . '/functions.php'), 0, 800) : '';
+    $header_php = file_exists($theme_dir . '/header.php') ? substr(file_get_contents($theme_dir . '/header.php'), 0, 200) : '';
+    $footer_php = file_exists($theme_dir . '/footer.php') ? substr(file_get_contents($theme_dir . '/footer.php'), 0, 200) : '';
+    $functions_php = file_exists($theme_dir . '/functions.php') ? substr(file_get_contents($theme_dir . '/functions.php'), 0, 300) : '';
 
     return [
         'name'           => $t->get( 'Name' ),
@@ -140,10 +173,10 @@ function wpilot_ctx_theme() {
         'parent'         => $t->get( 'Template' ) ?: null,
         'is_child_theme' => $t->get( 'Template' ) ? true : false,
         'supports'       => $supports,
-        'custom_css'     => substr($custom_css, 0, 500),
-        'header_php'     => $header_php,
-        'footer_php'     => $footer_php,
-        'functions_php'  => $functions_php,
+        'custom_css_bytes' => strlen($custom_css),
+        // header_php removed — Claude knows WordPress themes
+        // footer_php removed
+        // functions_php removed
     ];
 }
 
@@ -225,9 +258,9 @@ function wpilot_ctx_plugins() {
             'version'           => $p['Version'],
             'slug'              => $slug,
             'category'          => $kb['cat']     ?? 'General',
-            'pricing'           => $kb['pricing']  ?? 'Unknown',
-            'free_alternative'  => $kb['free_alt'] ?? null,
-            'wpilot_can_configure' => $kb['wpilot_can_configure'] ?? false,
+            // pricing removed — Claude knows plugin pricing
+            // free_alt removed
+            // wpilot_can_configure removed
         ];
         if ( in_array($file, $active) ) {
             $active_list[] = $info;
@@ -266,7 +299,7 @@ function wpilot_ctx_plugins() {
         'inactive_plugins'=> array_slice($inactive, 0, 10),
         'by_category'    => $by_category,
         'missing_essentials' => $missing,
-        'wpilot_configurable' => array_values(array_filter($active_list, fn($p) => $p['wpilot_can_configure'])),
+        'wpilot_configurable' => array_values(array_filter($active_list, fn($p) => !empty($p['wpilot_can_configure']))),
     ];
 }
 
@@ -282,8 +315,27 @@ function wpilot_ctx_pages( $limit = 20 ) {
         elseif (get_post_meta($p->ID, '_elementor_data', true)) $builder_type = 'elementor';
         elseif (strpos($content, '<!-- wp:') !== false) $builder_type = 'gutenberg';
 
+        // Get content from builder data (Elementor stores in meta, not post_content)
+        $builder_html = '';
+        if ($builder_type === 'elementor') {
+            $el_data = get_post_meta($p->ID, '_elementor_data', true);
+            if ($el_data) {
+                $el_json = json_decode($el_data, true);
+                if (is_array($el_json)) {
+                    $builder_html = wpilot_extract_builder_html($el_json);
+                }
+            }
+        } elseif ($builder_type === 'divi') {
+            // Extract content from Divi shortcodes
+            if (preg_match_all('/\[et_pb_(?:code|text|fullwidth_code)[^\]]*\](.*?)\[\/et_pb_/s', $content, $dm)) {
+                $builder_html = implode(' ', $dm[1]);
+            }
+        }
+        // Use builder content if post_content is empty
+        $text_source = !empty($builder_html) ? $builder_html : $content;
+
         // Get content summary (first 500 chars of clean text + HTML structure hints)
-        $clean_text = wp_trim_words(wp_strip_all_tags($content), 80, '...');
+        $clean_text = wp_trim_words(wp_strip_all_tags($text_source), 80, '...');
 
         // Find images in content without dimensions
         $imgs_no_dims = 0;
@@ -321,14 +373,15 @@ function wpilot_ctx_pages( $limit = 20 ) {
             'status'         => $p->post_status,
             'template'       => get_post_meta($p->ID, '_wp_page_template', true) ?: 'default',
             'content_preview'=> $clean_text,
-            'raw_content'    => substr($content, 0, 500),
+            'raw_content'    => substr($text_source, 0, 200),
+            'builder_content_length' => strlen($builder_html),
             'word_count'     => $word_count,
             'has_meta_desc'  => wpilot_has_meta_desc($p->ID),
             'builder'        => $builder_type,
             'images_in_content' => substr_count(strtolower($content), '<img'),
             'images_no_dimensions' => $imgs_no_dims,
-            'has_slider'     => strpos($content, 'slider') !== false || strpos($content, 'et_pb_slider') !== false || strpos($content, 'carousel') !== false,
-            'has_video'      => strpos($content, '<video') !== false || strpos($content, 'youtube') !== false || strpos($content, 'vimeo') !== false,
+            // has_slider removed
+            // has_video removed
             'divi_modules'   => $divi_modules,
             'elementor_widgets' => $elementor_widgets,
             'content_length' => strlen($content),
@@ -554,4 +607,460 @@ function wpilot_ctx_performance() {
         'max_execution'   => ini_get('max_execution_time'),
         'active_plugins'  => count(get_option('active_plugins', [])),
     ];
+}
+
+
+
+// Extract readable HTML from Elementor JSON data
+function wpilot_extract_builder_html($elements) {
+    $html = '';
+    foreach ($elements as $el) {
+        if (isset($el['widgetType'])) {
+            $settings = $el['settings'] ?? [];
+            switch ($el['widgetType']) {
+                case 'html':
+                    $html .= $settings['html'] ?? '';
+                    break;
+                case 'heading':
+                    $html .= '<h2>' . ($settings['title'] ?? '') . '</h2>';
+                    break;
+                case 'text-editor':
+                    $html .= $settings['editor'] ?? '';
+                    break;
+                case 'button':
+                    $html .= '<a href="' . ($settings['link']['url'] ?? '#') . '">' . ($settings['text'] ?? 'Button') . '</a> ';
+                    break;
+                case 'image':
+                    $html .= '<img src="' . ($settings['image']['url'] ?? '') . '"> ';
+                    break;
+                case 'icon-box':
+                    $html .= '<div>' . ($settings['title_text'] ?? '') . ': ' . ($settings['description_text'] ?? '') . '</div>';
+                    break;
+            }
+        }
+        if (!empty($el['elements'])) {
+            $html .= wpilot_extract_builder_html($el['elements']);
+        }
+    }
+    return $html;
+}
+
+// Lite file map for chat mode — just essentials (~150 tokens)
+function wpilot_ctx_file_map_lite() {
+    $map = [];
+
+    // Theme files (just names, no sizes)
+    $theme_dir = get_stylesheet_directory();
+    $files = [];
+    foreach (@scandir($theme_dir) ?: [] as $f) {
+        if ($f === "." || $f === "..") continue;
+        if (is_dir($theme_dir . "/" . $f)) $files[] = $f . "/";
+        elseif (preg_match("/\.(php|css|js|json)$/", $f)) $files[] = $f;
+    }
+    $map["theme"] = implode(", ", $files);
+
+    // mu-plugins count
+    $mu_count = 0;
+    if (is_dir(WPMU_PLUGIN_DIR)) {
+        $mu_count = count(array_filter(@scandir(WPMU_PLUGIN_DIR) ?: [], fn($f) => str_ends_with($f, ".php")));
+    }
+    $map["mu_plugins"] = $mu_count;
+
+    // Key config
+    $map["debug"] = defined("WP_DEBUG") && WP_DEBUG;
+    $map["cache"] = defined("WP_CACHE") && WP_CACHE;
+    $map["memory"] = defined("WP_MEMORY_LIMIT") ? WP_MEMORY_LIMIT : ini_get("memory_limit");
+
+    // Available templates
+    $templates = array_keys(wp_get_theme()->get_page_templates());
+    $map["templates"] = $templates;
+
+    // Custom post types (non-builtin)
+    $cpt = [];
+    foreach (get_post_types(["_builtin" => false, "public" => true], "objects") as $pt) {
+        $count = wp_count_posts($pt->name);
+        $cpt[] = $pt->name . ":" . ($count->publish ?? 0);
+    }
+    // Built by Christos Ferlachidis & Daniel Hedenberg
+    $map["post_types"] = implode(", ", $cpt);
+
+    return $map;
+}
+
+
+
+// Smart business context — auto-detects site type and provides relevant stats
+function wpilot_ctx_business_stats() {
+    $stats = [];
+
+    // ═══ WOOCOMMERCE ORDERS & REVENUE ═══
+    if (class_exists('WooCommerce')) {
+        // Today
+        $today_orders = wc_get_orders(['date_created' => '>' . date('Y-m-d 00:00:00'), 'limit' => -1, 'return' => 'ids']);
+        $today_rev = 0;
+        foreach ($today_orders as $oid) { $o = wc_get_order($oid); if ($o) $today_rev += $o->get_total(); }
+
+        // This week
+        $week_start = date('Y-m-d 00:00:00', strtotime('monday this week'));
+        $week_orders = wc_get_orders(['date_created' => '>' . $week_start, 'limit' => -1, 'return' => 'ids']);
+        $week_rev = 0;
+        foreach ($week_orders as $oid) { $o = wc_get_order($oid); if ($o) $week_rev += $o->get_total(); }
+
+        // This month
+        $month_start = date('Y-m-01 00:00:00');
+        $month_orders = wc_get_orders(['date_created' => '>' . $month_start, 'limit' => -1, 'return' => 'ids']);
+        $month_rev = 0;
+        foreach ($month_orders as $oid) { $o = wc_get_order($oid); if ($o) $month_rev += $o->get_total(); }
+
+        // All time
+        $all_orders = wc_get_orders(['limit' => -1, 'return' => 'ids', 'status' => ['completed','processing']]);
+        $all_rev = 0;
+        foreach (array_slice($all_orders, 0, 500) as $oid) { $o = wc_get_order($oid); if ($o) $all_rev += $o->get_total(); }
+
+        // Order statuses
+        $status_counts = [];
+        foreach (['pending','processing','on-hold','completed','cancelled','refunded','failed'] as $s) {
+            $c = count(wc_get_orders(['status' => $s, 'limit' => -1, 'return' => 'ids']));
+            if ($c > 0) $status_counts[$s] = $c;
+        }
+
+        // Best sellers (top 5)
+        $best = [];
+        $product_sales = [];
+        foreach (array_slice($all_orders, 0, 200) as $oid) {
+            $o = wc_get_order($oid);
+            if (!$o) continue;
+            foreach ($o->get_items() as $item) {
+                $pid = $item->get_product_id();
+                $product_sales[$pid] = ($product_sales[$pid] ?? 0) + $item->get_quantity();
+            }
+        }
+        arsort($product_sales);
+        foreach (array_slice($product_sales, 0, 5, true) as $pid => $qty) {
+            $p = wc_get_product($pid);
+            if ($p) $best[] = $p->get_name() . ' (' . $qty . ' sold)';
+        }
+
+        // Average order value
+        $avg = count($all_orders) > 0 ? round($all_rev / count($all_orders)) : 0;
+
+        $currency = get_woocommerce_currency();
+        $stats['orders'] = [
+            'today' => ['count' => count($today_orders), 'revenue' => $today_rev . ' ' . $currency],
+            'this_week' => ['count' => count($week_orders), 'revenue' => $week_rev . ' ' . $currency],
+            'this_month' => ['count' => count($month_orders), 'revenue' => $month_rev . ' ' . $currency],
+            'all_time' => ['count' => count($all_orders), 'revenue' => $all_rev . ' ' . $currency],
+            'avg_order_value' => $avg . ' ' . $currency,
+            'by_status' => $status_counts,
+            'best_sellers' => $best,
+        ];
+
+        // Low stock alerts
+        $low_stock = [];
+        $prods = wc_get_products(['limit' => 100, 'stock_status' => 'instock']);
+        foreach ($prods as $p) {
+            $stock = $p->get_stock_quantity();
+            if ($stock !== null && $stock <= 5) {
+                $low_stock[] = $p->get_name() . ' (' . $stock . ' left)';
+            }
+        }
+        if ($low_stock) $stats['low_stock_alerts'] = $low_stock;
+
+        // Recent reviews
+        $reviews = get_comments(['post_type' => 'product', 'number' => 5, 'status' => 'approve']);
+        if ($reviews) {
+            $stats['recent_reviews'] = array_map(fn($r) => [
+                'product' => get_the_title($r->comment_post_ID),
+                'rating' => get_comment_meta($r->comment_ID, 'rating', true),
+                'text' => wp_trim_words($r->comment_content, 10),
+            ], $reviews);
+        }
+    }
+
+    // ═══ BOOKINGS (Amelia, Bookly, Simply Schedule) ═══
+    // Built by Christos Ferlachidis & Daniel Hedenberg
+    if (defined('FLAVOR') || class_exists('\\AmeliaBooking\\Application\\Services\\Booking\\BookingApplicationService')) {
+        // Amelia
+        global $wpdb;
+        $prefix = $wpdb->prefix;
+        $tbl = $prefix . 'amelia_appointments';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$tbl}'") === $tbl) {
+            $today_bookings = $wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE DATE(bookingStart) = CURDATE() AND status != 'canceled'");
+            $week_bookings = $wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE YEARWEEK(bookingStart) = YEARWEEK(CURDATE()) AND status != 'canceled'");
+            $month_bookings = $wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE MONTH(bookingStart) = MONTH(CURDATE()) AND YEAR(bookingStart) = YEAR(CURDATE()) AND status != 'canceled'");
+            $upcoming = $wpdb->get_results("SELECT bookingStart, status FROM {$tbl} WHERE bookingStart >= NOW() AND status != 'canceled' ORDER BY bookingStart LIMIT 5");
+
+            $stats['bookings'] = [
+                'plugin' => 'Amelia',
+                'today' => (int)$today_bookings,
+                'this_week' => (int)$week_bookings,
+                'this_month' => (int)$month_bookings,
+                'upcoming' => array_map(fn($b) => $b->bookingStart . ' (' . $b->status . ')', $upcoming),
+            ];
+
+            // Services
+            $services_tbl = $prefix . 'amelia_services';
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$services_tbl}'") === $services_tbl) {
+                $services = $wpdb->get_results("SELECT name, price, duration FROM {$services_tbl} WHERE status = 'visible'");
+                $stats['bookings']['services'] = array_map(fn($s) => $s->name . ' (' . $s->price . ', ' . round($s->duration/60) . 'min)', $services);
+            }
+        }
+    }
+
+    if (class_exists('BooklyLib\\Plugin') || defined('FLAVOR_BOOKLY')) {
+        // Bookly
+        global $wpdb;
+        $tbl = $wpdb->prefix . 'bookly_appointments';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$tbl}'") === $tbl) {
+            $today_b = $wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE DATE(start_date) = CURDATE()");
+            $month_b = $wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE MONTH(start_date) = MONTH(CURDATE()) AND YEAR(start_date) = YEAR(CURDATE())");
+            $stats['bookings'] = [
+                'plugin' => 'Bookly',
+                'today' => (int)$today_b,
+                'this_month' => (int)$month_b,
+            ];
+        }
+    }
+
+    // ═══ LEARNDASH (LMS) ═══
+    if (defined('LEARNDASH_VERSION')) {
+        $courses = get_posts(['post_type' => 'sfwd-courses', 'numberposts' => -1, 'post_status' => 'publish']);
+        $total_enrollments = 0;
+        $course_list = [];
+        foreach ($courses as $c) {
+            $enrolled = count(learndash_get_users_for_course($c->ID, ['fields' => 'ID'], false) ?: []);
+            $total_enrollments += $enrolled;
+            $course_list[] = $c->post_title . ' (' . $enrolled . ' students)';
+        }
+        $stats['lms'] = [
+            'plugin' => 'LearnDash',
+            'courses' => count($courses),
+            'total_enrollments' => $total_enrollments,
+            'course_list' => $course_list,
+        ];
+    }
+
+    // ═══ MEMBERSHIP (MemberPress, Paid Memberships Pro) ═══
+    if (defined('MEPR_VERSION')) {
+        $memberships = get_posts(['post_type' => 'memberpressproduct', 'numberposts' => -1]);
+        $stats['membership'] = [
+            'plugin' => 'MemberPress',
+            'plans' => count($memberships),
+            'plan_names' => array_map(fn($m) => $m->post_title, $memberships),
+        ];
+    }
+
+    // ═══ CONTACT FORM SUBMISSIONS ═══
+    if (defined('WPCF7_VERSION')) {
+        // Count CF7 forms
+        $forms = get_posts(['post_type' => 'wpcf7_contact_form', 'numberposts' => -1]);
+        $stats['forms'] = ['plugin' => 'Contact Form 7', 'count' => count($forms), 'names' => array_map(fn($f) => $f->post_title, $forms)];
+    }
+    if (class_exists('WPForms')) {
+        $forms = get_posts(['post_type' => 'wpforms', 'numberposts' => -1]);
+        $stats['forms'] = ['plugin' => 'WPForms', 'count' => count($forms)];
+    }
+
+    // ═══ SITE TYPE DETECTION ═══
+    $site_type = 'website';
+    if (!empty($stats['orders'])) $site_type = 'e-commerce';
+    if (!empty($stats['bookings'])) $site_type = 'booking';
+    if (!empty($stats['lms'])) $site_type = 'lms';
+    if (!empty($stats['membership'])) $site_type = 'membership';
+    $stats['site_type'] = $site_type;
+
+    return !empty($stats) ? $stats : null;
+}
+
+// Compact product map — all WooCommerce data in minimal tokens
+function wpilot_ctx_product_map() {
+    if (!class_exists('WooCommerce')) return null;
+
+    $map = [];
+
+    // Products summary
+    $products = wc_get_products(['limit' => 50, 'status' => 'publish']);
+    $prod_list = [];
+    foreach ($products as $p) {
+        $cats = wp_get_post_terms($p->get_id(), 'product_cat', ['fields' => 'names']);
+        $img_id = $p->get_image_id();
+        $prod_list[] = [
+            'id' => $p->get_id(),
+            'name' => $p->get_name(),
+            'price' => $p->get_price(),
+            'sale' => $p->get_sale_price() ?: null,
+            'sku' => $p->get_sku() ?: null,
+            'stock' => $p->get_stock_status(),
+            'type' => $p->get_type(),
+            'cats' => implode(', ', $cats),
+            'has_img' => !empty($img_id),
+            'img_url' => $img_id ? wp_get_attachment_url($img_id) : null,
+            'has_desc' => strlen($p->get_description()) > 20,
+            'short_desc' => wp_trim_words(strip_tags($p->get_short_description() ?: $p->get_description()), 8, '...'),
+        ];
+    }
+    $map['products'] = $prod_list;
+
+    // Categories
+    $cats = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
+    $map['categories'] = array_map(fn($c) => $c->name . ' (' . $c->count . ')', is_array($cats) ? $cats : []);
+
+    // Coupons
+    $coupons = get_posts(['post_type' => 'shop_coupon', 'post_status' => 'publish', 'numberposts' => 10]);
+    $map['coupons'] = array_map(function($c) {
+        $type = get_post_meta($c->ID, 'discount_type', true);
+        $amount = get_post_meta($c->ID, 'coupon_amount', true);
+        return $c->post_title . ' (' . $amount . ($type === 'percent' ? '%' : ' off') . ')';
+    }, $coupons);
+
+    // Store config
+    $map['config'] = [
+        'currency' => get_woocommerce_currency(),
+        'country' => get_option('woocommerce_default_country'),
+        'taxes' => get_option('woocommerce_calc_taxes', 'no'),
+        'shipping' => !empty(WC()->shipping()->get_shipping_methods()),
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+        'payments' => array_keys(array_filter(WC()->payment_gateways()->get_available_payment_gateways())),
+        'checkout_page' => get_option('woocommerce_checkout_page_id'),
+        'cart_page' => get_option('woocommerce_cart_page_id'),
+        'coming_soon' => get_option('woocommerce_coming_soon', 'no'),
+    ];
+
+    // Recent orders summary
+    $orders = wc_get_orders(['limit' => 5, 'orderby' => 'date', 'order' => 'DESC']);
+    $map['recent_orders'] = count($orders);
+    if (!empty($orders)) {
+        $total = 0;
+        foreach ($orders as $o) $total += $o->get_total();
+        $map['orders_total'] = $total;
+    }
+
+    // Pages WooCommerce uses
+    $map['pages'] = [
+        'shop' => get_option('woocommerce_shop_page_id'),
+        'cart' => get_option('woocommerce_cart_page_id'),
+        'checkout' => get_option('woocommerce_checkout_page_id'),
+        'myaccount' => get_option('woocommerce_myaccount_page_id'),
+        'terms' => get_option('woocommerce_terms_page_id'),
+    ];
+
+    return $map;
+}
+
+// ── Compact file map (full version) — FileZilla-like view for AI (minimal tokens) ──
+function wpilot_ctx_file_map() {
+    $map = [];
+    
+    // 1. Theme file structure
+    $theme_dir = get_stylesheet_directory();
+    $theme_files = [];
+    $scan = function($dir, $prefix = '') use (&$scan, &$theme_files, $theme_dir) {
+        if (!is_dir($dir)) return;
+        $items = @scandir($dir);
+        if (!$items) return;
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $path = $dir . '/' . $item;
+            $rel = $prefix . $item;
+            if (is_dir($path)) {
+                // Count files in subdirectory
+                $count = count(array_filter(@scandir($path) ?: [], fn($f) => $f !== '.' && $f !== '..' && !is_dir($path.'/'.$f)));
+                $theme_files[] = $rel . '/ (' . $count . ' files)';
+            } else {
+                $ext = pathinfo($item, PATHINFO_EXTENSION);
+                $size = filesize($path);
+                if (in_array($ext, ['php','css','js','json','html'])) {
+                    $theme_files[] = $rel . ' (' . round($size/1024, 1) . 'kb)';
+                }
+            }
+        }
+    };
+    $scan($theme_dir);
+    $map['theme_files'] = $theme_files;
+    
+    // 2. Uploads structure (folders + file counts)
+    $upload_dir = wp_upload_dir();
+    $base = $upload_dir['basedir'];
+    $upload_folders = [];
+    if (is_dir($base)) {
+        $dirs = @scandir($base);
+        if ($dirs) {
+            foreach ($dirs as $d) {
+                if ($d === '.' || $d === '..' || !is_dir($base . '/' . $d)) continue;
+                // Count all files recursively
+                $count = 0;
+                $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base . '/' . $d, RecursiveDirectoryIterator::SKIP_DOTS));
+                foreach ($iter as $file) { if ($file->isFile()) $count++; }
+                $upload_folders[] = $d . '/ (' . $count . ' files)';
+            }
+        }
+    }
+    $map['uploads'] = $upload_folders;
+    
+    // 3. mu-plugins (code injections)
+    $mu_dir = WPMU_PLUGIN_DIR;
+    $mu_plugins = [];
+    if (is_dir($mu_dir)) {
+        foreach (@scandir($mu_dir) ?: [] as $f) {
+            if ($f === '.' || $f === '..' || !str_ends_with($f, '.php')) continue;
+            $content = file_get_contents($mu_dir . '/' . $f);
+            $first_line = strtok($content, "\n");
+            $mu_plugins[] = $f . ' — ' . trim(str_replace(['<?php','//','/*','*/'], '', $first_line));
+        }
+    }
+    // Built by Christos Ferlachidis & Daniel Hedenberg
+    $map['mu_plugins'] = $mu_plugins;
+    
+    // 4. Key wp-config settings (no secrets!)
+    $map['wp_config'] = [
+        'WP_DEBUG' => defined('WP_DEBUG') ? WP_DEBUG : false,
+        'WP_CACHE' => defined('WP_CACHE') ? WP_CACHE : false,
+        'DISALLOW_FILE_EDIT' => defined('DISALLOW_FILE_EDIT') ? DISALLOW_FILE_EDIT : false,
+        'WP_MEMORY_LIMIT' => defined('WP_MEMORY_LIMIT') ? WP_MEMORY_LIMIT : ini_get('memory_limit'),
+        'DB_CHARSET' => defined('DB_CHARSET') ? DB_CHARSET : 'unknown',
+        'table_prefix' => $GLOBALS['table_prefix'] ?? 'wp_',
+    ];
+    
+    // 5. .htaccess exists?
+    $map['htaccess'] = file_exists(ABSPATH . '.htaccess') ? 'exists (' . round(filesize(ABSPATH . '.htaccess')/1024, 1) . 'kb)' : 'missing';
+    
+    // 6. Available page templates
+    $templates = wp_get_theme()->get_page_templates();
+    $map['page_templates'] = array_merge(['default' => 'Default'], $templates);
+    
+    // 7. Registered post types (custom)
+    $custom_types = [];
+    foreach (get_post_types(['_builtin' => false, 'public' => true], 'objects') as $pt) {
+        $count = wp_count_posts($pt->name);
+        $custom_types[] = $pt->name . ' (' . ($count->publish ?? 0) . ' published)';
+    }
+    $map['custom_post_types'] = $custom_types;
+    
+    // 8. Registered shortcodes
+    global $shortcode_tags;
+    $map['shortcodes'] = array_keys($shortcode_tags ?? []);
+    
+    // 9. Active widgets/sidebars
+    $sidebars = wp_get_sidebars_widgets();
+    $sidebar_summary = [];
+    foreach ($sidebars as $id => $widgets) {
+        if ($id === 'wp_inactive_widgets' || !is_array($widgets)) continue;
+        $sidebar_summary[$id] = count($widgets) . ' widgets';
+    }
+    $map['sidebars'] = $sidebar_summary;
+    
+    // 10. Cron jobs (scheduled tasks)
+    $crons = _get_cron_array();
+    $cron_hooks = [];
+    if ($crons) {
+        foreach ($crons as $time => $hooks) {
+            foreach ($hooks as $hook => $data) {
+                if (strpos($hook, 'wp_') === 0 || strpos($hook, 'woocommerce_') === 0) continue; // skip core
+                $cron_hooks[] = $hook;
+            }
+        }
+    }
+    $map['custom_crons'] = array_unique($cron_hooks);
+    
+    return $map;
 }

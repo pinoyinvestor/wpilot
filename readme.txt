@@ -4,7 +4,7 @@ Tags: ai, assistant, claude, seo, woocommerce, page builder, security, performan
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -44,6 +44,24 @@ Your API key and all site data stays on YOUR server. WPilot never sends your API
 Every change has an automatic backup. Click Undo to restore instantly. Crash recovery detects PHP errors and offers to restore.
 
 == Changelog ==
+
+= 2.1.0 =
+* 564 tools (was 203) — complete WordPress management via chatbubble
+* Screenshot + Claude Vision — AI sees your website visually
+* 22 premium templates — instant page deploy
+* Full WooCommerce: advanced coupons, shipping labels, PostNord tracking, reports
+* Header/footer/mobile menu builder — works with any theme
+* API connector: Stripe, Google Analytics, Mailchimp, Facebook Pixel, TikTok, Pinterest
+* File editor, database queries, WP-CLI — SSH-level access
+* SEO Pro: keyword research, competitor analysis, broken links
+* Email system: send, templates, bulk, newsletter
+* Booking system built-in
+* Calendar/events system
+* Role/permission management
+* Admin panel customization
+* Smart hosting detection (256MB-2048MB) — works on shared hosting
+* Auto-cleanup: screenshots deleted on cache purge
+* Memory optimized: only 3MB overhead
 
 = 2.0.0 =
 * Complete rewrite with 168 AI-powered tools

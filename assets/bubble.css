@@ -94,11 +94,18 @@
   background: var(--ca-bg2);
   border: 1px solid var(--ca-border2);
   border-radius: 18px;
-  overflow: hidden;
+  /* FIX: removed overflow:hidden so slash menu (position:absolute) is not clipped */
   box-shadow: var(--ca-shadow);
   display: flex; flex-direction: column;
   max-height: min(650px, calc(100vh - 100px)); /* Never taller than viewport */
 }
+/* Inner content clips overflow, not the panel itself */
+#caPanel > *:first-child { border-radius: 18px 18px 0 0; overflow: hidden; }
+#caPanel > *:last-child  { border-radius: 0 0 18px 18px; overflow: hidden; }
+/* Messages and input areas still clip internal overflow */
+.cap-msgs   { overflow-y: auto; overflow-x: hidden; }
+.cap-inp-wrap { overflow: visible; } /* FIX: was hidden, clipped slash menu and focus ring */
+
 @media screen and (max-width: 600px) {
   #caPanel {
     width: calc(100vw - 16px);
@@ -122,9 +129,10 @@
   background: var(--ca-bg3);
   border-bottom: 1px solid var(--ca-border);
   flex-shrink: 0;
+  overflow: hidden; /* clip within header only */
 }
-.cap-hdr-l   { display: flex; align-items: center; gap: 9px; }
-.cap-hdr-r   { display: flex; gap: 3px; }
+.cap-hdr-l   { display: flex; align-items: center; gap: 9px; min-width: 0; overflow: hidden; }
+.cap-hdr-r   { display: flex; gap: 3px; flex-shrink: 0; }
 
 .cap-av {
   width: 26px; height: 26px;
@@ -134,7 +142,7 @@
   font-size: 12px; flex-shrink: 0;
   box-shadow: 0 1px 4px rgba(91,127,255,.2);
 }
-.cap-name    { font-size: 12.5px; font-weight: 700; color: var(--ca-text); line-height: 1.1; letter-spacing: -.01em; }
+.cap-name    { font-size: 12.5px; font-weight: 700; color: var(--ca-text); line-height: 1.1; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cap-powered { font-size: 9.5px; color: var(--ca-text3); margin-top: 1px; }
 .cap-powered a { color: var(--ca-accent); text-decoration: none; font-weight: 600; opacity: .8; }
 .cap-powered a:hover { opacity: 1; }
@@ -155,8 +163,11 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 5px 13px; font-size: 10.5px; color: var(--ca-text3);
   background: var(--ca-bg); border-bottom: 1px solid var(--ca-border);
-  flex-shrink: 0;
+  flex-shrink: 0; overflow: hidden;
 }
+/* FIX: removed white-space:nowrap from left span so site name can wrap gracefully */
+.cap-ctx > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cap-ctx > span:last-child  { flex-shrink: 0; }
 .cap-pill-ok {
   font-size: 10px; font-weight: 700; color: #34D399;
   background: rgba(16,185,129,.1); border-radius: 10px;
@@ -187,7 +198,7 @@
 
 /* ── Messages ────────────────────────────────────────────────── */
 .cap-msgs {
-  flex: 1; overflow-y: auto; padding: 10px 12px;
+  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 8px;
   min-height: 200px;
   scrollbar-width: thin;
@@ -269,8 +280,19 @@
 .cap-nc-btn-ghost:hover { background: var(--ca-bg5); color: var(--ca-text); }
 
 /* ── Chat messages ───────────────────────────────────────────── */
-.cap-m { display: flex; gap: 8px; align-items: flex-start; max-width: 100%; }
-.cap-m-user { flex-direction: row-reverse; justify-content: flex-end; }
+.cap-m { display: flex; gap: 8px; align-items: flex-start; max-width: 100%; overflow: hidden; }
+/* FIX: user messages use row-reverse so the bubble is on the right;
+   justify-content must be flex-start (not flex-end) when reversed so it
+   stays pushed to the right edge, not the left. align-self:flex-end
+   ensures the row itself is right-aligned in the flex column. */
+.cap-m-user {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-self: flex-end;
+  max-width: 90%;
+}
+
+/* Built by Christos Ferlachidis & Daniel Hedenberg */
 
 .cap-mt {
   padding: 9px 12px;
@@ -280,22 +302,25 @@
   min-width: 0;
 }
 .cap-m-user .cap-mt {
-  background: linear-gradient(135deg, #5B7FFF 0%, #7C5CFC 100%) !important;
-  color: #ffffff !important;
-  border-radius: 12px;
+  /* FIX: removed !important overrides that blocked light-theme color vars */
+  background: linear-gradient(135deg, #5B7FFF 0%, #7C5CFC 100%);
+  color: #ffffff;
+  border-radius: 12px 12px 3px 12px; /* FIX: tail on bottom-right for user */
   box-shadow: 0 2px 8px rgba(91,127,255,.3);
-  max-width: 85%;
+  max-width: 100%;
   padding: 10px 14px;
   font-size: 13px;
 }
 .cap-m-ai .cap-mt {
   background: var(--ca-bg3);
   border: 1px solid var(--ca-border2);
-  border-radius: 12px;
-  max-width: calc(100% - 40px);
+  border-radius: 12px 12px 12px 3px; /* tail on bottom-left for AI */
+  max-width: calc(100% - 34px);
   padding: 10px 14px;
 }
-.cap-m-ai .cap-av { flex-shrink: 0; }
+.cap-m-ai { gap: 6px; align-items: flex-start; }
+.cap-m-ai .cap-av { flex-shrink: 0; margin-top: 2px; }
+.cap-m-ai .cap-mt { min-width: 0; overflow-wrap: anywhere; }
 .cap-mt code {
   background: rgba(0,0,0,.25);
   border-radius: 3px; padding: 1px 5px;
@@ -310,7 +335,6 @@
   padding: 0;
   align-self: flex-start;
 }
-/* Built by Christos Ferlachidis & Daniel Hedenberg */
 .cap-dots span {
   width: 5px; height: 5px;
   background: var(--ca-text3);
@@ -324,6 +348,18 @@
   40%          { transform: translateY(-6px); opacity: 1; }
 }
 
+/* Thinking indicator - visible and clear */
+#capTyping { margin: 8px 0; }
+#capTyping .cap-m-ai { animation: capFadeIn .2s ease; }
+#capTyping .cap-mt {
+  background: var(--ca-bg3);
+  border: 1px solid var(--ca-border2);
+  border-radius: 13px 13px 13px 3px;
+  padding: 10px 14px;
+}
+#capThinkText { letter-spacing: .02em; }
+#capThinkTimer { min-width: 24px; text-align: right; }
+
 /* ── Action cards ────────────────────────────────────────────── */
 .cap-ac {
   display: flex; align-items: flex-start; gap: 8px;
@@ -332,13 +368,14 @@
   border: 1px solid var(--ca-border2);
   border-left: 3px solid var(--ca-accent);
   border-radius: 10px;
-  transition: all .15s ease;
+  transition: border-color .15s ease, background .15s ease;
   margin: 2px 0;
+  max-width: 100%; overflow: hidden; box-sizing: border-box;
 }
+/* FIX: single hover rule (was duplicated — second one clobbered background change) */
 .cap-ac:hover { border-color: var(--ca-accent); background: var(--ca-bg4); }
-.cap-ac:hover { border-color: var(--ca-accent); }
 .cap-ac-ico   { font-size: 14px; flex-shrink: 0; margin-top: 2px; }
-.cap-ac-title { font-size: 12.5px; font-weight: 700; color: var(--ca-text); letter-spacing: -.01em; }
+.cap-ac-title { font-size: 12.5px; font-weight: 700; color: var(--ca-text); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; }
 .cap-ac-desc  { font-size: 11.5px; color: var(--ca-text2); margin-top: 2px; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; }
 .cap-ac-btns  { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
 .cap-ac-apply {
@@ -350,6 +387,10 @@
   box-shadow: 0 1px 6px rgba(91,127,255,.3);
 }
 .cap-ac-apply:hover { opacity: .85; }
+/* FIX: single disabled rule (was defined twice) */
+.cap-ac-apply:disabled, .cap-ac-apply[disabled] { pointer-events: none; cursor: not-allowed; }
+.cap-ac-apply.cap-done   { background: var(--ca-green) !important; color: #fff !important; cursor: default !important; }
+.cap-ac-apply.cap-failed { background: var(--ca-red)   !important; color: #fff !important; }
 .cap-ac-skip {
   padding: 5px 11px;
   background: var(--ca-bg4); color: var(--ca-text2);
@@ -359,6 +400,10 @@
 }
 .cap-ac-skip:hover { background: var(--ca-bg5); color: var(--ca-text); }
 
+/* Results after Apply — prevent overflow */
+.cap-ac > div { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.cap-ac div[style*=margin-top] { word-break: break-word; overflow-wrap: anywhere; }
+
 /* ── Input area ──────────────────────────────────────────────── */
 .cap-inp-wrap {
   padding: 10px 11px;
@@ -366,17 +411,23 @@
   background: var(--ca-bg2);
   flex-shrink: 0;
   position: relative;
+  /* FIX: overflow:visible so slash menu (absolute positioned) shows above input,
+     and focus ring on textarea is not clipped */
+  overflow: visible;
 }
 .cap-input-row { display: flex; gap: 7px; align-items: flex-end; }
 
 #capIn {
-  flex: 1; background: var(--ca-bg3); color: #F1F5FF !important;
+  flex: 1; background: var(--ca-bg3);
+  /* FIX: removed duplicate color declaration; use token only */
+  color: var(--ca-text);
   border: 1px solid var(--ca-border2);
   border-radius: 10px; padding: 9px 12px;
-  color: var(--ca-text); font-family: var(--ca-font);
+  font-family: var(--ca-font);
   font-size: 13px; line-height: 1.5;
   resize: none; min-height: 38px; max-height: 120px;
   outline: none; transition: border-color .15s, box-shadow .15s;
+  box-sizing: border-box;
 }
 #capIn:focus {
   border-color: rgba(91,127,255,.5);
@@ -420,8 +471,11 @@
   display: flex; align-items: flex-start; gap: 8px;
   padding: 10px 12px; border-radius: 9px;
   font-size: 12.5px; line-height: 1.55;
-  animation: capFadeIn .22s ease;
+  /* FIX: single animation declaration (was defined twice with conflicting values) */
+  animation: capFadeIn .25s ease;
+  margin-top: 8px;
 }
+.cap-tool-result .cap-tr-msg { line-height: 1.5; }
 .cap-tool-ok  { background: rgba(16,185,129,.09);  border: 1px solid rgba(16,185,129,.22);  color: #6EE7B7; }
 .cap-tool-err { background: rgba(239,68,68,.09);   border: 1px solid rgba(239,68,68,.25);   color: #FCA5A5; }
 .cap-tr-icon  { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
@@ -436,7 +490,9 @@
   border: 1px solid rgba(91,127,255,.3);
   border-radius: 7px; color: #93B4FF;
   font-size: 12px; font-weight: 700; cursor: pointer;
-  transition: all .15s; white-space: nowrap;
+  /* FIX: single transition (was defined twice) */
+  transition: all .15s ease;
+  white-space: nowrap;
   font-family: var(--ca-font);
 }
 .cap-restore-btn:hover:not(:disabled) {
@@ -456,8 +512,6 @@
   border-color: rgba(239,68,68,.6); color: #fff; animation: none;
 }
 
-/* ── Slash command menu ──────────────────────────────────────── */
-
 /* Refresh button after page changes */
 .cap-refresh-btn {
   display: inline-flex; align-items: center; gap: 5px;
@@ -466,53 +520,20 @@
   border: 1px solid rgba(16,185,129,.3);
   border-radius: 7px; color: #6EE7B7;
   font-size: 12px; font-weight: 700; cursor: pointer;
-  transition: all .15s; white-space: nowrap;
+  /* FIX: single declaration (was defined twice); use correct keyframe name caPulse */
+  transition: all .15s;
+  animation: caPulse 2s ease infinite;
+  white-space: nowrap;
   font-family: var(--ca-font);
 }
-.cap-refresh-btn:hover { background: rgba(16,185,129,.22); color: #fff; }
+.cap-refresh-btn:hover { background: rgba(16,185,129,.22); color: #fff; animation: none; }
 #caRoot[data-theme="light"] .cap-refresh-btn { color: #047857; background: rgba(16,185,129,.1); }
 
 /* Apply button progress animation */
 .cap-spin { display: inline-block; animation: capSpin 1s linear infinite; }
 @keyframes capSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.cap-ac-apply[disabled] { pointer-events: none; }
 
-/* Thinking indicator with timer */
-#capThinkText { letter-spacing: .02em; }
-#capThinkTimer { min-width: 24px; text-align: right; }
-
-/* Apply button states */
-.cap-ac-apply[disabled] { pointer-events: none; cursor: not-allowed; }
-.cap-ac-apply.cap-done { background: var(--ca-green) !important; color: #fff !important; cursor: default !important; }
-.cap-ac-apply.cap-failed { background: var(--ca-red) !important; color: #fff !important; }
-
-/* Tool result cards - better styling */
-.cap-tool-result {
-    animation: capFadeIn .3s ease;
-    margin-top: 8px;
-}
-.cap-tool-result .cap-tr-msg {
-    line-height: 1.5;
-}
-
-/* Refresh button pulse */
-.cap-refresh-btn {
-    animation: capPulse 2s ease infinite;
-}
-.cap-refresh-btn:hover {
-    animation: none;
-}
-
-/* Undo button after action */
-.cap-restore-btn {
-    transition: all .15s ease;
-}
-
-/* Sticky undo at bottom */
-.cap-sticky-undo {
-    backdrop-filter: blur(8px);
-}
-
+/* ── Slash command menu ──────────────────────────────────────── */
 .cap-slash-menu {
   position: absolute; bottom: calc(100% + 6px);
   left: 11px; right: 11px;
@@ -556,6 +577,8 @@
   border-top: 1px solid var(--ca-border);
   font-size: 10px; color: var(--ca-text3);
   text-align: center; background: var(--ca-bg3); flex-shrink: 0;
+  /* FIX: removed white-space:nowrap that clipped multi-word footer text */
+  overflow: hidden;
 }
 .cap-footer a { color: var(--ca-text3); text-decoration: none; }
 .cap-footer a:hover { color: var(--ca-text2); }
@@ -587,16 +610,38 @@
     margin: 9px auto 0; flex-shrink: 0;
   }
   .cap-msgs { max-height: 44vh; }
-  .cap-mt   { font-size: 13px; }
-  #capIn    { font-size: 16px; }
+  .cap-mt   { font-size: 13px; max-width: calc(100vw - 100px); }
+  #capIn    { font-size: 16px; } /* prevent iOS zoom on focus */
+  .cap-ac   { flex-direction: column; }
+  .cap-ac-title { font-size: 12px; }
+  .cap-ac-desc  { font-size: 11px; }
+  .cap-ac-btns  { width: 100%; }
+  .cap-ac-apply, .cap-ac-skip { width: 100%; text-align: center; padding: 8px; }
+  .cap-hdr { padding: 8px 10px; }
+  .cap-hdr-r { gap: 1px; }
+  .cap-ib { width: 24px; height: 24px; font-size: 12px; }
+  .cap-ctx { padding: 4px 10px; font-size: 10px; }
+  .cap-footer { padding: 5px 8px; font-size: 9px; }
+  .cap-msgs { padding: 10px 8px; }
+  #capIn { padding: 8px 10px; }
+  .cap-welcome { padding: 10px 6px; }
+  .cap-wlc-title { font-size: 12px; }
+  .cap-wlc-sub { font-size: 11px; }
+  .cap-chip { font-size: 11px; padding: 6px 8px; }
+  .cap-nc { padding: 14px 10px; }
+  .cap-nc-h { font-size: 16px; }
+  .cap-nc-sub { font-size: 11px; }
 }
 
 @media (max-width: 360px) {
+  #caPanel { border-radius: 12px; }
   .cap-name    { font-size: 11.5px; }
   .cap-powered { display: none; }
   .cap-footer  { display: none; }
   .cap-ac-btns { flex-direction: column; }
   .cap-ac-apply, .cap-ac-skip { width: 100%; text-align: center; }
+  .cap-hdr-r .cap-ib:nth-child(n+3) { display: none; }
+  .cap-mt { font-size: 12px; }
 }
 
 /* WordPress admin bar */
@@ -611,7 +656,7 @@
   }
 }
 
-/* ── Restore/undo button ──────────────────────────────────────── */
+/* ── Restore/undo alternate class (used in older inline styles) ── */
 .ca-restore-btn { padding:5px 12px; background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.25); color:#FCD34D; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; transition:opacity .12s; margin-top:6px; display:inline-block; }
 .ca-restore-btn:hover { opacity:.8; }
 .ca-restore-urgent { background:rgba(239,68,68,.1); border-color:rgba(239,68,68,.25); color:#F87171; }
@@ -671,106 +716,21 @@
   cursor: pointer;
 }
 #wpiCrashRecovery button:hover { opacity: .9; }
-
-/* ── Light theme tool result colors ─────────────────────────── */
-#caRoot[data-theme="light"] .cap-tool-ok { color: #047857; background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); }
-#caRoot[data-theme="light"] .cap-tool-err { color: #b91c1c; background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.25); }
-#caRoot[data-theme="light"] .cap-restore-btn { color: #3b5bdb; background: rgba(59,91,219,.1); border-color: rgba(59,91,219,.25); }
 @media screen and (max-width: 782px) {
   #wpiCrashRecovery { top: 46px; flex-wrap: wrap; }
 }
 
-/* ── Enhanced Responsive ─────────────────────────────────── */
-@media (max-width: 480px) {
-    .cap-mt { max-width: calc(100vw - 100px); font-size: 13px; }
-    .cap-ac { flex-direction: column; }
-    .cap-ac-title { font-size: 12px; }
-    .cap-ac-desc { font-size: 11px; }
-    .cap-ac-btns { width: 100%; }
-    .cap-ac-apply, .cap-ac-skip { width: 100%; text-align: center; padding: 8px; }
-    .cap-hdr { padding: 8px 10px; }
-    .cap-hdr-r { gap: 1px; }
-    .cap-ib { width: 24px; height: 24px; font-size: 12px; }
-    .cap-ctx { padding: 4px 10px; font-size: 10px; }
-    .cap-footer { padding: 5px 8px; font-size: 9px; }
-    .cap-msgs { padding: 10px 8px; }
-    #capIn { font-size: 14px; padding: 8px 10px; }
-    .cap-welcome { padding: 10px 6px; }
-    .cap-wlc-title { font-size: 12px; }
-    .cap-wlc-sub { font-size: 11px; }
-    .cap-chip { font-size: 11px; padding: 6px 8px; }
-    .cap-nc { padding: 14px 10px; }
-    .cap-nc-h { font-size: 16px; }
-    .cap-nc-sub { font-size: 11px; }
-}
+/* ── Light theme overrides ─────────────────────────────────── */
+#caRoot[data-theme="light"] .cap-tool-ok  { color: #047857; background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); }
+#caRoot[data-theme="light"] .cap-tool-err { color: #b91c1c; background: rgba(239,68,68,.1);   border-color: rgba(239,68,68,.25); }
+#caRoot[data-theme="light"] .cap-restore-btn { color: #3b5bdb; background: rgba(59,91,219,.1); border-color: rgba(59,91,219,.25); }
 
-@media (max-width: 360px) {
-    #caPanel { border-radius: 12px; }
-    .cap-ac-btns { flex-direction: column; }
-    .cap-ac-apply, .cap-ac-skip { width: 100%; }
-    .cap-hdr-r .cap-ib:nth-child(n+3) { display: none; }
-    .cap-mt { font-size: 12px; }
-}
-
-/* Action card result on mobile */
+/* Action card results on mobile */
 @media (max-width: 600px) {
-    .cap-tool-result { font-size: 12px; padding: 8px 10px; }
-    .cap-restore-btn { font-size: 11px; padding: 5px 10px; }
-    .cap-refresh-btn { font-size: 11px; padding: 5px 10px; }
+  .cap-tool-result { font-size: 12px; padding: 8px 10px; }
+  .cap-restore-btn { font-size: 11px; padding: 5px 10px; }
+  .cap-refresh-btn { font-size: 11px; padding: 5px 10px; }
 }
 
-/* Thinking indicator - visible and clear */
-#capTyping { margin: 8px 0; }
-#capTyping .cap-m-ai { animation: capFadeIn .2s ease; }
-#capTyping .cap-mt {
-    background: var(--ca-bg3);
-    border: 1px solid var(--ca-border2);
-    border-radius: 13px 13px 13px 3px;
-    padding: 10px 14px;
-}
-
-/* ── Fix all overflow and overlapping issues ─────────────── */
-
-/* Messages container */
-.cap-msgs { overflow-x: hidden; }
-
-/* Message layout - no overlap */
-.cap-m { max-width: 100%; overflow: hidden; }
-.cap-m-ai { gap: 6px; align-items: flex-start; }
-.cap-m-ai .cap-av { flex-shrink: 0; margin-top: 2px; }
-.cap-m-ai .cap-mt { min-width: 0; overflow-wrap: anywhere; }
-
-/* User messages */  
-
-
-/* Action card - prevent overflow */
-.cap-ac { max-width: 100%; overflow: hidden; box-sizing: border-box; }
-.cap-ac-title { overflow: hidden; text-overflow: ellipsis; }
-.cap-ac-desc { overflow-wrap: anywhere; }
-
-/* Results after Apply */
-.cap-ac > div { min-width: 0; max-width: 100%; overflow: hidden; }
-.cap-ac div[style*=margin-top] { word-break: break-word; overflow-wrap: anywhere; }
-
-/* Header - no overlap */
-.cap-hdr { overflow: hidden; }
-.cap-hdr-l { overflow: hidden; min-width: 0; }
-.cap-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Footer - no overlap */
-.cap-footer { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-
-/* Input area */
-.cap-inp-wrap { overflow: hidden; }
-
-/* Context bar */
-.cap-ctx { overflow: hidden; }
-.cap-ctx span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ── Clean overflow rules ────────────────────────────────── */
-.cap-msgs { overflow-x: hidden; }
-.cap-ac { max-width: 100%; box-sizing: border-box; }
-.cap-ac-title { overflow: hidden; text-overflow: ellipsis; }
-.cap-hdr-l { min-width: 0; }
-.cap-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cap-footer { overflow: hidden; }
+/* Sticky undo at bottom */
+.cap-sticky-undo { backdrop-filter: blur(8px); }
