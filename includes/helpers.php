@@ -38,6 +38,18 @@ add_filter( 'robots_txt', function( $output, $public ) {
     return $output;
 }, 10, 2 );
 
+// Output custom head code injected by WPilot tools
+add_action( 'wp_head', function() {
+    $head = get_option( 'wpilot_head_code', '' );
+    if ( $head ) echo $head . "\n";
+}, 5 );
+
+// Output custom footer scripts injected by WPilot tools
+add_action( 'wp_footer', function() {
+    $scripts = get_option( 'wpilot_footer_scripts', '' );
+    if ( $scripts ) echo $scripts . "\n";
+}, 99 );
+
 // Output schema markup, Open Graph and Twitter Card tags in <head>
 add_action( 'wp_head', function() {
     if ( ! is_singular() ) return;
