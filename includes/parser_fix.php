@@ -82,12 +82,13 @@ function wpilot_parse_compact_actions($text) {
         $after = preg_replace('/```(?:json)?\s*/i', '', $after);
         $after = preg_replace('/\s*```/', '', $after);
         $after = trim($after);
-        // Try HTML block first (```html ... ```) — preferred for page content
+        // Try HTML block first — but ONLY for tools that accept HTML content
         $params = [];
+        $html_tools = ['create_html_page','update_page_content','append_page_content','add_head_code','add_footer_code','add_php_snippet','edit_page_css'];
         $bt = '`' . '`' . '`';
-        // Match closed block first, then unclosed (truncated response)
-        if (preg_match('/' . preg_quote($bt) . 'html\s*(.*?)' . preg_quote($bt) . '/s', $after, $hm)
-            || preg_match('/' . preg_quote($bt) . 'html\s*(.*)/s', $after, $hm)) {
+        if (in_array($tool, $html_tools) && (
+            preg_match('/' . preg_quote($bt) . 'html\s*(.*?)' . preg_quote($bt) . '/s', $after, $hm)
+            || preg_match('/' . preg_quote($bt) . 'html\s*(.*)/s', $after, $hm))) {
             $html_content = trim($hm[1]);
             // Clean up truncated HTML — remove trailing incomplete tags and close style/div
             $html_content = preg_replace('/<[^>]*$/', '', $html_content); // remove incomplete tag at end
@@ -171,10 +172,12 @@ function wpilot_enhance_action_params(&$actions, $text) {
                 $end = isset($action_positions[$idx + 1]) ? $action_positions[$idx + 1] : strlen($text);
                 $segment = substr($text, $start, max($end - $start, 50000));
 
-                // Try HTML block first — closed or unclosed (truncated)
+                // Try HTML block — ONLY for tools that accept HTML
                 $bt = '`' . '`' . '`';
-                if (preg_match('/' . preg_quote($bt) . 'html\s*(.*?)' . preg_quote($bt) . '/s', $segment, $hm)
-                    || preg_match('/' . preg_quote($bt) . 'html\s*(.*)/s', $segment, $hm)) {
+                $html_tools = ['create_html_page','update_page_content','append_page_content','add_head_code','add_footer_code','add_php_snippet','edit_page_css'];
+                if (in_array($action['tool'], $html_tools) && (
+                    preg_match('/' . preg_quote($bt) . 'html\s*(.*?)' . preg_quote($bt) . '/s', $segment, $hm)
+                    || preg_match('/' . preg_quote($bt) . 'html\s*(.*)/s', $segment, $hm))) {
                     $html = trim($hm[1]);
                     if (strlen($html) > 10) {
                         $action['params'] = array_merge($action['params'] ?: [], ['html' => $html]);
