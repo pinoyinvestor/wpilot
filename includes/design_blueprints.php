@@ -334,6 +334,8 @@ function wpilot_match_blueprint( $description ) {
 
 // ── Generate CSS from a blueprint ─────────────────────────────
 // Builder-aware: adds overrides for Elementor, Divi, Gutenberg
+// Uses !important on critical rules to beat theme/plugin CSS
+// Injects via mu-plugin at priority 999999 to load LAST
 function wpilot_blueprint_css( $blueprint_id, $builder = 'none' ) {
     $blueprints = wpilot_get_blueprints();
     if ( ! isset( $blueprints[$blueprint_id] ) ) return '';
@@ -344,29 +346,31 @@ function wpilot_blueprint_css( $blueprint_id, $builder = 'none' ) {
     $bf   = $bp['body_font'];
     $gf   = $bp['google_fonts'];
 
-    // CSS variables on :root
-    $css = "/* WPilot Blueprint: {$bp['name']} */\n";
+    // CSS variables on :root with !important — these MUST win
+    $css = "/* WPilot Blueprint: {$bp['name']} — generated, do not edit manually */\n";
     $css .= "@import url('https://fonts.googleapis.com/css2?family={$gf}&display=swap');\n\n";
-    $css .= ":root {\n";
+
+    // Variables on html (higher specificity than :root)
+    $css .= "html:root {\n";
     foreach ( $vars as $var => $val ) {
-        $css .= "  {$var}: {$val};\n";
+        $css .= "  {$var}: {$val} !important;\n";
     }
     $css .= "}\n\n";
 
-    // Universal base styles
-    $css .= "body { background: var(--wp-bg); color: var(--wp-text); font-family: '{$bf}', sans-serif; }\n";
-    $css .= "h1, h2, h3, h4, h5, h6 { font-family: '{$hf}', serif; color: var(--wp-heading); }\n";
-    $css .= "a { color: var(--wp-primary); }\n";
-    $css .= "a:hover { color: var(--wp-secondary); }\n\n";
+    // Universal base — html body = specificity 0,0,0,2 + !important beats everything
+    $css .= "html body { background: var(--wp-bg) !important; color: var(--wp-text) !important; font-family: '{$bf}', sans-serif !important; }\n";
+    $css .= "html body h1, html body h2, html body h3, html body h4, html body h5, html body h6 { font-family: '{$hf}', serif !important; color: var(--wp-heading) !important; }\n";
+    $css .= "html body a { color: var(--wp-primary); }\n";
+    $css .= "html body a:hover { color: var(--wp-secondary); }\n\n";
 
-    // Buttons
-    $css .= ".wp-block-button__link, .button, button, input[type='submit'], .woocommerce a.button, .woocommerce button.button {\n";
-    $css .= "  background: var(--wp-primary); color: var(--wp-bg); border: none;\n";
-    $css .= "  border-radius: var(--wp-radius); font-family: '{$bf}', sans-serif;\n";
+    // Buttons — high specificity to beat theme !important
+    $css .= "html body .wp-block-button__link,\nhtml body .button,\nhtml body button:not(.menu-toggle):not(.search-toggle),\nhtml body input[type='submit'],\nhtml body .woocommerce a.button,\nhtml body .woocommerce button.button,\nhtml body .wc-block-components-button {\n";
+    $css .= "  background: var(--wp-primary) !important; color: var(--wp-bg) !important; border: none !important;\n";
+    $css .= "  border-radius: var(--wp-radius) !important; font-family: '{$bf}', sans-serif !important;\n";
     $css .= "  padding: 12px 28px; font-weight: 600; transition: all 0.3s ease;\n";
     $css .= "}\n";
-    $css .= ".wp-block-button__link:hover, .button:hover, button:hover, .woocommerce a.button:hover, .woocommerce button.button:hover {\n";
-    $css .= "  background: var(--wp-secondary); transform: translateY(-1px);\n";
+    $css .= "html body .wp-block-button__link:hover,\nhtml body .button:hover,\nhtml body button:not(.menu-toggle):hover,\nhtml body .woocommerce a.button:hover,\nhtml body .woocommerce button.button:hover {\n";
+    $css .= "  background: var(--wp-secondary) !important; transform: translateY(-1px);\n";
     if ( $vars['--wp-shadow'] !== 'none' ) {
         $css .= "  box-shadow: var(--wp-shadow);\n";
     }
@@ -384,35 +388,72 @@ function wpilot_blueprint_css( $blueprint_id, $builder = 'none' ) {
     // Builder-specific overrides
     switch ( $builder ) {
         case 'elementor':
-            $css .= "/* Elementor overrides */\n";
-            $css .= ".elementor-widget-heading .elementor-heading-title { font-family: '{$hf}', serif !important; color: var(--wp-heading) !important; }\n";
-            $css .= ".elementor-widget-text-editor { font-family: '{$bf}', sans-serif !important; color: var(--wp-text) !important; }\n";
-            $css .= ".elementor-button { background: var(--wp-primary) !important; border-radius: var(--wp-radius) !important; font-family: '{$bf}', sans-serif !important; }\n";
-            $css .= ".elementor-button:hover { background: var(--wp-secondary) !important; }\n";
-            $css .= ".elementor-section { border-radius: var(--wp-radius); }\n";
-            $css .= ".elementor-widget-image img { border-radius: var(--wp-radius); }\n";
-            $css .= ".elementor-icon { color: var(--wp-primary); }\n";
-            $css .= ".elementor-counter-number { color: var(--wp-primary); font-family: '{$hf}', serif; }\n\n";
+            $css .= "/* Elementor overrides — specificity: body .elementor = beats inline Elementor CSS */\n";
+            $css .= "body .elementor-widget-heading .elementor-heading-title { font-family: '{$hf}', serif !important; color: var(--wp-heading) !important; }\n";
+            $css .= "body .elementor-widget-text-editor, body .elementor-widget-text-editor p { font-family: '{$bf}', sans-serif !important; color: var(--wp-text) !important; }\n";
+            $css .= "body .elementor-button, body .elementor-button-wrapper .elementor-button { background-color: var(--wp-primary) !important; border-radius: var(--wp-radius) !important; font-family: '{$bf}', sans-serif !important; border: none !important; color: var(--wp-bg) !important; }\n";
+            $css .= "body .elementor-button:hover { background-color: var(--wp-secondary) !important; }\n";
+            $css .= "body .elementor-section, body .e-con { background-color: var(--wp-bg); }\n";
+            $css .= "body .elementor-section.wpilot-section-alt, body .e-con.wpilot-section-alt { background-color: var(--wp-bg-alt) !important; }\n";
+            $css .= "body .elementor-widget-image img { border-radius: var(--wp-radius) !important; }\n";
+            $css .= "body .elementor-icon, body .elementor-icon i { color: var(--wp-primary) !important; }\n";
+            $css .= "body .elementor-counter-number { color: var(--wp-primary) !important; font-family: '{$hf}', serif !important; }\n";
+            $css .= "body .elementor-widget-icon-box .elementor-icon-box-title { font-family: '{$hf}', serif !important; color: var(--wp-heading) !important; }\n";
+            $css .= "body .elementor-widget-icon-box .elementor-icon-box-description { color: var(--wp-text-muted) !important; }\n";
+            $css .= "body .elementor-tab-title, body .elementor-tab-title a { font-family: '{$bf}', sans-serif !important; }\n";
+            $css .= "body .elementor-tab-title.elementor-active { color: var(--wp-primary) !important; border-color: var(--wp-primary) !important; }\n";
+            $css .= "body .elementor-widget-divider .elementor-divider-separator { border-color: var(--wp-border) !important; }\n";
+            // Elementor inline styles: the nuclear option — override data-settings inline bg
+            $css .= "body .elementor-section[data-settings] > .elementor-container { position: relative; z-index: 1; }\n\n";
             break;
 
         case 'divi':
-            $css .= "/* Divi overrides */\n";
-            $css .= "#main-content .container { font-family: '{$bf}', sans-serif; color: var(--wp-text); }\n";
-            $css .= ".et_pb_module h1, .et_pb_module h2, .et_pb_module h3, .et_pb_module h4 { font-family: '{$hf}', serif !important; color: var(--wp-heading) !important; }\n";
-            $css .= ".et_pb_button { background: var(--wp-primary) !important; border-radius: var(--wp-radius) !important; border: none !important; color: var(--wp-bg) !important; }\n";
-            $css .= ".et_pb_button:hover { background: var(--wp-secondary) !important; }\n";
-            $css .= ".et_pb_blurb_content .et_pb_main_blurb_image .et-waypoint { color: var(--wp-primary); }\n";
-            $css .= ".et_pb_pricing_table { border-radius: var(--wp-radius); }\n\n";
+            $css .= "/* Divi overrides — #et-main-area beats Divi's #page-container specificity */\n";
+            $css .= "#et-main-area, #main-content .container { font-family: '{$bf}', sans-serif !important; color: var(--wp-text) !important; }\n";
+            $css .= "#et-main-area h1, #et-main-area h2, #et-main-area h3, #et-main-area h4, .et_pb_module h1, .et_pb_module h2, .et_pb_module h3, .et_pb_module h4 { font-family: '{$hf}', serif !important; color: var(--wp-heading) !important; }\n";
+            $css .= "body #page-container .et_pb_button, body .et_pb_button { background-color: var(--wp-primary) !important; border-radius: var(--wp-radius) !important; border: none !important; color: var(--wp-bg) !important; padding: 12px 28px !important; }\n";
+            $css .= "body #page-container .et_pb_button:hover { background-color: var(--wp-secondary) !important; }\n";
+            $css .= "body .et_pb_button:after { display: none !important; }\n"; // Remove Divi arrow
+            $css .= "#et-main-area .et_pb_blurb_content .et_pb_main_blurb_image span { color: var(--wp-primary) !important; }\n";
+            $css .= "#et-main-area .et_pb_text_inner a { color: var(--wp-primary) !important; }\n";
+            $css .= "body .et_pb_section { background-color: var(--wp-bg); }\n";
+            $css .= "body .et_pb_section.wpilot-section-alt { background-color: var(--wp-bg-alt) !important; }\n";
+            $css .= "#et-main-area .et_pb_pricing_table { border-radius: var(--wp-radius) !important; }\n";
+            $css .= "#et-main-area .et_pb_testimonial { border-radius: var(--wp-radius) !important; border-left: 3px solid var(--wp-primary) !important; }\n\n";
             break;
 
         case 'gutenberg':
         case 'block':
             $css .= "/* Gutenberg block overrides */\n";
-            $css .= ".wp-block-cover { border-radius: var(--wp-radius); }\n";
-            $css .= ".wp-block-columns .wp-block-column { border-radius: var(--wp-radius); }\n";
-            $css .= ".wp-block-image img { border-radius: var(--wp-radius); }\n";
-            $css .= ".wp-block-quote { border-left-color: var(--wp-primary); }\n";
-            $css .= ".wp-block-pullquote { border-color: var(--wp-primary); }\n\n";
+            $css .= "body .wp-block-cover { border-radius: var(--wp-radius); }\n";
+            $css .= "body .wp-block-columns .wp-block-column { border-radius: var(--wp-radius); }\n";
+            $css .= "body .wp-block-image img { border-radius: var(--wp-radius) !important; }\n";
+            $css .= "body .wp-block-quote { border-left-color: var(--wp-primary) !important; }\n";
+            $css .= "body .wp-block-pullquote { border-color: var(--wp-primary) !important; }\n";
+            $css .= "body .wp-block-group { border-radius: var(--wp-radius); }\n";
+            $css .= "body .wp-block-separator { border-color: var(--wp-border) !important; }\n";
+            $css .= "body .wp-block-table { border-color: var(--wp-border); }\n";
+            $css .= "body .wp-block-table td, body .wp-block-table th { border-color: var(--wp-border) !important; }\n\n";
+            break;
+
+        // Storefront theme — known to use lots of !important
+        default:
+            // Check if Storefront
+            $theme_name = strtolower( wp_get_theme()->get('Name') );
+            if ( strpos( $theme_name, 'storefront' ) !== false || strpos( $theme_name, 'flavor' ) !== false ) {
+                $css .= "/* Storefront overrides — Storefront uses inline CSS from PHP, we must beat it */\n";
+                $css .= "body.storefront, body.flavor { background-color: var(--wp-bg) !important; }\n";
+                $css .= "body.storefront .site-header, body.storefront #masthead { background-color: var(--wp-bg) !important; }\n";
+                $css .= "body.storefront .main-navigation ul li a, body.storefront .secondary-navigation ul li a { color: var(--wp-text) !important; font-family: '{$bf}', sans-serif !important; }\n";
+                $css .= "body.storefront .main-navigation ul li a:hover { color: var(--wp-primary) !important; }\n";
+                $css .= "body.storefront .site-title a { color: var(--wp-heading) !important; font-family: '{$hf}', serif !important; }\n";
+                $css .= "body.storefront button, body.storefront input[type='submit'], body.storefront .button, body.storefront .added_to_cart { background-color: var(--wp-primary) !important; color: var(--wp-bg) !important; border-radius: var(--wp-radius) !important; }\n";
+                $css .= "body.storefront button:hover, body.storefront .button:hover { background-color: var(--wp-secondary) !important; }\n";
+                $css .= "body.storefront .storefront-product-section { background-color: var(--wp-bg-alt) !important; }\n";
+                $css .= "body.storefront .site-footer { background-color: var(--wp-bg-alt) !important; color: var(--wp-text-muted) !important; }\n";
+                $css .= "body.storefront .woocommerce-tabs ul.tabs li.active a { color: var(--wp-primary) !important; }\n";
+                $css .= "body.storefront #payment .payment_methods li { background: var(--wp-bg-alt) !important; border-color: var(--wp-border) !important; }\n\n";
+            }
             break;
     }
 
@@ -547,10 +588,40 @@ function wpilot_apply_blueprint( $params ) {
     $bp      = $blueprints[$blueprint_id];
     $builder = function_exists( 'wpilot_detect_builder' ) ? wpilot_detect_builder() : 'none';
 
-    // 1. Generate and apply CSS
+    // 1. Generate CSS
     $css = wpilot_blueprint_css( $blueprint_id, $builder );
     if ( function_exists( 'wpilot_save_css_snapshot' ) ) wpilot_save_css_snapshot();
+
+    // Save to WP custom CSS (for themes that read it)
     wp_update_custom_css_post( $css );
+
+    // ALSO inject via mu-plugin at priority 999999 — this beats ANY !important
+    // from themes, plugins, or inline styles because it loads LAST
+    $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+    if ( ! is_dir( $mu_dir ) ) wp_mkdir_p( $mu_dir );
+
+    $escaped_css = addslashes( $css );
+    $override_php = "<?php\n";
+    $override_php .= "// WPilot Blueprint CSS Override — loads LAST to beat all !important rules\n";
+    $override_php .= "// Blueprint: {$bp['name']} | Generated: " . current_time('Y-m-d H:i') . "\n";
+    $override_php .= "if (!defined('ABSPATH')) exit;\n\n";
+    $override_php .= "// Priority 999999 = loads after everything else\n";
+    $override_php .= "add_action('wp_head', function() {\n";
+    $override_php .= "    echo '<style id=\"wpilot-blueprint\" data-blueprint=\"{$blueprint_id}\">' . wp_get_custom_css() . '</style>';\n";
+    $override_php .= "}, 999999);\n\n";
+    $override_php .= "// Also dequeue conflicting theme inline styles for Storefront\n";
+    $override_php .= "add_action('wp_enqueue_scripts', function() {\n";
+    $override_php .= "    // Remove Storefront inline customizer CSS that uses !important\n";
+    $override_php .= "    remove_action('wp_head', 'storefront_add_customizer_css', 130);\n";
+    $override_php .= "}, 999);\n";
+    file_put_contents( $mu_dir . '/wpilot-blueprint-override.php', $override_php );
+
+    // Clean up old scattered mu-plugins that conflict
+    $old_files = ['wpilot-custom-css.php', 'wpilot-head-code.php'];
+    foreach ( $old_files as $old ) {
+        $old_path = $mu_dir . '/' . $old;
+        if ( file_exists( $old_path ) ) @unlink( $old_path );
+    }
 
     // 2. Save design profile
     $profile_params = [];
