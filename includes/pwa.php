@@ -590,7 +590,7 @@ add_action( 'wp_head', function() {
     if ( is_admin() ) return;
 
     $colors   = wpilot_pwa_get_colors();
-    $manifest = add_query_arg( 'wpilot_pwa_manifest', '1', home_url( '/' ) );
+    $manifest = home_url( '/wpilot-manifest.json' );
     ?>
     <link rel="manifest" href="<?php echo esc_url( $manifest ); ?>">
     <meta name="theme-color" content="<?php echo esc_attr( $colors['primary'] ); ?>">
@@ -666,52 +666,34 @@ function wpilot_pwa_install_mu_plugin() {
     if ( ! is_dir( $mu_dir ) ) wp_mkdir_p( $mu_dir );
 
     $mu_path = $mu_dir . '/wpilot-pwa-sw.php';
+    // Write manifest.json as a static file in the plugin directory
+    $manifest_data = function_exists( 'wpilot_pwa_manifest_data' ) ? wpilot_pwa_manifest_data() : [
+        'name'             => get_bloginfo( 'name' ),
+        'short_name'       => substr( get_bloginfo( 'name' ), 0, 12 ),
+        'start_url'        => '/',
+        'display'          => 'standalone',
+        'background_color' => '#ffffff',
+        'theme_color'      => '#000000',
+    ];
+    $manifest_json = wp_json_encode( $manifest_data, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+    file_put_contents( ABSPATH . 'wpilot-manifest.json', $manifest_json );
+
+    // Write service worker JS as static file in root
+    if ( function_exists( 'wpilot_pwa_service_worker_js' ) ) {
+        file_put_contents( ABSPATH . 'wpilot-sw.js', wpilot_pwa_service_worker_js() );
+    }
+
+    // mu-plugin only needed for icon generation fallback
     $mu_code = "<?php\n";
-    $mu_code .= "// WPilot PWA — Manifest, Service Worker & Icon handlers\n";
+    $mu_code .= "// WPilot PWA — Icon generation handler\n";
     $mu_code .= "if (!defined('ABSPATH')) exit;\n\n";
-    $mu_code .= "// Manifest + SW + Icon — intercept at wp_loaded (before template)\n";
-    $mu_code .= "add_action('wp_loaded', function() {\n";
+    $mu_code .= "add_action('init', function() {\n";
     $mu_code .= "    if (!get_option('wpilot_pwa_active')) return;\n";
-    $mu_code .= "    if (!isset(\$_GET['wpilot_pwa_manifest'])) return;\n";
-    $mu_code .= "    header('Content-Type: application/manifest+json');\n";
-    $mu_code .= "    header('Cache-Control: public, max-age=86400');\n";
-    $mu_code .= "    if (function_exists('wpilot_pwa_manifest_data')) {\n";
-    $mu_code .= "        echo wp_json_encode(wpilot_pwa_manifest_data(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);\n";
-    $mu_code .= "    } else {\n";
-    $mu_code .= "        \$s = get_option('wpilot_pwa_settings', []);\n";
-    $mu_code .= "        \$p = get_option('wpilot_design_profile', []);\n";
-    $mu_code .= "        echo wp_json_encode([\n";
-    $mu_code .= "            'name' => \$s['name'] ?? get_bloginfo('name'),\n";
-    $mu_code .= "            'short_name' => \$s['short_name'] ?? substr(get_bloginfo('name'), 0, 12),\n";
-    $mu_code .= "            'start_url' => '/',\n";
-    $mu_code .= "            'display' => 'standalone',\n";
-    $mu_code .= "            'background_color' => \$p['bg_color'] ?? '#ffffff',\n";
-    $mu_code .= "            'theme_color' => \$p['primary_color'] ?? '#000000',\n";
-    $mu_code .= "        ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);\n";
-    $mu_code .= "    }\n";
-    $mu_code .= "    exit;\n";
-    $mu_code .= "}, 0);\n\n";
-    $mu_code .= "// Service Worker + Icon — via parse_request (earlier than template_redirect)\n";
-    $mu_code .= "add_action('parse_request', function() {\n";
-    $mu_code .= "    if (!get_option('wpilot_pwa_active')) return;\n";
-    $mu_code .= "    \$uri = \$_SERVER['REQUEST_URI'] ?? '';\n";
-    $mu_code .= "    \$path = parse_url(\$uri, PHP_URL_PATH);\n";
-    $mu_code .= "    if (\$path === '/wpilot-sw.js') {\n";
-    $mu_code .= "        header('Content-Type: application/javascript');\n";
-    $mu_code .= "        header('Cache-Control: no-cache');\n";
-    $mu_code .= "        header('Service-Worker-Allowed: /');\n";
-    $mu_code .= "        if (function_exists('wpilot_pwa_service_worker_js')) {\n";
-    $mu_code .= "            echo wpilot_pwa_service_worker_js();\n";
-    $mu_code .= "        } else {\n";
-    $mu_code .= "            echo '// WPilot PWA service worker — plugin not loaded';\n";
-    $mu_code .= "        }\n";
-    $mu_code .= "        exit;\n";
-    $mu_code .= "    }\n";
     $mu_code .= "    if (isset(\$_GET['wpilot_pwa_icon']) && function_exists('wpilot_pwa_generate_icon')) {\n";
     $mu_code .= "        wpilot_pwa_generate_icon(intval(\$_GET['size'] ?? 192));\n";
     $mu_code .= "        exit;\n";
     $mu_code .= "    }\n";
-    $mu_code .= "});\n";
+    $mu_code .= "}, 0);\n";
 
     file_put_contents( $mu_path, $mu_code );
 }
