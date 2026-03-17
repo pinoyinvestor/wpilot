@@ -33,7 +33,41 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
         return new WP_Error( 'api_err', $err );
     }
 
-    return $body['content'][0]['text'] ?? 'No response received.';
+    $text = $body['content'][0]['text'] ?? 'No response received.';
+    $stop_reason = $body['stop_reason'] ?? 'end_turn';
+
+    // Auto-continue if response was cut off by max_tokens
+    if ($stop_reason === 'max_tokens' && strlen($text) > 100) {
+        // Send a follow-up request asking Claude to continue
+        $continue_messages = $messages;
+        $continue_messages[] = ['role' => 'assistant', 'content' => $text];
+        $continue_messages[] = ['role' => 'user', 'content' => 'Continue exactly where you stopped. Complete the HTML/code block. Do NOT restart or repeat anything.'];
+
+        $cont_response = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
+            'timeout' => 90,
+            'headers' => [
+                'Content-Type'      => 'application/json',
+                'x-api-key'         => $api_key,
+                'anthropic-version' => '2023-06-01',
+            ],
+            'body' => wp_json_encode( [
+                'model'      => CA_MODEL,
+                'max_tokens' => 2048,
+                'system'     => wpilot_system_prompt( $mode, $message ),
+                'messages'   => $continue_messages,
+            ] ),
+        ] );
+
+        if ( !is_wp_error($cont_response) && wp_remote_retrieve_response_code($cont_response) === 200 ) {
+            $cont_body = json_decode( wp_remote_retrieve_body($cont_response), true );
+            $continuation = $cont_body['content'][0]['text'] ?? '';
+            if ($continuation) {
+                $text .= $continuation;
+            }
+        }
+    }
+
+    return $text;
 }
 
 // ── Build messages array with history and context ──────────────
