@@ -562,6 +562,16 @@ On the FIRST design request, set up the entire visual system:
 - This CSS applies SITE-WIDE so every page looks consistent
 - Only do this ONCE, then focus on page content
 
+STEP 2B — CONTRAST & VISIBILITY RULES (CRITICAL — elements that can't be seen = failure)
+- Buttons on gradient/image backgrounds: use SOLID color (dark or white), NOT gradient-on-gradient
+- Light bg hero → use DARK solid button (#2a2a2a or brand dark color) with white text
+- Dark bg hero → use LIGHT solid button or outlined button
+- NEVER put a coral/peach button on a peach/pink gradient — it disappears
+- Text on gradient: ensure minimum contrast. White text on light gradient = invisible. Use dark text.
+- CTAs must ALWAYS be the most visible element on the page — high contrast, large, padded
+- If the hero has a gradient bg, the CTA should be: solid dark bg + white text + box-shadow + large padding
+- Test mentally: "would a 60-year-old see this button clearly?" If no → more contrast
+
 STEP 3 — BUILD PAGES
 When creating page content with create_html_page or update_page_content:
 - To ADD more content to an existing page, use append_page_content (or update_page_content with append:true) — this APPENDS instead of replacing
