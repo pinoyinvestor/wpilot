@@ -209,6 +209,16 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
             => ['menus' => "Menus: create_menu, add_menu_item, edit_menu_item, remove_menu_item, reorder_menu, rename_menu, delete_menu, list_menus, set_menu_location, create_mega_menu"],
         '/inställning|setting|namn|name|tagline|permalänk|permalink/u'
             => ['settings' => "Settings: update_blogname, update_tagline, update_option, update_permalink_structure"],
+        '/pwa|app|offline|installera|push|notif/u'
+            => ['pwa' => "PWA: enable_pwa, disable_pwa, pwa_status, send_push, pwa_configure"],
+        '/mobil|mobile|hamburger|bottom.?bar|swipe|app.?meny/u'
+            => ['mobile_nav' => "Mobile Nav: enable_mobile_nav, disable_mobile_nav, configure_bottom_bar, mobile_nav_status"],
+        '/formul|form|kontakt.?form|newsletter|nyhetsbrev|prenumer|subscribe/u'
+            => ['forms' => "Forms: create_contact_form, list_forms, get_form_entries, delete_form, export_form_data, create_newsletter_form, list_subscribers, export_subscribers"],
+        '/kommentar|comment|spam|modera/u'
+            => ['comments' => "Comments: list_comments, approve_comment, delete_comment, spam_comment, bulk_approve_comments, bulk_delete_spam, reply_to_comment, comment_stats, block_comment_word, configure_comments"],
+        '/filter|wishlist|önskelista|quick.?view|snabb|jämför|compare|size.?guide|storlek|spårning|track|faktura|invoice|recension|review.?request|bulk|import.*produkt|csv|frakt.?villkor|conditional.?ship|moms|tax.?setup|skatt/u'
+            => ['woo_pro' => "WooCommerce Pro: woo_add_product_filter, woo_create_wishlist, woo_create_quick_view, woo_product_compare, woo_create_size_guide, woo_order_tracking, woo_invoice_generate, woo_review_request, woo_bulk_update, woo_import_products, woo_conditional_shipping, woo_tax_setup"],
     ];
 
     foreach ( $patterns as $pattern => $tool_groups ) {
@@ -579,6 +589,36 @@ For client admin: create_client_dashboard, hide_admin_menu, design_admin_page, w
 9. ALWAYS backup before editing files — the tool does this automatically
 10. NEVER modify wp-config.php or .htaccess (blocked for safety)
 
+**PWA EXPERT** (when asked about app, offline, push notifications):
+1. enable_pwa to make site installable as app
+2. pwa_configure to set name, colors, icons
+3. send_push for push notifications
+4. pwa_status to check if active
+
+**MOBILE EXPERT** (when asked about mobile menu, bottom bar, hamburger):
+1. enable_mobile_nav with style (squeeze/spin/arrow), bottom_bar, auto_hide
+2. configure_bottom_bar for custom items
+3. Always test with responsive_check after
+
+**FORMS EXPERT** (when asked about contact form, newsletter, subscribe):
+1. create_contact_form with fields array
+2. create_newsletter_form for email collection
+3. No plugin needed — native WPilot forms
+
+**COMMENT EXPERT** (when asked about comments, spam, moderation):
+1. comment_stats first to see overview
+2. bulk_delete_spam to clean up
+3. configure_comments to set rules
+
+**WOOCOMMERCE PRO** (when asked about filters, wishlist, compare, tracking):
+1. woo_add_product_filter for AJAX shop filters
+2. woo_create_wishlist for heart icon + wishlist page
+3. woo_create_quick_view for product preview modal
+4. woo_order_tracking for customer order timeline
+5. woo_tax_setup for auto country tax (SE=25% moms)
+6. woo_bulk_update for mass product changes
+7. woo_import_products for CSV import
+
 **TROUBLESHOOTER** (when something is broken, error, white screen):
 1. check_frontend to see what visitor sees
 2. view_debug_log to check PHP errors
@@ -614,6 +654,12 @@ list_blueprints: {} or {"description":"bakery"} — shows available designs, sor
 suggest_blueprint: {"description":"tech startup"} — recommends best matching design
 build_site: {"description":"premium clothing store"} or {"recipe":"premium-fashion"} — builds COMPLETE site (all pages, menu, design, WooCommerce)
 list_recipes: {} or {"description":"restaurant"} — shows available site packages
+enable_pwa: {} — makes site installable as app
+enable_mobile_nav: {"style":"squeeze","bottom_bar":true,"auto_hide":true}
+create_contact_form: {"fields":[{"name":"name","type":"text","label":"Name","required":true},{"name":"email","type":"email","label":"Email","required":true},{"name":"message","type":"textarea","label":"Message"}],"email_to":"admin@site.com"}
+create_newsletter_form: {"button_text":"Subscribe","success_message":"Thanks!"}
+woo_add_product_filter: {"filters":["price","color","size","category"]}
+woo_tax_setup: {"country":"SE"} — auto-configures Swedish moms 25%/12%/6%
 
 ## CONTEXT
 Compressed blueprint every message: pages, products, plugins, menus, theme HTML structure, security, WooCommerce config. Auto-refreshes on changes.

@@ -157,7 +157,7 @@ function wpilot_run_comment_tools($tool, $params = []) {
                     'pending'         => (int) $counts->moderated,
                     'spam'            => (int) $counts->spam,
                     'trash'           => (int) $counts->trash,
-                    'post_pingback'   => (int) $counts->post_pingback,
+                    'post_pingback'   => (int) ($counts->post_pingback ?? 0),
                 ],
             ]);
 
