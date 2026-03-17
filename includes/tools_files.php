@@ -178,7 +178,9 @@ function wpilot_run_file_tools($tool, $params = []) {
                 'transient list', 'transient get', 'role list', 'cap list',
                 'term list', 'taxonomy list', 'comment list', 'media list',
                 'wc product list', 'wc product get', 'wc order list', 'wc order get',
-                'wc customer list', 'wc shop_coupon list'];
+                'wc customer list', 'wc shop_coupon list',
+                'widget list', 'widget reset', 'widget deactivate', 'sidebar list',
+                'menu list', 'menu item list'];
             $cmd_lower = strtolower(trim($cmd));
             $allowed = false;
             foreach ($allowed_cmds as $ac) {

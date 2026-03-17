@@ -356,13 +356,21 @@ function wpilot_run_page_tools($tool, $params = []) {
 
         /* ── Widgets & Sidebars ─────────────────────────────── */
         case 'update_widget_area':
-            $sidebar = sanitize_text_field($params['sidebar_id'] ?? '');
+        case 'clear_sidebar':
+        case 'remove_widgets':
+            $sidebar = sanitize_text_field($params['sidebar_id'] ?? $params['sidebar'] ?? 'sidebar-1');
             $widgets = $params['widgets'] ?? [];
-            if (!$sidebar) return wpilot_err('sidebar_id required.');
             // Get current sidebar widgets for backup
             $sidebars = get_option('sidebars_widgets', []);
-            update_option('ca_sidebar_backup_' . $sidebar, $sidebars[$sidebar] ?? []);
-            return wpilot_ok("Widget area \"{$sidebar}\" updated.");
+            if (isset($sidebars[$sidebar])) {
+                update_option('ca_sidebar_backup_' . $sidebar, $sidebars[$sidebar]);
+            }
+            // Set widgets — empty array clears all
+            $sidebars[$sidebar] = $widgets;
+            update_option('sidebars_widgets', $sidebars);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            $count = count($widgets);
+            return wpilot_ok($count ? "{$count} widgets set in \"{$sidebar}\"." : "Sidebar \"{$sidebar}\" cleared — all widgets removed.");
 
         /* ── Options / Settings ─────────────────────────────── */
         case 'update_option':
@@ -408,6 +416,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 . "WPILOT_HTML;\n"
                 . "}, 1);\n";
             file_put_contents($mu_dir . '/' . $filename, $php);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
 
         case 'add_footer_code':
@@ -425,6 +434,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 . "WPILOT_HTML;\n"
                 . "});\n";
             file_put_contents($mu_dir . '/' . $filename, $php);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             return wpilot_ok("Code added to footer via mu-plugin: {$filename}");
 
         case 'add_php_snippet':
@@ -464,6 +474,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 . "    }\n"
                 . "}, " . $priority . ");\n";
             file_put_contents($mu_dir . '/' . $filename, $php);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
 
         case 'list_snippets':

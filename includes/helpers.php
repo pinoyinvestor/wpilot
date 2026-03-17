@@ -1,6 +1,32 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+// ── Cache busting — auto-clear after every change ──
+function wpilot_bust_cache() {
+    // Bust WordPress object cache
+    wp_cache_flush();
+    // Bust LiteSpeed Cache
+    if ( class_exists('LiteSpeed_Cache_API') ) {
+        LiteSpeed_Cache_API::purge_all();
+    }
+    // Bust WP Super Cache
+    if ( function_exists('wp_cache_clear_cache') ) {
+        wp_cache_clear_cache();
+    }
+    // Bust W3 Total Cache
+    if ( function_exists('w3tc_flush_all') ) {
+        w3tc_flush_all();
+    }
+    // Bust browser cache by updating a version timestamp
+    update_option('wpilot_cache_ver', time(), false);
+}
+
+// Add cache version to all enqueued styles/scripts
+add_filter('style_loader_tag', function($html) {
+    $ver = get_option('wpilot_cache_ver', '1');
+    return str_replace('.css?', ".css?wv={$ver}&", str_replace(".css'", ".css?wv={$ver}'", $html));
+}, 99);
+
 // ── Core helpers — wrapped with function_exists to avoid conflicts ──
 if ( ! function_exists( 'wpilot_is_connected' ) ) {
     function wpilot_is_connected() { $k = get_option('ca_api_key', ''); return ! empty($k); }
