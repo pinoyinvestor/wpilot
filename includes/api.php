@@ -126,7 +126,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
     $tools = [];
 
     // Always include core tools
-    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, edit_page_css, replace_in_page, list_pages, get_page, delete_post, create_html_page, check_frontend, save_design_profile, reset_design_profile, set_page_template, clear_sidebar, add_head_code, add_footer_code, add_php_snippet";
+    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, edit_page_css, replace_in_page, list_pages, get_page, delete_post, create_html_page, check_frontend, save_design_profile, reset_design_profile, apply_blueprint, list_blueprints, suggest_blueprint, set_page_template, clear_sidebar, add_head_code, add_footer_code, add_php_snippet";
 
     // Mode-based inclusions
     if ( $mode === 'build' || $mode === 'analyze' ) {
@@ -490,29 +490,42 @@ THINKING ORDER for any task:
 **PLUGINS** — health check → essential checklist (SEO/backup/security/cache/forms/GDPR) → install → configure
 
 **DESIGN EXPERT** (when asked to build, fix design, make pretty):
-1. First check_frontend to see current state
-2. **READ THE DESIGN PROFILE** below — it tells you this site's colors, fonts, style. FOLLOW IT EXACTLY.
-3. Build with create_html_page (for new pages) or append_custom_css (for fixes)
-4. NEVER include <nav>, <header>, <footer> — theme provides these
-5. Read theme_html from blueprint to know exact CSS classes
-6. After changes, use analyze_design to visually verify the result
-7. **AFTER ANY design change**: call save_design_profile to store the chosen style, colors, fonts, mood.
-   Example: [ACTION: save_design_profile | Saving site design DNA]
+
+**STEP 1 — Check current state:**
+1. check_frontend to see what's there now
+2. **READ THE DESIGN PROFILE** below — if it exists, FOLLOW IT EXACTLY for colors, fonts, style.
+
+**STEP 2 — Choose or apply a blueprint (if no design profile exists):**
+3. Use list_blueprints to show available design packages to the customer
+4. Use suggest_blueprint with the customer's business type to recommend one
+5. Use apply_blueprint to apply a complete design package — this sets CSS variables, Google Fonts, builder overrides (Elementor/Divi/Gutenberg), WooCommerce styles, AND saves the design profile automatically.
+   Available blueprints: dark-luxury, white-minimal, colorful-playful, corporate-pro, warm-organic, bold-modern, scandinavian, restaurant
+   Example: [ACTION: apply_blueprint | Applying Dark Luxury design for jewelry store]
    ```json
-   {"style": "minimalist", "primary_color": "#1a1a2e", "secondary_color": "#e94560", "bg_color": "#ffffff", "heading_font": "Playfair Display", "body_font": "Inter", "mood": "elegant", "button_style": "rounded solid"}
+   {"blueprint": "dark-luxury"}
    ```
-8. If NO design profile exists yet, ASK the customer what style they want BEFORE building, OR save a profile based on what you build.
-9. To edit specific elements: edit_text (change text), edit_button (change buttons), edit_icon (change icons)
-10. To change colors site-wide: edit_colors with old_color and new_color — then update save_design_profile
-11. To change fonts: edit_font with selector, font family, size — then update save_design_profile
-12. To add animations: add_animation with selector and animation name (fadeInUp, scaleIn, slideUp, etc)
-13. To see what's on a page: get_page_elements lists all headings, buttons, images, icons
-14. For responsive check: responsive_check takes desktop + tablet + mobile screenshots and analyzes all three
-15. For premium effects: hover_effects, glassmorphism, gradient_text, text_effects, image_effects, premium_buttons
-16. For responsive: responsive_fix, responsive_grid, responsive_text — always test with responsive_check after
-17. For UX: smooth_scroll, sticky_header, scroll_animations, loading_animation, page_transition
-18. For client admin: create_client_dashboard builds simple WooCommerce dashboard, hide_admin_menu removes clutter, design_admin_page changes admin colors, white_label_admin removes WordPress branding, create_customer_portal redesigns My Account page
-19. To reset a site's design: reset_design_profile — clears all saved design choices
+   Or match by description: {"description": "elegant clothing store"} — auto-picks best match.
+
+**STEP 3 — Build pages using the active design:**
+6. Build with create_html_page — use CSS variables (var(--wp-primary), var(--wp-bg), etc.) NOT hardcoded colors
+7. NEVER include <nav>, <header>, <footer> — theme provides these
+8. The blueprint CSS is builder-aware — it already includes Elementor/Divi/Gutenberg overrides
+
+**STEP 4 — Always save design changes:**
+9. **AFTER ANY design change**: call save_design_profile if blueprint wasn't used
+10. To reset: reset_design_profile — clears all design memory
+
+**Design editing:**
+- edit_text, edit_button, edit_icon, edit_colors, edit_font, add_animation
+- get_page_elements lists all headings, buttons, images, icons on a page
+- responsive_check takes desktop + tablet + mobile screenshots
+- hover_effects, glassmorphism, gradient_text, premium_buttons
+- responsive_fix, responsive_grid, responsive_text
+- smooth_scroll, sticky_header, scroll_animations
+
+**CSS RULE**: When writing CSS, ALWAYS use var(--wp-primary), var(--wp-secondary), var(--wp-bg), var(--wp-text), var(--wp-radius) etc. NEVER hardcode colors if a design profile or blueprint is active. This ensures consistency across ALL pages.
+
+For client admin: create_client_dashboard, hide_admin_menu, design_admin_page, white_label_admin, create_customer_portal
 
 **BUILDER GUIDE** (when customer asks about Elementor, Divi, or page builders):
 - If Elementor: guide them to edit pages with "Edit with Elementor" button, explain widgets, sections, columns
@@ -590,6 +603,9 @@ update_page_content: {"id":123,"content":"...","append":true} — same as append
 CSS tools: {"css":"body{...}"} — actual code with { }
 save_design_profile: {"style":"minimalist","primary_color":"#1a1a2e","secondary_color":"#e94560","bg_color":"#fff","heading_font":"Playfair Display","body_font":"Inter","mood":"elegant","button_style":"rounded solid","dark_mode":"false"}
 reset_design_profile: {} — clears all design memory for this site
+apply_blueprint: {"blueprint":"dark-luxury"} or {"description":"elegant fashion store"} — applies complete design package
+list_blueprints: {} or {"description":"bakery"} — shows available designs, sorted by relevance
+suggest_blueprint: {"description":"tech startup"} — recommends best matching design
 
 ## CONTEXT
 Compressed blueprint every message: pages, products, plugins, menus, theme HTML structure, security, WooCommerce config. Auto-refreshes on changes.

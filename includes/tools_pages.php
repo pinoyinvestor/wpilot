@@ -482,6 +482,29 @@ function wpilot_run_page_tools($tool, $params = []) {
             delete_option('wpilot_design_fonts');
             return wpilot_ok("Design profile reset.");
 
+        case 'apply_blueprint':
+        case 'use_blueprint':
+        case 'apply_design':
+            if ( function_exists( 'wpilot_apply_blueprint' ) ) {
+                return wpilot_apply_blueprint( $params );
+            }
+            return wpilot_err( 'Blueprint system not loaded.' );
+
+        case 'list_blueprints':
+        case 'show_blueprints':
+        case 'design_blueprints':
+            if ( function_exists( 'wpilot_list_blueprints' ) ) {
+                return wpilot_list_blueprints( $params );
+            }
+            return wpilot_err( 'Blueprint system not loaded.' );
+
+        case 'suggest_blueprint':
+        case 'recommend_design':
+            if ( function_exists( 'wpilot_suggest_blueprint' ) ) {
+                return wpilot_suggest_blueprint( $params );
+            }
+            return wpilot_err( 'Blueprint system not loaded.' );
+
         case 'update_option':
             $key   = sanitize_text_field($params['option_key'] ?? $params['key'] ?? $params['option_name'] ?? $params['name'] ?? '');
             $value = $params['value'] ?? '';
