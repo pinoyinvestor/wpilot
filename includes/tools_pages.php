@@ -2154,7 +2154,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 $status['recent_log'] = implode('', array_slice($lines, -10));
             }
             global $wpdb;
-            $table = $wpdb->prefix . 'wpilot_backups';
+            $table = $wpdb->prefix . 'ca_backups';
             if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") === $table) {
                 $status['total_backups'] = intval($wpdb->get_var("SELECT COUNT(*) FROM {$table}"));
                 $status['unrestored'] = intval($wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE restored = 0"));
@@ -2164,7 +2164,7 @@ function wpilot_run_page_tools($tool, $params = []) {
         case 'undo_last':
         case 'rollback_last':
             global $wpdb;
-            $table = $wpdb->prefix . 'wpilot_backups';
+            $table = $wpdb->prefix . 'ca_backups';
             if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) return wpilot_err('Backup table not found.');
             $last = $wpdb->get_row("SELECT * FROM {$table} WHERE restored = 0 ORDER BY id DESC LIMIT 1");
             if (!$last) return wpilot_ok('Nothing to undo — no recent changes.');
@@ -2190,7 +2190,7 @@ function wpilot_run_page_tools($tool, $params = []) {
         case 'undo_all':
         case 'rollback_all':
             global $wpdb;
-            $table = $wpdb->prefix . 'wpilot_backups';
+            $table = $wpdb->prefix . 'ca_backups';
             if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) return wpilot_err('Backup table not found.');
             $backups = $wpdb->get_results("SELECT * FROM {$table} WHERE restored = 0 ORDER BY id DESC");
             $count = 0;
@@ -2350,6 +2350,7 @@ function wpilot_run_page_tools($tool, $params = []) {
 
 
         default:
+            return null; // Not handled by this module
             
         case 'recommend_plugins':
         case 'check_missing_plugins':
