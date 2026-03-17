@@ -74,7 +74,10 @@ function wpilot_run_page_tools($tool, $params = []) {
                 }
             }
             wpilot_save_post_snapshot( $id );
-            wp_update_post( ['ID'=>$id,'post_content'=>$content] );
+            // Use direct DB update to preserve <style> tags (wp_update_post strips them via wp_kses)
+            global $wpdb;
+            $wpdb->update($wpdb->posts, ['post_content' => $content], ['ID' => $id]);
+            clean_post_cache($id);
             if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             $mode_label = $append ? 'appended to' : 'updated';
             return wpilot_ok( "Page #{$id} content {$mode_label}." );
@@ -1060,22 +1063,27 @@ function wpilot_run_page_tools($tool, $params = []) {
             }
 
             // === GUTENBERG: Custom HTML block ===
+            // Use direct DB to preserve <style> tags (wp_insert/update_post strips them via wp_kses)
             $gutenberg_content = '<!-- wp:html -->' . $html . '<!-- /wp:html -->';
             $slug = sanitize_title($params['slug'] ?? $title);
-            // Check if page with this slug exists — update instead of creating duplicate
+            global $wpdb;
             $existing = get_page_by_path($slug);
             if ($existing) {
-                wp_update_post(['ID' => $existing->ID, 'post_content' => $gutenberg_content, 'post_status' => 'publish']);
+                $wpdb->update($wpdb->posts, ['post_content' => $gutenberg_content, 'post_status' => 'publish'], ['ID' => $existing->ID]);
+                clean_post_cache($existing->ID);
                 $id = $existing->ID;
             } else {
                 $id = wp_insert_post([
                     'post_title' => sanitize_text_field($title),
                     'post_name' => $slug,
-                    'post_content' => $gutenberg_content,
+                    'post_content' => '', // empty first
                     'post_status' => 'publish',
                     'post_type' => 'page',
                 ]);
                 if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+                // Now set content directly to preserve <style> tags
+                $wpdb->update($wpdb->posts, ['post_content' => $gutenberg_content], ['ID' => $id]);
+                clean_post_cache($id);
             }
             // Auto-set full-width template if available
             $templates = wp_get_theme()->get_page_templates(null, 'page');
