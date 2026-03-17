@@ -521,3 +521,9 @@ add_action('admin_notices', function() {
     }
     set_transient('wpilot_plugin_check', 1, WEEK_IN_SECONDS);
 }); // wpilot_missing_plugins_notice
+// Flush error queue on shutdown (non-blocking)
+add_action('shutdown', function() {
+    if (function_exists('wpilot_flush_error_queue') && defined('DOING_AJAX') && DOING_AJAX) {
+        wpilot_flush_error_queue();
+    }
+});

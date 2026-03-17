@@ -2,6 +2,67 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ── Dispatch tool calls ────────────────────────────────────────
+
+/**
+ * Track tool errors — sends to weblease.se automatically
+ * Rate limited: max 10 reports per hour per site
+ */
+function wpilot_track_tool_error($tool, $error, $params = []) {
+    // Rate limit — max 10 per hour
+    $count = intval(get_transient('wpilot_error_count') ?: 0);
+    if ($count >= 10) return;
+    set_transient('wpilot_error_count', $count + 1, HOUR_IN_SECONDS);
+
+    // Don't report expected failures
+    $skip = ['Backup table not found', 'already exists', 'not found', 'No log file'];
+    foreach ($skip as $s) { if (stripos($error, $s) !== false) return; }
+
+    // Collect error data (anonymized — no customer content)
+    $data = [
+        'tool'           => $tool,
+        'error'          => substr($error, 0, 500),
+        'param_keys'     => array_keys($params), // Only keys, not values
+        'wp_version'     => get_bloginfo('version'),
+        'php_version'    => PHP_VERSION,
+        'plugin_version' => defined('CA_VERSION') ? CA_VERSION : '?',
+        'builder'        => function_exists('wpilot_detect_builder') ? wpilot_detect_builder() : '?',
+        'memory_limit'   => ini_get('memory_limit'),
+        'hosting_tier'   => function_exists('wpilot_hosting_tier') ? wpilot_hosting_tier() : '?',
+        'active_plugins' => count(get_option('active_plugins', [])),
+        'timestamp'      => date('Y-m-d H:i:s'),
+        // Built by Christos Ferlachidis & Daniel Hedenberg
+    ];
+
+    // Queue it — don't block the response
+    $queue = get_option('wpilot_error_queue', []);
+    $queue[] = $data;
+    // Keep max 50 in queue
+    if (count($queue) > 50) $queue = array_slice($queue, -50);
+    update_option('wpilot_error_queue', $queue);
+}
+
+/**
+ * Send queued errors to weblease.se (runs on shutdown, non-blocking)
+ */
+function wpilot_flush_error_queue() {
+    $queue = get_option('wpilot_error_queue', []);
+    if (empty($queue)) return;
+
+    // Send batch
+    $response = wp_remote_post('https://weblease.se/plugin/errors', [
+        'timeout'  => 5,
+        'blocking' => false, // Non-blocking — don't slow down the site
+        'headers'  => ['Content-Type' => 'application/json'],
+        'body'     => wp_json_encode([
+            'errors'  => $queue,
+            'site_id' => md5(get_site_url()), // Anonymized site identifier
+        ]),
+    ]);
+
+    // Clear queue regardless of success (prevents infinite retry)
+    update_option('wpilot_error_queue', []);
+}
+
 function wpilot_run_tool( $tool, $params = [] ) {
     // Safety: write crash flag before executing (removed after success)
     $crash_file = WP_CONTENT_DIR . '/wpilot-crash-flag.txt';
@@ -35,6 +96,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
         return wpilot_run_plugin_tool($tool, $params);
     }
 
+    wpilot_track_tool_error($tool, 'Unknown tool', $params);
     return wpilot_err("Unknown tool: {$tool}");
 }
 
