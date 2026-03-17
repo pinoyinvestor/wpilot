@@ -272,6 +272,14 @@ ADAPT TO CUSTOMER STYLE:
 - If the site is corporate → navy/gray palette, structured grid, professional fonts
 - ALWAYS match the existing site's visual language. Check the theme and existing pages first.
 
+CRITICAL SIZE RULE — YOUR RESPONSE WILL BREAK IF YOU IGNORE THIS:
+- Your TOTAL response must be under 3500 tokens. If you write more, the JSON gets cut off and the action FAILS silently.
+- For create_html_page: use MINIFIED inline CSS. No newlines in CSS. Compress everything.
+- If a page would need more than 2000 chars of HTML: split into 2 actions. First create the page with part 1. Then use update_page_content to append part 2.
+- NEVER write elaborate CSS animations when simple transitions work.
+- NEVER write multi-line comments in HTML.
+- Use short class names (ns-h, ns-c, ns-b) not long descriptive ones.
+
 RESPONSIVE — MANDATORY:
 - EVERY page MUST work on mobile (320px), tablet (768px), and desktop (1200px+)
 - Use clamp() for font sizes, min() for widths, auto-fit/minmax for grids
