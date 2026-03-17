@@ -117,6 +117,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
             => ['security' => "Security: security_audit, security_scan, add_security_headers, disable_xmlrpc, block_ip, configure_wordfence, failed_logins, full_security_check, security_enable_2fa"],
         '/design|css|style|färg|color|font|animation|hover|glass|3d|responsive|mobil|tablet|header|footer|meny|menu|snygg|pretty|layout|makeover/u'
             => ['design' => "Design: update_custom_css, append_custom_css, edit_text, edit_button, edit_icon, edit_colors, edit_font, add_animation, hover_effects, glassmorphism, gradient_text, premium_buttons, responsive_fix, responsive_grid, responsive_text, build_header, build_footer, build_mobile_menu, design_all, premium_makeover, add_3d_effect, create_3d_card",
+                'admin_design' => "Admin Design: hide_admin_menu, simplify_admin, create_client_dashboard, design_admin_page, admin_theme, create_customer_portal, design_my_account, white_label_admin, rebrand_admin",
                 'vision' => "Vision: screenshot, analyze_design, responsive_check, check_visual_bugs"],
         '/bild|image|media|foto|photo|upload|logo|webp|compress|favicon/u'
             => ['media' => "Media: upload_image, set_featured_image, compress_images, convert_all_images_webp, upload_logo, set_favicon, update_image_alt, bulk_fix_alt_text"],
@@ -128,6 +129,8 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
             => ['plugins' => "Plugins: plugin_install, activate_plugin, deactivate_plugin, list_plugins, update_plugins"],
         '/användare|user|role|roll|login|registrer/u'
             => ['users' => "Users: create_user, list_users, change_user_role, create_role, list_roles, design_login_page, customize_admin"],
+                '/admin.?panel|dashboard|white.?label|rebrand|client.?portal|simplif|my.?account.?design|kund.?panel/u'
+            => ['admin_design' => "Admin Design: hide_admin_menu, simplify_admin, create_client_dashboard, design_admin_page, admin_theme, create_customer_portal, design_my_account, white_label_admin, rebrand_admin"],
         '/fil|file|kod|code|php|javascript|theme|tema|function|sql|wp.?cli|snippet/u'
             => ['dev' => "Dev: read_file, write_file, edit_file, edit_theme_file, list_files, db_query, wp_cli, add_javascript, add_php_snippet, list_snippets, remove_snippet, run_chain"],
         '/api|stripe|google|facebook|mailchimp|pixel|analytics|webhook|connect|koppl|tiktok|snapchat|pinterest/u'
@@ -266,6 +269,7 @@ Never leave a security issue open.
 13. For premium effects: hover_effects, glassmorphism, gradient_text, text_effects, image_effects, premium_buttons
 14. For responsive: responsive_fix, responsive_grid, responsive_text — always test with responsive_check after
 15. For UX: smooth_scroll, sticky_header, scroll_animations, loading_animation, page_transition
+16. For client admin: create_client_dashboard builds simple WooCommerce dashboard, hide_admin_menu removes clutter, design_admin_page changes admin colors, white_label_admin removes WordPress branding, create_customer_portal redesigns My Account page
 
 **WOOCOMMERCE EXPERT** (when asked about shop, products, orders, payments):
 - Products: woo_create_product, woo_update_product, woo_set_sale, create_coupon

@@ -2395,6 +2395,185 @@ case 'seo_redirect_check':
             update_option('wpilot_footer_scripts', $opt . $block);
             return wpilot_ok("Typed text animation added for '{$selector}'.", ['words' => $words, 'tag' => $tag]);
 
+
+        /* ── Admin Design / Client Dashboard Tools ──────────── */
+
+        case 'hide_admin_menu':
+        case 'simplify_admin':
+            $role = sanitize_text_field($params['role'] ?? 'editor');
+            $hide = $params['hide'] ?? $params['items'] ?? [];
+            // Default: hide everything except basics for non-admins
+            if (empty($hide)) {
+                $hide = ['edit.php', 'upload.php', 'edit-comments.php', 'tools.php', 'options-general.php', 'plugins.php', 'themes.php', 'users.php'];
+            }
+            $settings = get_option('wpilot_hidden_menus', []);
+            $settings[$role] = $hide;
+            update_option('wpilot_hidden_menus', $settings);
+            // Create mu-plugin that hides menus
+            $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-admin-menus.php';
+            $code = "<?php\nadd_action('admin_menu', function() {\n    if (current_user_can('manage_options')) return;\n    \$hidden = get_option('wpilot_hidden_menus', []);\n    \$user = wp_get_current_user();\n    foreach (\$user->roles as \$role) {\n        foreach (\$hidden[\$role] ?? [] as \$menu) {\n            remove_menu_page(\$menu);\n        }\n    }\n}, 999);\n";
+            file_put_contents($mu, $code);
+            return wpilot_ok("Hidden " . count($hide) . " menu items for {$role}.", ['role' => $role, 'hidden' => $hide]);
+
+        case 'create_client_dashboard':
+        case 'simple_dashboard':
+            $role = sanitize_text_field($params['role'] ?? 'editor');
+            $widgets = $params['widgets'] ?? ['orders', 'stats', 'quick_actions'];
+            $accent = sanitize_text_field($params['accent_color'] ?? '#6366F1');
+            $company = sanitize_text_field($params['company_name'] ?? get_bloginfo('name'));
+            // Build dashboard HTML
+            $html = '<div id="wpilot-client-dash" style="max-width:1200px;margin:20px auto;font-family:system-ui,sans-serif">';
+            $html .= '<h1 style="font-size:1.8rem;font-weight:700;color:#1a1a2e;margin:0 0 24px">Welcome to ' . esc_html($company) . '</h1>';
+            $html .= '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">';
+
+            // Stats cards
+            if (in_array('stats', $widgets) && class_exists('WooCommerce')) {
+                $html .= '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px"><p style="color:#6b7280;font-size:0.85rem;margin:0 0 4px">Today\'s Orders</p><p style="font-size:2rem;font-weight:700;color:#1a1a2e;margin:0" id="wpi-dash-orders">-</p></div>';
+                $html .= '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px"><p style="color:#6b7280;font-size:0.85rem;margin:0 0 4px">Revenue</p><p style="font-size:2rem;font-weight:700;color:' . $accent . ';margin:0" id="wpi-dash-revenue">-</p></div>';
+                $html .= '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px"><p style="color:#6b7280;font-size:0.85rem;margin:0 0 4px">Products</p><p style="font-size:2rem;font-weight:700;color:#1a1a2e;margin:0" id="wpi-dash-products">-</p></div>';
+            }
+
+            // Quick actions
+            if (in_array('quick_actions', $widgets)) {
+                $html .= '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;grid-column:span 1"><p style="font-weight:600;color:#1a1a2e;margin:0 0 16px">Quick Actions</p>';
+                $actions_list = [
+                    ['📦 New Product', admin_url('post-new.php?post_type=product')],
+                    ['🎫 Create Coupon', admin_url('post-new.php?post_type=shop_coupon')],
+                    ['📋 View Orders', admin_url('edit.php?post_type=shop_order')],
+                    ['📊 Reports', admin_url('admin.php?page=wc-reports')],
+                ];
+                foreach ($actions_list as $a) {
+                    $html .= '<a href="' . $a[1] . '" style="display:block;padding:10px 14px;margin-bottom:8px;background:#f9fafb;border-radius:8px;color:#1a1a2e;text-decoration:none;font-size:0.9rem;transition:background 0.2s">' . $a[0] . '</a>';
+                }
+                $html .= '</div>';
+            }
+
+            $html .= '</div>';
+
+            // Recent orders table
+            if (in_array('orders', $widgets) && class_exists('WooCommerce')) {
+                $html .= '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-top:20px">';
+                $html .= '<p style="font-weight:600;color:#1a1a2e;margin:0 0 16px">Recent Orders</p>';
+                $html .= '<div id="wpi-dash-order-table">Loading...</div>';
+                $html .= '</div>';
+            }
+
+            $html .= '</div>';
+
+            // Save as dashboard widget replacement
+            update_option('wpilot_client_dashboard', $html);
+            update_option('wpilot_client_dashboard_role', $role);
+
+            // Create mu-plugin that replaces dashboard
+            $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-client-dashboard.php';
+            $mu_code = "<?php\nadd_action('admin_init', function() {\n    if (current_user_can('manage_options')) return;\n    \$dash_role = get_option('wpilot_client_dashboard_role', '');\n    \$user = wp_get_current_user();\n    if (!in_array(\$dash_role, \$user->roles)) return;\n    // Redirect to custom dashboard\n    global \$pagenow;\n    if (\$pagenow === 'index.php' && empty(\$_GET['page'])) {\n        remove_all_actions('welcome_panel');\n        add_action('admin_notices', function() {\n            echo get_option('wpilot_client_dashboard', '');\n        });\n    }\n});\n// Remove default dashboard widgets for client role\nadd_action('wp_dashboard_setup', function() {\n    if (current_user_can('manage_options')) return;\n    remove_meta_box('dashboard_quick_press', 'dashboard', 'side');\n    remove_meta_box('dashboard_primary', 'dashboard', 'side');\n    remove_meta_box('dashboard_site_health', 'dashboard', 'normal');\n    remove_meta_box('dashboard_right_now', 'dashboard', 'normal');\n    remove_meta_box('dashboard_activity', 'dashboard', 'normal');\n    remove_meta_box('woocommerce_dashboard_status', 'dashboard', 'normal');\n    remove_meta_box('woocommerce_dashboard_recent_reviews', 'dashboard', 'normal');\n}, 999);\n";
+            file_put_contents($mu, $mu_code);
+
+            return wpilot_ok("Client dashboard created for role '{$role}'.", ['role' => $role, 'widgets' => $widgets]);
+
+        case 'design_admin_page':
+        case 'style_admin':
+        case 'admin_theme':
+            $style = sanitize_text_field($params['style'] ?? 'modern');
+            $accent = sanitize_text_field($params['accent_color'] ?? '#6366F1');
+            $logo_url = esc_url($params['logo_url'] ?? '');
+
+            $styles = [
+                'modern' => "
+#wpadminbar { background: #1a1a2e !important; }
+#adminmenu, #adminmenuBack, #adminmenuwrap { background: #16213e !important; }
+#adminmenu a { color: rgba(255,255,255,0.7) !important; }
+#adminmenu .wp-has-current-submenu > a, #adminmenu .current a { background: {$accent} !important; color: #fff !important; }
+#adminmenu li.menu-top:hover > a { color: #fff !important; background: rgba(255,255,255,0.05) !important; }
+#adminmenu .wp-submenu { background: #0f3460 !important; }
+#adminmenu .wp-submenu a { color: rgba(255,255,255,0.6) !important; }
+#adminmenu .wp-submenu a:hover { color: #fff !important; }
+#wpcontent { background: #f0f2f5; }
+.wrap h1 { font-weight: 700; color: #1a1a2e; }
+",
+                'minimal' => "
+#wpadminbar { background: #fff !important; border-bottom: 1px solid #e5e7eb !important; }
+#wpadminbar * { color: #374151 !important; }
+#adminmenu, #adminmenuBack, #adminmenuwrap { background: #fff !important; border-right: 1px solid #e5e7eb !important; }
+#adminmenu a { color: #374151 !important; }
+#adminmenu .wp-has-current-submenu > a { background: {$accent} !important; color: #fff !important; }
+#wpcontent { background: #f9fafb; }
+",
+                'dark' => "
+#wpadminbar { background: #0a0a0a !important; }
+#adminmenu, #adminmenuBack, #adminmenuwrap { background: #0f0f0f !important; }
+#adminmenu a { color: rgba(255,255,255,0.6) !important; }
+#adminmenu .wp-has-current-submenu > a { background: {$accent} !important; }
+#wpcontent { background: #1a1a1a; color: #e5e7eb; }
+.wrap h1 { color: #fff; }
+",
+            ];
+
+            $css = $styles[$style] ?? $styles['modern'];
+
+            if ($logo_url) {
+                $css .= "\n#adminmenu #toplevel_page_wpilot .wp-menu-image img { content: url('{$logo_url}'); }\n";
+            }
+
+            $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-admin-style.php';
+            $mu_code = "<?php\nadd_action('admin_head', function() {\n    echo '<style>" . str_replace("'", "\\'", str_replace("\n", " ", $css)) . "</style>';\n});\n";
+            file_put_contents($mu, $mu_code);
+
+            return wpilot_ok("Admin styled: {$style} theme with accent {$accent}.", ['style' => $style]);
+
+        case 'create_customer_portal':
+        case 'design_my_account':
+            $accent = sanitize_text_field($params['accent_color'] ?? '#6366F1');
+            $style = sanitize_text_field($params['style'] ?? 'modern');
+
+            $css = "
+/* Customer Portal Design */
+.woocommerce-account .woocommerce { max-width: 1000px; margin: 0 auto; }
+.woocommerce-account .woocommerce-MyAccount-navigation { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px; margin-bottom: 24px; }
+.woocommerce-account .woocommerce-MyAccount-navigation ul { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 0; }
+.woocommerce-account .woocommerce-MyAccount-navigation li a { display: block; padding: 10px 16px; border-radius: 8px; color: #374151; text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: all 0.2s; }
+.woocommerce-account .woocommerce-MyAccount-navigation li.is-active a { background: {$accent}; color: #fff; }
+.woocommerce-account .woocommerce-MyAccount-navigation li a:hover { background: #f3f4f6; }
+.woocommerce-account .woocommerce-MyAccount-content { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 32px; }
+.woocommerce-account table { border-collapse: collapse; width: 100%; }
+.woocommerce-account table th { text-align: left; padding: 12px; border-bottom: 2px solid #e5e7eb; font-weight: 600; color: #374151; }
+.woocommerce-account table td { padding: 12px; border-bottom: 1px solid #f3f4f6; }
+.woocommerce-account .button { background: {$accent} !important; color: #fff !important; border: none !important; border-radius: 8px !important; padding: 10px 20px !important; }
+@media (max-width: 768px) { .woocommerce-account .woocommerce-MyAccount-navigation ul { flex-direction: column; } }
+";
+
+            $existing = wp_get_custom_css();
+            $existing = preg_replace('/\/\* Customer Portal Design \*\/.*?(?=\/\*|$)/s', '', $existing);
+            wp_update_custom_css_post($existing . "\n" . $css);
+
+            return wpilot_ok("Customer portal designed: {$style}.", ['style' => $style, 'accent' => $accent]);
+
+        case 'white_label_admin':
+        case 'rebrand_admin':
+            $company = sanitize_text_field($params['company_name'] ?? $params['name'] ?? get_bloginfo('name'));
+            $logo_url = esc_url($params['logo_url'] ?? '');
+            $footer_text = sanitize_text_field($params['footer_text'] ?? 'Powered by ' . $company);
+            $login_logo = esc_url($params['login_logo'] ?? $logo_url);
+
+            $mu = ABSPATH . 'wp-content/mu-plugins/wpilot-white-label.php';
+            $code = "<?php\n";
+            // Custom footer
+            $code .= "add_filter('admin_footer_text', function() { return '" . esc_html($footer_text) . "'; });\n";
+            $code .= "add_filter('update_footer', function() { return ''; }, 11);\n";
+            // Remove WP logo from admin bar
+            $code .= "add_action('wp_before_admin_bar_render', function() { global \$wp_admin_bar; \$wp_admin_bar->remove_menu('wp-logo'); });\n";
+            // Custom login logo
+            if ($login_logo) {
+                $code .= "add_action('login_enqueue_scripts', function() { echo '<style>.login h1 a { background-image: url(" . $login_logo . ") !important; background-size: contain !important; width: 200px !important; height: 80px !important; }</style>'; });\n";
+                $code .= "add_filter('login_headerurl', function() { return '" . get_site_url() . "'; });\n";
+                $code .= "add_filter('login_headertext', function() { return '" . esc_html($company) . "'; });\n";
+            }
+            // Custom admin title
+            $code .= "add_filter('admin_title', function(\$title) { return str_replace('WordPress', '" . esc_html($company) . "', \$title); });\n";
+
+            file_put_contents($mu, $code);
+            return wpilot_ok("White-labeled admin: {$company}.", ['company' => $company, 'has_logo' => !empty($logo_url)]);
+
         /* ── Role / Permission Tools ────────────────────────── */
 
         default:
