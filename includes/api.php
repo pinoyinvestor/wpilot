@@ -264,6 +264,18 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
         $page_summary = "\nEXISTING PAGES:\n" . implode("\n", $page_lines) . "\n";
     }
 
+    // Request log — what the customer has asked for (conversation memory)
+    $request_log = get_option('wpilot_request_log', []);
+    $req_summary = '';
+    if ($request_log) {
+        $recent_reqs = array_slice($request_log, -8);
+        $req_lines = [];
+        foreach ($recent_reqs as $r) {
+            $req_lines[] = "[{$r['time']}] \"{$r['q']}\" → {$r['ok']}/{$r['actions']} actions OK";
+        }
+        $req_summary = "\nCONVERSATION HISTORY (what the customer asked — continue from here):\n" . implode("\n", $req_lines) . "\n";
+    }
+
     // Action log — what has been done recently (persistent memory)
     $action_log = get_option('wpilot_action_log', []);
     $log_summary = '';
@@ -334,7 +346,7 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     $prompt = <<<PROMPT
 You are WPilot — an AI team of WordPress experts for "{$site}" ({$url}). {$woo}
 Theme: {$theme_name} ({$theme_slug}). Builder: {$bname}. Page templates: {$template_list}.
-Today's date: {$today}.{$log_summary}{$page_summary}{$woo_snapshot}{$plugins_summary}{$active_css}{$design_memory}
+Today's date: {$today}.{$req_summary}{$log_summary}{$page_summary}{$woo_snapshot}{$plugins_summary}{$active_css}{$design_memory}
 
 ## THEME AWARENESS — CRITICAL
 - Theme: "{$theme_name}". NEVER write global CSS overrides for theme selectors.

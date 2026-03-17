@@ -224,13 +224,25 @@ add_action( 'wp_ajax_ca_chat', function () {
     }
 
     // ── Save action log — persistent memory of what's been done ──
+    // Save what the customer asked (compressed)
+    $request_log = get_option('wpilot_request_log', []);
+    $request_log[] = [
+        'q' => substr($message, 0, 150),
+        'actions' => count($actions),
+        'ok' => $ok_count ?? 0,
+        'time' => current_time('Y-m-d H:i'),
+    ];
+    if (count($request_log) > 30) $request_log = array_slice($request_log, -30);
+    update_option('wpilot_request_log', $request_log, false);
+
     $action_log = get_option('wpilot_action_log', []);
     foreach ($actions as $a) {
         $action_log[] = [
             'tool' => $a['tool'],
             'status' => $a['auto_status'] ?? 'pending',
-            'label' => substr($a['label'] ?? '', 0, 80),
-            'time' => current_time('H:i'),
+            'label' => substr($a['label'] ?? '', 0, 120),
+            'time' => current_time('Y-m-d H:i'),
+            'params_keys' => array_keys($a['params'] ?? []),
         ];
     }
     // Keep last 50 actions
