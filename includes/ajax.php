@@ -157,7 +157,25 @@ add_action( 'wp_ajax_ca_chat', function () {
                 $failed_tools[] = $a['tool'] . ' (' . ($a['auto_error'] ?? 'unknown') . ')';
             }
         }
-        $retry_msg = "Some actions failed: " . implode(', ', $failed_tools) . ". Fix these issues and try again. Use different params or a different tool.";
+        // Build smart retry message that tells AI exactly what went wrong and how to fix
+        $retry_parts = [];
+        foreach ($actions as $a) {
+            if (($a['auto_status'] ?? '') === 'failed') {
+                $err = $a['auto_error'] ?? 'unknown';
+                $tool = $a['tool'];
+                // Suggest fix based on error pattern
+                if (strpos($err, 'not found') !== false || strpos($err, 'not installed') !== false) {
+                    $retry_parts[] = "{$tool} failed: {$err}. Try plugin_install first, then retry.";
+                } elseif (strpos($err, 'required') !== false) {
+                    $retry_parts[] = "{$tool} failed: {$err}. The params were empty — include all required params in your JSON.";
+                } elseif (strpos($err, 'not allowed') !== false) {
+                    $retry_parts[] = "{$tool} failed: {$err}. Use a different tool or approach.";
+                } else {
+                    $retry_parts[] = "{$tool} failed: {$err}. Fix and retry.";
+                }
+            }
+        }
+        $retry_msg = "FAILED ACTIONS — fix each one:\n" . implode("\n", $retry_parts) . "\n\nIMPORTANT: Only retry the failed actions. Don't repeat successful ones.";
         $retry_result = wpilot_call_claude($retry_msg, $mode, $context, array_merge($history, [
             ['role' => 'assistant', 'content' => $response],
             ['role' => 'user', 'content' => $retry_msg],
@@ -174,6 +192,34 @@ add_action( 'wp_ajax_ca_chat', function () {
             }
             $actions = array_merge($actions, $retry_actions);
             $response .= "\n\n🔄 Auto-retry: " . count($retry_actions) . " actions attempted.";
+        }
+    }
+
+    // ── Auto-continue: if the AI planned multiple phases, continue to next phase ──
+    $has_phases = preg_match('/Phase \d|Step \d|Next:|Part \d/i', $response);
+    $all_succeeded = !$failed_any && $ok_count > 0;
+    if ($has_phases && $all_succeeded && $source === 'claude' && wpilot_auto_approve()) {
+        $continue_count = intval(get_transient('wpilot_auto_continue_' . get_current_user_id()) ?: 0);
+        if ($continue_count < 3) { // Max 3 auto-continues per conversation
+            set_transient('wpilot_auto_continue_' . get_current_user_id(), $continue_count + 1, 300);
+            $results_summary = implode(', ', $result_lines);
+            $cont_msg = "Phase complete. Results: {$results_summary}. Continue to the NEXT phase. Don't repeat what's done.";
+            $cont_result = wpilot_call_claude($cont_msg, $mode, [], array_merge($history, [
+                ['role' => 'assistant', 'content' => $response],
+                ['role' => 'user', 'content' => $cont_msg],
+            ]));
+            if (!is_wp_error($cont_result)) {
+                $cont_text = is_array($cont_result) ? $cont_result['text'] : $cont_result;
+                $cont_actions = wpilot_parse_actions($cont_text);
+                if (empty($cont_actions) && function_exists("wpilot_parse_compact_actions")) $cont_actions = wpilot_parse_compact_actions($cont_text);
+                if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($cont_actions, $cont_text);
+                foreach ($cont_actions as &$ca) {
+                    $cr = wpilot_safe_run_tool($ca['tool'], $ca['params'] ?? []);
+                    $ca['auto_status'] = !empty($cr['success']) ? 'done' : 'failed';
+                }
+                $actions = array_merge($actions, $cont_actions);
+                $response .= "\n\n➡️ Auto-continued to next phase:\n" . $cont_text;
+            }
         }
     }
 
