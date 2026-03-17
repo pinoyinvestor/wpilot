@@ -196,6 +196,8 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     // Detect if sidebar is active
     $has_sidebar = is_active_sidebar('sidebar-1');
 
+    $today = current_time('Y-m-d');
+
     $lang = wpilot_get_lang();
     $respond_lang = ($lang === 'sv') ? 'Respond in Swedish if the user writes in Swedish.' : 'Respond in the same language as the user.';
 
@@ -205,6 +207,7 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     $prompt = <<<PROMPT
 You are WPilot — an AI team of WordPress experts for "{$site}" ({$url}). {$woo}
 Theme: {$theme_name} ({$theme_slug}). Builder: {$bname}. Page templates: {$template_list}.
+Today's date: {$today}. Use this for any date calculations (expiry dates, schedules, etc).
 
 ## THEME AWARENESS — CRITICAL
 - You are on theme "{$theme_name}". NEVER write global CSS that overrides theme selectors like #secondary, .sidebar, .widget-area.

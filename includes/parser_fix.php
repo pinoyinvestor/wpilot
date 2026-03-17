@@ -7,27 +7,34 @@ function wpilot_find_json_in_text($text) {
     $text = preg_replace('/```(?:json)?\s*/i', '', $text);
     $text = preg_replace('/\s*```/', '', $text);
     $text = trim($text);
-    // Try ALL { positions, not just the first one — handles inline JSON after prose
+    // Strategy 1: Use PHP's json_decode with progressive substring extraction
+    // Find all { positions and try json_decode from each one
     $offset = 0;
+    $len = strlen($text);
     while (($start = strpos($text, '{', $offset)) !== false) {
+        // Count braces manually to find the matching }
         $depth = 0;
         $in_string = false;
-        $valid = true;
-        for ($i = $start; $i < strlen($text); $i++) {
+        for ($i = $start; $i < $len; $i++) {
             $ch = $text[$i];
-            if ($ch === '"' && ($i === 0 || $text[$i-1] !== '\\')) $in_string = !$in_string;
+            // Handle string boundaries — count preceding backslashes for proper escape detection
+            if ($ch === '"') {
+                $backslashes = 0;
+                for ($j = $i - 1; $j >= $start && $text[$j] === '\\'; $j--) $backslashes++;
+                if ($backslashes % 2 === 0) $in_string = !$in_string;
+            }
             if (!$in_string) {
                 if ($ch === '{') $depth++;
-                if ($ch === '}') $depth--;
+                elseif ($ch === '}') $depth--;
                 if ($depth === 0) {
                     $json = substr($text, $start, $i - $start + 1);
                     $decoded = json_decode($json, true);
                     if (is_array($decoded) && !empty($decoded)) return $decoded;
-                    break; // This { didn't produce valid JSON, try next one
+                    break;
                 }
             }
         }
-        if ($depth !== 0) break; // Unclosed brace — stop searching
+        if ($depth !== 0) break;
         $offset = $start + 1;
     }
     return null;
