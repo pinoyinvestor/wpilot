@@ -24,6 +24,8 @@ function wpilot_get_site_recipes() {
             'description'    => 'Lyxig klädbutik inspirerad av Apple/Zara — minimalistisk, bilddriven, premium känsla',
             'keywords'       => ['fashion','clothing','clothes','apparel','boutique','luxury','apple','zara','h&m','kläder','mode','butik','klädbutik'],
             'blueprint'      => 'dark-luxury',
+            'header_style'   => 'transparent',
+            'footer_style'   => 'columns',
             'woo_required'   => true,
             'pages'          => [
                 [
@@ -78,6 +80,8 @@ function wpilot_get_site_recipes() {
             'description'    => 'Varm restaurangsajt med meny, bokning, öppettider — mörk och inbjudande',
             'keywords'       => ['restaurant','bar','bistro','cafe','pizza','sushi','food','dining','menu','restaurang','krog','mat','café','pizzeria'],
             'blueprint'      => 'restaurant',
+            'header_style'   => 'glass',
+            'footer_style'   => 'rich',
             'woo_required'   => false,
             'pages'          => [
                 [
@@ -141,6 +145,8 @@ function wpilot_get_site_recipes() {
             'description'    => 'Modern tech-sajt med pricing, features, CTA — mörk gradient, bold',
             'keywords'       => ['tech','startup','saas','app','software','digital','product','platform','api','teknik','startup','mjukvara','plattform'],
             'blueprint'      => 'bold-modern',
+            'header_style'   => 'glass',
+            'footer_style'   => 'minimal',
             'woo_required'   => false,
             'pages'          => [
                 [
@@ -209,6 +215,8 @@ function wpilot_get_site_recipes() {
             'description'    => 'Professionell konsultsajt med tjänster, team, case studies',
             'keywords'       => ['consulting','agency','b2b','services','professional','firm','bureau','byrå','konsult','tjänster','företag','rådgivning'],
             'blueprint'      => 'corporate-pro',
+            'header_style'   => 'modern',
+            'footer_style'   => 'columns',
             'woo_required'   => false,
             'pages'          => [
                 [
@@ -275,6 +283,8 @@ function wpilot_get_site_recipes() {
             'description'    => 'Lugn och harmonisk sajt — bokning, tjänster, priser',
             'keywords'       => ['spa','wellness','yoga','massage','beauty','salon','therapy','hälsa','skönhet','salong','massage','terapi','yoga'],
             'blueprint'      => 'warm-organic',
+            'header_style'   => 'minimal',
+            'footer_style'   => 'centered',
             'woo_required'   => false,
             'pages'          => [
                 [
@@ -327,6 +337,8 @@ function wpilot_get_site_recipes() {
             'description'    => 'Skandinavisk webshop — ren, funktionell, perfekt för alla typer av produkter',
             'keywords'       => ['shop','store','ecommerce','e-commerce','webshop','products','sell','online','butik','handla','produkter','sälja','webbutik'],
             'blueprint'      => 'scandinavian',
+            'header_style'   => 'modern',
+            'footer_style'   => 'columns',
             'woo_required'   => true,
             'pages'          => [
                 [
@@ -661,6 +673,27 @@ function wpilot_build_site_from_recipe( $params ) {
             'items'    => $menu_items,
         ]);
         $results[] = "Menu created with " . count($recipe['menu']) . " items";
+    }
+
+    // 3b. Apply header blueprint
+    if ( ! empty( $recipe['header_style'] ) && function_exists( 'wpilot_apply_header_blueprint' ) ) {
+        $header_params = [ 'style' => $recipe['header_style'] ];
+        if ( ! empty( $recipe['menu'] ) ) {
+            // Pass CTA from last menu item if it looks like a CTA
+            $last = end( $recipe['menu'] );
+            if ( stripos( $last['title'], 'book' ) !== false || stripos( $last['title'], 'contact' ) !== false || stripos( $last['title'], 'boka' ) !== false ) {
+                $header_params['cta_text'] = $last['title'];
+                $header_params['cta_url']  = home_url( $last['url'] );
+            }
+        }
+        wpilot_apply_header_blueprint( $header_params );
+        $results[] = "Header blueprint '{$recipe['header_style']}' applied";
+    }
+
+    // 3c. Apply footer blueprint
+    if ( ! empty( $recipe['footer_style'] ) && function_exists( 'wpilot_apply_footer_blueprint' ) ) {
+        wpilot_apply_footer_blueprint( [ 'style' => $recipe['footer_style'] ] );
+        $results[] = "Footer blueprint '{$recipe['footer_style']}' applied";
     }
 
     // 4. WooCommerce config

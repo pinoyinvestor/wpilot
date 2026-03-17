@@ -202,6 +202,146 @@ function wpilot_run_page_tools($tool, $params = []) {
             if ( is_wp_error($item_id) ) return wpilot_err( $item_id->get_error_message() );
             return wpilot_ok( "Menu item \"{$title}\" added." );
 
+        case 'edit_menu_item':
+            $menu_item_id = intval( $params['menu_item_id'] ?? 0 );
+            if ( !$menu_item_id ) return wpilot_err('menu_item_id is required.');
+            $post = get_post( $menu_item_id );
+            if ( !$post || $post->post_type !== 'nav_menu_item' ) return wpilot_err("Menu item #{$menu_item_id} not found.");
+            // Find which menu this item belongs to
+            $menu_terms = wp_get_object_terms( $menu_item_id, 'nav_menu' );
+            if ( empty($menu_terms) ) return wpilot_err('Could not determine menu for this item.');
+            $belong_menu_id = $menu_terms[0]->term_id;
+            $update_args = [];
+            if ( isset($params['title']) ) $update_args['menu-item-title'] = sanitize_text_field( $params['title'] );
+            if ( isset($params['url']) )   $update_args['menu-item-url']   = esc_url_raw( $params['url'] );
+            if ( isset($params['position']) ) $update_args['menu-item-position'] = intval( $params['position'] );
+            $update_args['menu-item-status'] = 'publish';
+            $result = wp_update_nav_menu_item( $belong_menu_id, $menu_item_id, $update_args );
+            if ( is_wp_error($result) ) return wpilot_err( $result->get_error_message() );
+            return wpilot_ok("Menu item #{$menu_item_id} updated.");
+
+        case 'remove_menu_item':
+            $menu_item_id = intval( $params['menu_item_id'] ?? 0 );
+            $title = sanitize_text_field( $params['title'] ?? '' );
+            if ( !$menu_item_id && $title ) {
+                // Find menu item by title
+                $all_menus = wp_get_nav_menus();
+                foreach ( $all_menus as $m ) {
+                    $items = wp_get_nav_menu_items( $m->term_id );
+                    if ( !$items ) continue;
+                    foreach ( $items as $item ) {
+                        if ( strcasecmp( $item->title, $title ) === 0 ) {
+                            $menu_item_id = $item->ID;
+                            break 2;
+                        }
+                    }
+                }
+            }
+            if ( !$menu_item_id ) return wpilot_err('Provide menu_item_id or title to identify the item.');
+            $post = get_post( $menu_item_id );
+            if ( !$post || $post->post_type !== 'nav_menu_item' ) return wpilot_err("Menu item #{$menu_item_id} not found.");
+            $deleted = wp_delete_post( $menu_item_id, true );
+            if ( !$deleted ) return wpilot_err("Failed to remove menu item #{$menu_item_id}.");
+            return wpilot_ok("Menu item #{$menu_item_id} removed.");
+
+        case 'reorder_menu':
+            $menu_id = intval( $params['menu_id'] ?? 0 );
+            $order_titles = $params['items'] ?? [];
+            if ( empty($order_titles) ) return wpilot_err('Provide items array with titles in desired order.');
+            // Auto-find primary menu if not specified
+            if ( !$menu_id ) {
+                $locations = get_nav_menu_locations();
+                foreach (['primary','main-menu','header-menu','main','header','top'] as $loc) {
+                    if (!empty($locations[$loc])) { $menu_id = $locations[$loc]; break; }
+                }
+                if (!$menu_id) {
+                    $menus = wp_get_nav_menus();
+                    if (!empty($menus)) $menu_id = $menus[0]->term_id;
+                }
+            }
+            if ( !$menu_id ) return wpilot_err('No menu found.');
+            $items = wp_get_nav_menu_items( $menu_id );
+            if ( !$items ) return wpilot_err('Menu has no items.');
+            $reordered = 0;
+            foreach ( $order_titles as $pos => $t ) {
+                $t = sanitize_text_field( $t );
+                foreach ( $items as $item ) {
+                    if ( strcasecmp( $item->title, $t ) === 0 ) {
+                        wp_update_post([ 'ID' => $item->ID, 'menu_order' => $pos + 1 ]);
+                        $reordered++;
+                        break;
+                    }
+                }
+            }
+            return wpilot_ok("Reordered {$reordered} menu items.");
+
+        case 'rename_menu':
+            $menu_id  = intval( $params['menu_id'] ?? 0 );
+            $old_name = sanitize_text_field( $params['old_name'] ?? '' );
+            $new_name = sanitize_text_field( $params['new_name'] ?? '' );
+            if ( !$new_name ) return wpilot_err('new_name is required.');
+            if ( !$menu_id && $old_name ) {
+                $menu_obj = wp_get_nav_menu_object( $old_name );
+                if ( $menu_obj ) $menu_id = $menu_obj->term_id;
+            }
+            if ( !$menu_id ) return wpilot_err('Provide menu_id or old_name to identify the menu.');
+            $result = wp_update_nav_menu_object( $menu_id, [ 'menu-name' => $new_name ] );
+            if ( is_wp_error($result) ) return wpilot_err( $result->get_error_message() );
+            return wpilot_ok("Menu renamed to \"{$new_name}\".");
+
+        case 'delete_menu':
+            $menu_id = intval( $params['menu_id'] ?? 0 );
+            $name    = sanitize_text_field( $params['name'] ?? '' );
+            if ( !$menu_id && $name ) {
+                $menu_obj = wp_get_nav_menu_object( $name );
+                if ( $menu_obj ) $menu_id = $menu_obj->term_id;
+            }
+            if ( !$menu_id ) return wpilot_err('Provide menu_id or name to identify the menu.');
+            $result = wp_delete_nav_menu( $menu_id );
+            if ( is_wp_error($result) ) return wpilot_err( $result->get_error_message() );
+            return wpilot_ok("Menu #{$menu_id} deleted.");
+
+        case 'list_menus':
+            $all_menus = wp_get_nav_menus();
+            $locations = get_nav_menu_locations();
+            $registered = get_registered_nav_menus();
+            $data = [];
+            foreach ( $all_menus as $m ) {
+                $items = wp_get_nav_menu_items( $m->term_id );
+                $item_list = [];
+                if ( $items ) {
+                    foreach ( $items as $item ) {
+                        $item_list[] = [ 'id' => $item->ID, 'title' => $item->title, 'url' => $item->url, 'order' => $item->menu_order ];
+                    }
+                }
+                $assigned = [];
+                foreach ( $locations as $loc => $mid ) {
+                    if ( $mid == $m->term_id ) $assigned[] = $loc;
+                }
+                $data[] = [ 'id' => $m->term_id, 'name' => $m->name, 'locations' => $assigned, 'items' => $item_list ];
+            }
+            return wpilot_ok("Found " . count($data) . " menus.", [ 'menus' => $data, 'registered_locations' => $registered ]);
+
+        case 'set_menu_location':
+            $menu_id   = intval( $params['menu_id'] ?? 0 );
+            $menu_name = sanitize_text_field( $params['menu_name'] ?? '' );
+            $location  = sanitize_text_field( $params['location'] ?? '' );
+            if ( !$location ) return wpilot_err('location is required.');
+            if ( !$menu_id && $menu_name ) {
+                $menu_obj = wp_get_nav_menu_object( $menu_name );
+                if ( $menu_obj ) $menu_id = $menu_obj->term_id;
+            }
+            if ( !$menu_id ) {
+                // Auto-find first menu
+                $menus = wp_get_nav_menus();
+                if ( !empty($menus) ) $menu_id = $menus[0]->term_id;
+            }
+            if ( !$menu_id ) return wpilot_err('No menu found. Provide menu_id or menu_name.');
+            $locs = get_theme_mod( 'nav_menu_locations', [] );
+            $locs[$location] = $menu_id;
+            set_theme_mod( 'nav_menu_locations', $locs );
+            return wpilot_ok("Menu #{$menu_id} assigned to location \"{$location}\".");
+
         /* ── SEO metadata ───────────────────────────────────── */
         // Built by Christos Ferlachidis & Daniel Hedenberg
         case 'create_user':
@@ -520,6 +660,36 @@ function wpilot_run_page_tools($tool, $params = []) {
                 return wpilot_list_site_recipes( $params );
             }
             return wpilot_err( 'Site recipe system not loaded.' );
+
+        case 'apply_header_blueprint':
+        case 'apply_header':
+        case 'set_header_style':
+            if ( function_exists( 'wpilot_apply_header_blueprint' ) ) {
+                return wpilot_apply_header_blueprint( $params );
+            }
+            return wpilot_err( 'Header blueprint system not loaded.' );
+
+        case 'apply_footer_blueprint':
+        case 'apply_footer':
+        case 'set_footer_style':
+            if ( function_exists( 'wpilot_apply_footer_blueprint' ) ) {
+                return wpilot_apply_footer_blueprint( $params );
+            }
+            return wpilot_err( 'Footer blueprint system not loaded.' );
+
+        case 'list_header_blueprints':
+        case 'list_headers':
+            if ( function_exists( 'wpilot_list_header_blueprints' ) ) {
+                return wpilot_list_header_blueprints();
+            }
+            return wpilot_err( 'Header blueprint system not loaded.' );
+
+        case 'list_footer_blueprints':
+        case 'list_footers':
+            if ( function_exists( 'wpilot_list_footer_blueprints' ) ) {
+                return wpilot_list_footer_blueprints();
+            }
+            return wpilot_err( 'Footer blueprint system not loaded.' );
 
         case 'update_option':
             $key   = sanitize_text_field($params['option_key'] ?? $params['key'] ?? $params['option_name'] ?? $params['name'] ?? '');

@@ -133,7 +133,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
         $tools['design']    = "Design: update_custom_css, append_custom_css, edit_text, edit_button, edit_colors, edit_font, add_animation, create_section, create_grid, hover_effects, glassmorphism, gradient_text, premium_buttons, responsive_fix, responsive_grid, responsive_text, save_design_profile, reset_design_profile";
         $tools['templates'] = "Templates: list_templates, apply_template, use_template";
         $tools['vision']    = "Vision: screenshot, analyze_design, responsive_check, check_visual_bugs, compare_before_after";
-        $tools['header']    = "Header/Footer: build_header, create_custom_header, build_footer, create_custom_footer, build_mobile_menu";
+        $tools['header']    = "Header/Footer: apply_header_blueprint, apply_footer_blueprint, list_header_blueprints, list_footer_blueprints, build_header, create_custom_header, build_footer, create_custom_footer, build_mobile_menu";
         $tools['html']      = "HTML: inject_html, create_section, create_grid, create_table";
         $tools['css']       = "CSS: update_custom_css, append_custom_css, add_css_variable, add_css_class";
     }
@@ -206,7 +206,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
         '/error|fel|broken|trasig|vit\s?sida|white\s?screen|debug|log|problem/u'
             => ['debug' => "Debug: check_frontend, view_debug_log, site_health_check, list_snippets, read_log, error_log"],
         '/meny|menu|navigat/u'
-            => ['menus' => "Menus: create_menu, add_menu_item, create_mega_menu"],
+            => ['menus' => "Menus: create_menu, add_menu_item, edit_menu_item, remove_menu_item, reorder_menu, rename_menu, delete_menu, list_menus, set_menu_location, create_mega_menu"],
         '/inställning|setting|namn|name|tagline|permalänk|permalink/u'
             => ['settings' => "Settings: update_blogname, update_tagline, update_option, update_permalink_structure"],
     ];
