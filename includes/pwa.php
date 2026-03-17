@@ -669,8 +669,8 @@ function wpilot_pwa_install_mu_plugin() {
     $mu_code = "<?php\n";
     $mu_code .= "// WPilot PWA — Manifest, Service Worker & Icon handlers\n";
     $mu_code .= "if (!defined('ABSPATH')) exit;\n\n";
-    $mu_code .= "// Manifest.json — handle early via template_redirect for proper WP context\n";
-    $mu_code .= "add_action('template_redirect', function() {\n";
+    $mu_code .= "// Manifest + SW + Icon — intercept at wp_loaded (before template)\n";
+    $mu_code .= "add_action('wp_loaded', function() {\n";
     $mu_code .= "    if (!get_option('wpilot_pwa_active')) return;\n";
     $mu_code .= "    if (!isset(\$_GET['wpilot_pwa_manifest'])) return;\n";
     $mu_code .= "    header('Content-Type: application/manifest+json');\n";
