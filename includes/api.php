@@ -246,6 +246,41 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
         $page_summary = "\nEXISTING PAGES:\n" . implode("\n", $page_lines) . "\n";
     }
 
+    // Active CSS — what styles are currently injected site-wide
+    $active_css = '';
+    $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+    if (is_dir($mu_dir)) {
+        $mu_files = glob($mu_dir . '/wpilot-*.php');
+        if ($mu_files) {
+            $css_rules = [];
+            foreach ($mu_files as $mf) {
+                $mc = file_get_contents($mf);
+                // Extract CSS selectors from mu-plugin files
+                if (preg_match_all('/([.#@][a-zA-Z][^{]{1,60})\{/s', $mc, $sel)) {
+                    $css_rules = array_merge($css_rules, array_map('trim', $sel[1]));
+                }
+            }
+            if ($css_rules) {
+                $active_css = "\nACTIVE CSS SELECTORS (already injected site-wide — don't duplicate):\n" . implode(', ', array_unique(array_slice($css_rules, 0, 30))) . "\n";
+            }
+        }
+    }
+
+    // WooCommerce snapshot
+    $woo_snapshot = '';
+    if (class_exists('WooCommerce')) {
+        $product_count = wp_count_posts('product')->publish ?? 0;
+        $cat_count = wp_count_terms('product_cat') ?: 0;
+        $currency = get_woocommerce_currency();
+        $guest = get_option('woocommerce_enable_guest_checkout') === 'yes' ? 'yes' : 'no';
+        $woo_snapshot = "\nWOOCOMMERCE STATUS: {$product_count} products, {$cat_count} categories, currency: {$currency}, guest checkout: {$guest}\n";
+    }
+
+    // Installed plugins summary
+    $active_plugins = get_option('active_plugins', []);
+    $plugin_names = array_map(function($p) { return explode('/', $p)[0]; }, $active_plugins);
+    $plugins_summary = "\nACTIVE PLUGINS: " . implode(', ', $plugin_names) . "\n";
+
     // Site Design Memory — persists across conversations
     $design_style = get_option('wpilot_design_style', '');
     $design_palette = get_option('wpilot_design_palette', '');
@@ -268,7 +303,7 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     $prompt = <<<PROMPT
 You are WPilot — an AI team of WordPress experts for "{$site}" ({$url}). {$woo}
 Theme: {$theme_name} ({$theme_slug}). Builder: {$bname}. Page templates: {$template_list}.
-Today's date: {$today}.{$page_summary}{$design_memory}
+Today's date: {$today}.{$page_summary}{$woo_snapshot}{$plugins_summary}{$active_css}{$design_memory}
 
 ## THEME AWARENESS — CRITICAL
 - Theme: "{$theme_name}". NEVER write global CSS overrides for theme selectors.
