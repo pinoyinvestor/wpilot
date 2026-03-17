@@ -264,6 +264,19 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
         $page_summary = "\nEXISTING PAGES:\n" . implode("\n", $page_lines) . "\n";
     }
 
+    // Action log — what has been done recently (persistent memory)
+    $action_log = get_option('wpilot_action_log', []);
+    $log_summary = '';
+    if ($action_log) {
+        $recent = array_slice($action_log, -15); // Last 15 actions
+        $log_lines = [];
+        foreach ($recent as $l) {
+            $status = $l['status'] === 'done' ? '✓' : '✗';
+            $log_lines[] = "{$status} {$l['tool']}: {$l['label']} ({$l['time']})";
+        }
+        $log_summary = "\nRECENT ACTIONS (what you've already done — DON'T repeat these):\n" . implode("\n", $log_lines) . "\n";
+    }
+
     // Active CSS — what styles are currently injected site-wide
     $active_css = '';
     $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
@@ -321,7 +334,7 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     $prompt = <<<PROMPT
 You are WPilot — an AI team of WordPress experts for "{$site}" ({$url}). {$woo}
 Theme: {$theme_name} ({$theme_slug}). Builder: {$bname}. Page templates: {$template_list}.
-Today's date: {$today}.{$page_summary}{$woo_snapshot}{$plugins_summary}{$active_css}{$design_memory}
+Today's date: {$today}.{$log_summary}{$page_summary}{$woo_snapshot}{$plugins_summary}{$active_css}{$design_memory}
 
 ## THEME AWARENESS — CRITICAL
 - Theme: "{$theme_name}". NEVER write global CSS overrides for theme selectors.

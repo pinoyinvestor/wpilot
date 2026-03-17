@@ -223,6 +223,20 @@ add_action( 'wp_ajax_ca_chat', function () {
         }
     }
 
+    // ── Save action log — persistent memory of what's been done ──
+    $action_log = get_option('wpilot_action_log', []);
+    foreach ($actions as $a) {
+        $action_log[] = [
+            'tool' => $a['tool'],
+            'status' => $a['auto_status'] ?? 'pending',
+            'label' => substr($a['label'] ?? '', 0, 80),
+            'time' => current_time('H:i'),
+        ];
+    }
+    // Keep last 50 actions
+    if (count($action_log) > 50) $action_log = array_slice($action_log, -50);
+    update_option('wpilot_action_log', $action_log, false);
+
     // Persist history after auto-approve so response & action statuses are final
     $hist   = get_option( 'ca_chat_history', [] );
     $hist[] = ['role'=>'user',      'content'=>$message,  'time'=>current_time('H:i'), 'mode'=>$mode];
