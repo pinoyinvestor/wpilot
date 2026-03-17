@@ -9,7 +9,7 @@ function wpilot_run_media_tools($tool, $params = []) {
     switch ($tool) {
 
         case 'update_image_alt':
-            $id  = intval( $params['id'] ?? 0 );
+            $id  = intval( $params["id"] ?? $params["image_id"] ?? $params["attachment_id"] ?? 0 );
             $alt = sanitize_text_field( $params['alt'] ?? '' );
             if ( !$id ) return wpilot_err('Image ID required.');
             update_post_meta($id,'_wp_attachment_image_alt', $alt);

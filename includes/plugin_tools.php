@@ -1039,7 +1039,7 @@ function wpilot_plugin_update_option( $p ) {
     $value = $p['value'] ?? '';
     if ( !$key ) return wpilot_err('option_key required.');
     // Safety: only allow known plugin option prefixes
-    $allowed_prefixes = ['woocommerce_','amelia_','learndash_','wpforms_','rank_math','wpseo','tribe_','mepr','bookly_','gform_','elementor_','astra_','kadence_'];
+    $allowed_prefixes = ['blogname','blogdescription','woocommerce_','amelia_','learndash_','wpforms_','rank_math','wpseo','tribe_','mepr','bookly_','gform_','elementor_','astra_','kadence_'];
     $safe = false;
     foreach ($allowed_prefixes as $prefix) { if (( strpos($key, $prefix) === 0 )) { $safe=true; break; } }
     if ( !$safe ) return wpilot_err("Option key \"{$key}\" is not in the allowed plugin options list.");

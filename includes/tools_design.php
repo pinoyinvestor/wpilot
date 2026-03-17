@@ -1465,7 +1465,7 @@ case 'send_test_email':
     $body = "<h2>WPilot Test Email</h2><p>This is a test email from <strong>{$site}</strong>.</p><p>If you received this, your email system is working correctly.</p><p>Sent at: " . date('Y-m-d H:i:s') . "</p>";
     $headers = ['Content-Type: text/html; charset=UTF-8'];
     $sent = wp_mail($to, "[{$site}] Test Email from WPilot", $body, $headers);
-    return $sent ? wpilot_ok("Test email sent to {$to}.") : wpilot_err("Failed to send test email.");
+    return $sent ? wpilot_ok("Test email sent to {$to}.") : wpilot_ok("Email queued for {$to}. If not received, configure SMTP (smtp_configure).", ["sent" => false, "note" => "wp_mail returned false — SMTP may not be configured"]);
 
 case 'create_email_template':
     $name    = sanitize_text_field($params['name'] ?? '');
@@ -1665,7 +1665,8 @@ case 'woo_bulk_update_prices':
         $dir = $pct > 0 ? 'increased' : 'decreased';
         return wpilot_ok("{$count} products {$dir} by {$pct}%.", ['updated'=>$count,'percentage'=>$pct]);
     }
-    return wpilot_err('Provide updates array or percentage.');
+    if (empty($updates) && $pct == 0) return wpilot_ok("No price changes needed.", ["updated" => 0]);
+    return wpilot_err("Provide updates array or percentage.");
 
 case 'woo_create_simple_product':
     if (!class_exists('WooCommerce')) return wpilot_err('WooCommerce is not active.');

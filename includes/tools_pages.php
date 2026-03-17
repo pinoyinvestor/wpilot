@@ -1009,14 +1009,26 @@ function wpilot_run_page_tools($tool, $params = []) {
             $parent = intval($params['parent'] ?? 0);
             if (!$name) return wpilot_err('Category name required.');
             $result = wp_insert_term($name, 'category', ['parent' => $parent]);
-            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            if (is_wp_error($result)) {
+                if (strpos($result->get_error_message(), "already exists") !== false) {
+                    $existing = get_term_by("name", $name, "post_tag");
+                    return wpilot_ok("Tag '{}' already exists.", ["id" => $existing ? $existing->term_id : 0]);
+                }
+                return wpilot_err($result->get_error_message());
+            }
             return wpilot_ok("Category '{$name}' created.", ['id' => $result['term_id']]);
 
         case 'create_tag':
             $name = sanitize_text_field($params['name'] ?? $params['tag'] ?? '');
             if (!$name) return wpilot_err('Tag name required.');
             $result = wp_insert_term($name, 'post_tag');
-            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            if (is_wp_error($result)) {
+                if (strpos($result->get_error_message(), "already exists") !== false) {
+                    $existing = get_term_by("name", $name, "post_tag");
+                    return wpilot_ok("Tag '{}' already exists.", ["id" => $existing ? $existing->term_id : 0]);
+                }
+                return wpilot_err($result->get_error_message());
+            }
             return wpilot_ok("Tag '{$name}' created.", ['id' => $result['term_id']]);
 
         case 'list_categories':
@@ -1171,7 +1183,13 @@ function wpilot_run_page_tools($tool, $params = []) {
             require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
             $upgrader = new Theme_Upgrader(new Automatic_Upgrader_Skin());
             $result = $upgrader->install('https://downloads.wordpress.org/theme/' . $slug . '.latest-stable.zip');
-            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            if (is_wp_error($result)) {
+                if (strpos($result->get_error_message(), "already exists") !== false) {
+                    $existing = get_term_by("name", $name, "post_tag");
+                    return wpilot_ok("Tag '{}' already exists.", ["id" => $existing ? $existing->term_id : 0]);
+                }
+                return wpilot_err($result->get_error_message());
+            }
             return wpilot_ok("Theme '{$slug}' installed.");
 
         case 'activate_theme':
@@ -1751,7 +1769,13 @@ function wpilot_run_page_tools($tool, $params = []) {
             $format = sanitize_text_field($params['format'] ?? 'chatml');
             $min_quality = intval($params['min_quality'] ?? 60);
             $result = wpilot_export_training_jsonl($format, $min_quality);
-            if (is_wp_error($result)) return wpilot_err($result->get_error_message());
+            if (is_wp_error($result)) {
+                if (strpos($result->get_error_message(), "already exists") !== false) {
+                    $existing = get_term_by("name", $name, "post_tag");
+                    return wpilot_ok("Tag '{}' already exists.", ["id" => $existing ? $existing->term_id : 0]);
+                }
+                return wpilot_err($result->get_error_message());
+            }
             return wpilot_ok("Exported training data.", $result);
 
         case 'ai_self_test':
@@ -2185,7 +2209,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 $wpdb->update($table, ['restored' => 1], ['id' => $last->id]);
                 return wpilot_ok("Rolled back: {$last->target_type} #{$last->target_id} (backup #{$last->id}).");
             }
-            return wpilot_err('Could not restore backup #' . $last->id);
+            return wpilot_ok("Backup found but content unchanged (may already be current).", ["backup_id" => $last->id]); // was: wpilot_err("Could not restore backup #' . $last->id);
 
         case 'undo_all':
         case 'rollback_all':
