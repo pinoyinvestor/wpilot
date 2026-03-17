@@ -21,6 +21,11 @@ function wpilot_run_page_tools($tool, $params = []) {
             $content = $params['content'] ?? $params['html'] ?? '';
             if ( !$id ) return wpilot_err('Page ID required.');
             if ( empty($content) ) return wpilot_err('Content required.');
+            // Clean AI artifacts
+            $content = preg_replace('/\[ACTION:[^\]]*\]/', '', $content);
+            $content = preg_replace('/```(?:html|json|css)?\s*/', '', $content);
+            $content = preg_replace('/\n*[✅⚠️].*Auto-approved:.*$/s', '', $content);
+            $content = trim($content);
             // Auto-fix: wrap orphan CSS in <style> tags
             if (preg_match('/^@import|^[.#*{]|^body\s*{/m', $content) && strpos($content, '<style') === false) {
                 $content = '<style>' . $content;
@@ -797,6 +802,14 @@ function wpilot_run_page_tools($tool, $params = []) {
                 }
                 if ($css) $html = '<style>' . $css . '</style>' . trim($clean);
             }
+            // Clean AI artifacts from HTML — remove [ACTION:...] tags that leaked into content
+            $html = preg_replace('/\[ACTION:[^\]]*\]/', '', $html);
+            // Remove markdown code fences
+            $html = preg_replace('/```(?:html|json|css)?\s*/', '', $html);
+            // Remove auto-approved summaries
+            $html = preg_replace('/\n*[✅⚠️].*Auto-approved:.*$/s', '', $html);
+            $html = trim($html);
+
             $builder = wpilot_detect_builder();
 
             // === ELEMENTOR: HTML widget in Elementor data structure ===
