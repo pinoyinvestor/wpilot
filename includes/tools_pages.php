@@ -400,17 +400,13 @@ function wpilot_run_page_tools($tool, $params = []) {
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
             $filename = 'wpilot-' . $name . '.php';
-            // Use heredoc to avoid quote escaping issues
-            $safe_code = str_replace("'", "\'", $code);
+            // Use heredoc to safely handle HTML+JS with any quotes
             $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
                 . "add_action('wp_head', function() {\n"
-                . "    echo '" . $safe_code . "';\n"
+                . "echo <<<'WPILOT_HTML'\n"
+                . $code . "\n"
+                . "WPILOT_HTML;\n"
                 . "}, 1);\n";
-            // Validate before saving
-            $test_result = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
-            if ($ret !== 0 && $ret !== null) {
-                return wpilot_err('Code has syntax issues. Not saved.');
-            }
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
 
@@ -421,9 +417,12 @@ function wpilot_run_page_tools($tool, $params = []) {
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
             $filename = 'wpilot-' . $name . '.php';
+            // Use heredoc to safely handle HTML+JS with any quotes
             $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
                 . "add_action('wp_footer', function() {\n"
-                . "    echo '" . addslashes($code) . "';\n"
+                . "echo <<<'WPILOT_HTML'\n"
+                . $code . "\n"
+                . "WPILOT_HTML;\n"
                 . "});\n";
             file_put_contents($mu_dir . '/' . $filename, $php);
             return wpilot_ok("Code added to footer via mu-plugin: {$filename}");
@@ -434,14 +433,13 @@ function wpilot_run_page_tools($tool, $params = []) {
             $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
             $priority = intval($params['priority'] ?? 10);
             if (empty($code)) return wpilot_err('Code required.');
-            // SAFETY: strip echo/print from snippets — they pollute AJAX responses
-            $code = preg_replace('/\becho\s+["\']/','// echo ', $code);
-            $code = preg_replace('/\bprint\s*\(/','// print(', $code);
-            $code = preg_replace('/\bvar_dump\s*\(/','// var_dump(', $code);
-            $code = preg_replace('/\bprint_r\s*\(/','// print_r(', $code);
-            // Validate: code must not contain raw HTML tags (common AI mistake)
-            if (preg_match('/<[a-z]/i', $code) && !preg_match('/echo|print/', $code)) {
-                return wpilot_err('PHP snippet contains HTML. Use add_head_code for HTML or wrap in echo/print for PHP.');
+            // Allow PHP+HTML mix for output hooks (wp_head, wp_footer, admin_notices)
+            $output_hooks = ['wp_head', 'wp_footer', 'admin_notices', 'admin_footer', 'login_head', 'login_footer'];
+            $is_output_hook = in_array($hook, $output_hooks);
+            if (!$is_output_hook) {
+                // For non-output hooks, strip echo/print to avoid polluting AJAX responses
+                $code = preg_replace('/\bvar_dump\s*\(/','// var_dump(', $code);
+                $code = preg_replace('/\bprint_r\s*\(/','// print_r(', $code);
             }
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);

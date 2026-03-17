@@ -31,6 +31,7 @@ function wpilot_find_json_in_text($text) {
 // Compact format parser: [ACTION: tool]\n{json}
 function wpilot_parse_compact_actions($text) {
     $actions = [];
+    $idx = 0;
     preg_match_all('/\[ACTION:\s*([^\]\|]+?)\s*\]/', $text, $cm, PREG_OFFSET_CAPTURE);
     foreach ($cm[1] as $match) {
         $tool = trim($match[0]);
@@ -39,7 +40,10 @@ function wpilot_parse_compact_actions($text) {
         $tool = trim($tool);
         
         $afterPos = $match[1] + strlen($match[0]) + 1;
-        $after = substr($text, $afterPos, 3000);
+        // Find next ACTION tag to scope search, fallback to 50000 chars
+        $nextAction = isset($cm[1][$idx + 1]) ? $cm[1][$idx + 1][1] : $afterPos + 50000;
+        $after = substr($text, $afterPos, $nextAction - $afterPos);
+        $idx++;
         // Strip markdown code fences before JSON search
         $after = preg_replace('/```(?:json)?\s*/i', '', $after);
         $after = preg_replace('/\s*```/', '', $after);
@@ -104,7 +108,8 @@ function wpilot_enhance_action_params(&$actions, $text) {
             if (isset($action_positions[$idx])) {
                 $start = $action_positions[$idx];
                 $end = isset($action_positions[$idx + 1]) ? $action_positions[$idx + 1] : strlen($text);
-                $segment = substr($text, $start, $end - $start);
+                // Use full segment — HTML pages can be very large
+                $segment = substr($text, $start, max($end - $start, 50000));
                 // Clean markdown fences from segment
                 $segment = preg_replace('/```(?:json)?\s*/i', '', $segment);
                 $segment = preg_replace('/\s*```/', '', $segment);
