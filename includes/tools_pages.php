@@ -451,13 +451,36 @@ function wpilot_run_page_tools($tool, $params = []) {
         /* ── Options / Settings ─────────────────────────────── */
         case 'save_design_style':
         case 'set_design':
+        case 'save_design_profile':
+        case 'save_design':
+            // Route to design memory system (full profile with 16 fields)
+            if ( function_exists( 'wpilot_save_design_profile' ) ) {
+                // Map legacy params to new profile keys
+                if ( ! empty( $params['palette'] ) || ! empty( $params['colors'] ) ) {
+                    $colors = $params['palette'] ?? $params['colors'] ?? '';
+                    if ( ! empty( $colors ) && empty( $params['primary_color'] ) ) {
+                        $params['notes'] = ( $params['notes'] ?? '' ) . ' Colors: ' . $colors;
+                    }
+                }
+                if ( ! empty( $params['fonts'] ) && empty( $params['heading_font'] ) ) {
+                    $params['heading_font'] = $params['fonts'];
+                }
+                return wpilot_save_design_profile( $params );
+            }
+            // Fallback if design_memory.php not loaded
             $style = sanitize_text_field($params['style'] ?? '');
-            $palette = sanitize_text_field($params['palette'] ?? $params['colors'] ?? '');
-            $fonts = sanitize_text_field($params['fonts'] ?? '');
             if ($style) update_option('wpilot_design_style', $style);
-            if ($palette) update_option('wpilot_design_palette', $palette);
-            if ($fonts) update_option('wpilot_design_fonts', $fonts);
-            return wpilot_ok("Design saved: " . ($style ?: 'unchanged') . ". This will persist across all future conversations.");
+            return wpilot_ok("Design saved: " . ($style ?: 'unchanged') . ".");
+
+        case 'reset_design_profile':
+        case 'reset_design':
+            if ( function_exists( 'wpilot_reset_design_profile' ) ) {
+                return wpilot_reset_design_profile();
+            }
+            delete_option('wpilot_design_style');
+            delete_option('wpilot_design_palette');
+            delete_option('wpilot_design_fonts');
+            return wpilot_ok("Design profile reset.");
 
         case 'update_option':
             $key   = sanitize_text_field($params['option_key'] ?? $params['key'] ?? $params['option_name'] ?? $params['name'] ?? '');

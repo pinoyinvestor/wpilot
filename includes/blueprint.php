@@ -283,6 +283,12 @@ function wpilot_build_blueprint() {
     ]));
     $bp["rest"] = rest_url() ? "on" : "off";
 
+    // Design profile — per-site visual DNA
+    if ( function_exists( 'wpilot_design_profile_compact' ) ) {
+        $design = wpilot_design_profile_compact();
+        if ( $design ) $bp['design_profile'] = $design;
+    }
+
     // Generate hash to detect changes
     $hash = md5(json_encode($bp));
     $bp['hash'] = $hash;

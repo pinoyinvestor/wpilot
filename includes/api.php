@@ -126,11 +126,11 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
     $tools = [];
 
     // Always include core tools
-    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, edit_page_css, replace_in_page, list_pages, get_page, delete_post, create_html_page, check_frontend, save_design_style, set_page_template, clear_sidebar, add_head_code, add_footer_code, add_php_snippet";
+    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, edit_page_css, replace_in_page, list_pages, get_page, delete_post, create_html_page, check_frontend, save_design_profile, reset_design_profile, set_page_template, clear_sidebar, add_head_code, add_footer_code, add_php_snippet";
 
     // Mode-based inclusions
     if ( $mode === 'build' || $mode === 'analyze' ) {
-        $tools['design']    = "Design: update_custom_css, append_custom_css, edit_text, edit_button, edit_colors, edit_font, add_animation, create_section, create_grid, hover_effects, glassmorphism, gradient_text, premium_buttons, responsive_fix, responsive_grid, responsive_text";
+        $tools['design']    = "Design: update_custom_css, append_custom_css, edit_text, edit_button, edit_colors, edit_font, add_animation, create_section, create_grid, hover_effects, glassmorphism, gradient_text, premium_buttons, responsive_fix, responsive_grid, responsive_text, save_design_profile, reset_design_profile";
         $tools['templates'] = "Templates: list_templates, apply_template, use_template";
         $tools['vision']    = "Vision: screenshot, analyze_design, responsive_check, check_visual_bugs, compare_before_after";
         $tools['header']    = "Header/Footer: build_header, create_custom_header, build_footer, create_custom_footer, build_mobile_menu";
@@ -491,21 +491,28 @@ THINKING ORDER for any task:
 
 **DESIGN EXPERT** (when asked to build, fix design, make pretty):
 1. First check_frontend to see current state
-2. Build with create_html_page (for new pages) or append_custom_css (for fixes)
-3. NEVER include <nav>, <header>, <footer> — theme provides these
-4. Read theme_html from blueprint to know exact CSS classes
-5. After changes, use analyze_design to visually verify the result
-6. For premium designs, use list_templates to show available templates, apply_template to deploy
-7. To edit specific elements: edit_text (change text), edit_button (change buttons), edit_icon (change icons)
-8. To change colors site-wide: edit_colors with old_color and new_color
-9. To change fonts: edit_font with selector, font family, size
-10. To add animations: add_animation with selector and animation name (fadeInUp, scaleIn, slideUp, etc)
-11. To see what's on a page: get_page_elements lists all headings, buttons, images, icons
-12. For responsive check: responsive_check takes desktop + tablet + mobile screenshots and analyzes all three
-13. For premium effects: hover_effects, glassmorphism, gradient_text, text_effects, image_effects, premium_buttons
-14. For responsive: responsive_fix, responsive_grid, responsive_text — always test with responsive_check after
-15. For UX: smooth_scroll, sticky_header, scroll_animations, loading_animation, page_transition
-16. For client admin: create_client_dashboard builds simple WooCommerce dashboard, hide_admin_menu removes clutter, design_admin_page changes admin colors, white_label_admin removes WordPress branding, create_customer_portal redesigns My Account page
+2. **READ THE DESIGN PROFILE** below — it tells you this site's colors, fonts, style. FOLLOW IT EXACTLY.
+3. Build with create_html_page (for new pages) or append_custom_css (for fixes)
+4. NEVER include <nav>, <header>, <footer> — theme provides these
+5. Read theme_html from blueprint to know exact CSS classes
+6. After changes, use analyze_design to visually verify the result
+7. **AFTER ANY design change**: call save_design_profile to store the chosen style, colors, fonts, mood.
+   Example: [ACTION: save_design_profile | Saving site design DNA]
+   ```json
+   {"style": "minimalist", "primary_color": "#1a1a2e", "secondary_color": "#e94560", "bg_color": "#ffffff", "heading_font": "Playfair Display", "body_font": "Inter", "mood": "elegant", "button_style": "rounded solid"}
+   ```
+8. If NO design profile exists yet, ASK the customer what style they want BEFORE building, OR save a profile based on what you build.
+9. To edit specific elements: edit_text (change text), edit_button (change buttons), edit_icon (change icons)
+10. To change colors site-wide: edit_colors with old_color and new_color — then update save_design_profile
+11. To change fonts: edit_font with selector, font family, size — then update save_design_profile
+12. To add animations: add_animation with selector and animation name (fadeInUp, scaleIn, slideUp, etc)
+13. To see what's on a page: get_page_elements lists all headings, buttons, images, icons
+14. For responsive check: responsive_check takes desktop + tablet + mobile screenshots and analyzes all three
+15. For premium effects: hover_effects, glassmorphism, gradient_text, text_effects, image_effects, premium_buttons
+16. For responsive: responsive_fix, responsive_grid, responsive_text — always test with responsive_check after
+17. For UX: smooth_scroll, sticky_header, scroll_animations, loading_animation, page_transition
+18. For client admin: create_client_dashboard builds simple WooCommerce dashboard, hide_admin_menu removes clutter, design_admin_page changes admin colors, white_label_admin removes WordPress branding, create_customer_portal redesigns My Account page
+19. To reset a site's design: reset_design_profile — clears all saved design choices
 
 **BUILDER GUIDE** (when customer asks about Elementor, Divi, or page builders):
 - If Elementor: guide them to edit pages with "Edit with Elementor" button, explain widgets, sections, columns
@@ -581,6 +588,8 @@ create_html_page: {"title":"X","html":"<div style=...>"}
 append_page_content: {"id":123,"content":"<section>...</section>"} — APPENDS to existing content
 update_page_content: {"id":123,"content":"...","append":true} — same as append_page_content
 CSS tools: {"css":"body{...}"} — actual code with { }
+save_design_profile: {"style":"minimalist","primary_color":"#1a1a2e","secondary_color":"#e94560","bg_color":"#fff","heading_font":"Playfair Display","body_font":"Inter","mood":"elegant","button_style":"rounded solid","dark_mode":"false"}
+reset_design_profile: {} — clears all design memory for this site
 
 ## CONTEXT
 Compressed blueprint every message: pages, products, plugins, menus, theme HTML structure, security, WooCommerce config. Auto-refreshes on changes.
@@ -732,6 +741,11 @@ PROMPT;
         case 'plugins':
             $prompt .= "\n\n## CURRENT MODE: PLUGIN ANALYSIS\nAnalyze all plugins from context: find overlaps, unused plugins, security risks, missing essentials. Output action cards to deactivate unnecessary plugins.";
             break;
+    }
+
+    // Design profile — per-site visual DNA
+    if ( function_exists( 'wpilot_design_context_block' ) ) {
+        $prompt .= wpilot_design_context_block();
     }
 
     // Brain memory context

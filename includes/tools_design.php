@@ -36,6 +36,10 @@ function wpilot_run_design_tools($tool, $params = []) {
                 // Classic theme — remove mu-plugin if it exists (prevents double CSS)
                 if (file_exists($mu_css_path)) @unlink($mu_css_path);
             }
+            // Auto-detect design tokens and save to design profile
+            if ( function_exists( 'wpilot_auto_detect_design_from_css' ) ) {
+                wpilot_auto_detect_design_from_css( $css );
+            }
             return wpilot_ok('Custom CSS applied.');
 
         case 'append_custom_css':
@@ -59,6 +63,10 @@ function wpilot_run_design_tools($tool, $params = []) {
             $curr = preg_replace('/\/\*\s*WPilot[^*]*\*\/\s*/', '', $curr);
             $curr = preg_replace('/\n{3,}/', "\n\n", trim($curr));
             wp_update_custom_css_post(trim($curr) . "\n" . $new);
+            // Auto-detect design tokens from new CSS
+            if ( function_exists( 'wpilot_auto_detect_design_from_css' ) ) {
+                wpilot_auto_detect_design_from_css( $new );
+            }
             return wpilot_ok('CSS updated (duplicates removed).');
 
         /* ── Media / Images ─────────────────────────────────── */

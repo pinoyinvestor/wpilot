@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:           2.2.1
+ * Version:           2.3.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -54,7 +54,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-if ( ! defined( 'CA_VERSION' ) ) define( "CA_VERSION", "2.2.1" );
+if ( ! defined( 'CA_VERSION' ) ) define( "CA_VERSION", "2.3.0" );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
@@ -112,7 +112,7 @@ function wpilot_load_heavy() {
     $dir = plugin_dir_path(__FILE__) . 'includes/';
 
     // Core modules — always needed for chat
-    $core = ['api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'backup', 'parser_fix'];
+    $core = ['api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'backup', 'parser_fix', 'design_memory'];
     foreach ($core as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;
