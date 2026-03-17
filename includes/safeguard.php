@@ -91,7 +91,7 @@ function wpilot_safe_run_tool( $tool, $params = [] ) {
     }
 
     // Validate content before inserting
-    if ( in_array( $tool, ['create_page', 'update_page_content'] ) ) {
+    if ( in_array( $tool, ['create_page', 'update_page_content', 'append_page_content'] ) ) {
         $content = $params['content'] ?? '';
         $check = wpilot_validate_content( $content );
         if ( ! $check['valid'] ) {

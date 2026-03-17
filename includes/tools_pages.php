@@ -16,9 +16,14 @@ function wpilot_run_page_tools($tool, $params = []) {
             if ( is_wp_error($id) ) return wpilot_err( $id->get_error_message() );
             return wpilot_ok( "Page \"{$title}\" created (ID: {$id}, status: {$status}).", ['id'=>$id] );
 
+        case 'append_page_content':
+            $params['append'] = true;
+            // Fall through to update_page_content
+
         case 'update_page_content':
             $id      = intval( $params['id'] ?? $params['page_id'] ?? $params['post_id'] ?? 0 );
             $content = $params['content'] ?? $params['html'] ?? '';
+            $append  = !empty( $params['append'] );
             if ( !$id ) return wpilot_err('Page ID required.');
             if ( empty($content) ) return wpilot_err('Content required.');
             // Clean AI artifacts
@@ -39,10 +44,26 @@ function wpilot_run_page_tools($tool, $params = []) {
             if (strpos($content, '<!-- wp:') === false) {
                 $content = '<!-- wp:html -->' . $content . '<!-- /wp:html -->';
             }
+            // Append mode: merge new content with existing page content
+            if ( $append ) {
+                $existing = get_post_field( 'post_content', $id );
+                if ( !empty( $existing ) ) {
+                    $strip_wp_html = function( $html ) {
+                        $html = preg_replace( '/<!--\s*wp:html\s*-->/', '', $html );
+                        $html = preg_replace( '/<!--\s*\/wp:html\s*-->/', '', $html );
+                        return trim( $html );
+                    };
+                    // Built by Christos Ferlachidis & Daniel Hedenberg
+                    $existing_inner = $strip_wp_html( $existing );
+                    $new_inner      = $strip_wp_html( $content );
+                    $content = '<!-- wp:html -->' . $existing_inner . "\n" . $new_inner . '<!-- /wp:html -->';
+                }
+            }
             wpilot_save_post_snapshot( $id );
             wp_update_post( ['ID'=>$id,'post_content'=>$content] );
             if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
-            return wpilot_ok( "Page #{$id} content updated." );
+            $mode_label = $append ? 'appended to' : 'updated';
+            return wpilot_ok( "Page #{$id} content {$mode_label}." );
 
         case 'update_post_title':
             $id    = intval( $params['id'] ?? 0 );
@@ -441,39 +462,188 @@ function wpilot_run_page_tools($tool, $params = []) {
         /* ── Code Injection (mu-plugin) ──────────────────── */
         case 'add_head_code':
             $code = $params['code'] ?? $params['html'] ?? $params['css'] ?? $params['content'] ?? '';
-            $name = sanitize_file_name($params['name'] ?? 'custom-head-' . time());
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
-            $filename = 'wpilot-' . $name . '.php';
-            // Use heredoc to safely handle HTML+JS with any quotes
-            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
-                . "add_action('wp_head', function() {\n"
-                . "echo <<<'WPILOT_HTML'\n"
-                . $code . "\n"
-                . "WPILOT_HTML;\n"
-                . "}, 1);\n";
-            file_put_contents($mu_dir . '/' . $filename, $php);
+            $filename = 'wpilot-head-styles.php';
+            $filepath = $mu_dir . '/' . $filename;
+            // Extract CSS rules from new code (strip <style> tags if present)
+            $new_css = $code;
+            $new_css = preg_replace('/<\/?style[^>]*>/i', '', $new_css);
+            $new_css = trim($new_css);
+            // Read existing CSS from consolidated file
+            $existing_css = '';
+            if (file_exists($filepath)) {
+                $content = file_get_contents($filepath);
+                if (preg_match('/\/\* BEGIN CSS \*\/\s*(.*?)\s*\/\* END CSS \*\//s', $content, $m)) {
+                    $existing_css = trim($m[1]);
+                }
+            }
+            // Parse new CSS selectors and replace duplicates
+            // Match selector { ... } blocks (handles nested braces via non-greedy)
+            $new_blocks = [];
+            preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $new_css, $matches, PREG_SET_ORDER);
+            foreach ($matches as $match) {
+                $selector = trim($match[1]);
+                $body = trim($match[2]);
+                $new_blocks[$selector] = $body;
+            }
+            // Parse existing CSS selectors
+            $existing_blocks = [];
+            if (!empty($existing_css)) {
+                preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $existing_css, $matches, PREG_SET_ORDER);
+                foreach ($matches as $match) {
+                    $selector = trim($match[1]);
+                    $body = trim($match[2]);
+                    $existing_blocks[$selector] = $body;
+                }
+            }
+            // Merge: new selectors override existing ones
+            $merged = array_merge($existing_blocks, $new_blocks);
+            $merged_css = '';
+            foreach ($merged as $sel => $body) {
+                $merged_css .= $sel . " {\n    " . $body . "\n}\n";
+            }
+            $merged_css = trim($merged_css);
+            // Write consolidated file
+            $php = "<?php\n// WPilot consolidated head styles\nadd_action('wp_head', function() {\n"
+                . "echo <<<'WPILOT_CSS'\n<style>\n/* BEGIN CSS */\n"
+                . $merged_css . "\n"
+                . "/* END CSS */\n</style>\nWPILOT_CSS;\n}, 1);\n";
+            file_put_contents($filepath, $php);
             if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
-            return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
+            $sel_count = count($new_blocks);
+            return wpilot_ok("CSS merged into consolidated mu-plugin: {$filename} ({$sel_count} selector(s) added/updated, " . count($merged) . " total)");
 
         case 'add_footer_code':
             $code = $params['code'] ?? $params['html'] ?? $params['content'] ?? '';
-            $name = sanitize_file_name($params['name'] ?? 'custom-footer-' . time());
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
-            $filename = 'wpilot-' . $name . '.php';
-            // Use heredoc to safely handle HTML+JS with any quotes
-            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
-                . "add_action('wp_footer', function() {\n"
-                . "echo <<<'WPILOT_HTML'\n"
-                . $code . "\n"
-                . "WPILOT_HTML;\n"
-                . "});\n";
-            file_put_contents($mu_dir . '/' . $filename, $php);
+            $filename = 'wpilot-footer-scripts.php';
+            $filepath = $mu_dir . '/' . $filename;
+            // Read existing code from consolidated file
+            $existing_code = '';
+            if (file_exists($filepath)) {
+                $content = file_get_contents($filepath);
+                if (preg_match('/\/\* BEGIN FOOTER \*\/\s*(.*?)\s*\/\* END FOOTER \*\//s', $content, $m)) {
+                    $existing_code = trim($m[1]);
+                }
+            }
+            // Append new code (footer scripts are JS/HTML, not CSS — just append)
+            $new_code = trim($code);
+            if (!empty($existing_code)) {
+                // Avoid exact duplicates
+                if (strpos($existing_code, $new_code) === false) {
+                    $merged_code = $existing_code . "\n" . $new_code;
+                } else {
+                    $merged_code = $existing_code;
+                }
+            } else {
+                $merged_code = $new_code;
+            }
+            // Write consolidated file
+            $php = "<?php\n// WPilot consolidated footer scripts\nadd_action('wp_footer', function() {\n"
+                . "echo <<<'WPILOT_HTML'\n/* BEGIN FOOTER */\n"
+                . $merged_code . "\n"
+                . "/* END FOOTER */\nWPILOT_HTML;\n});\n";
+            file_put_contents($filepath, $php);
             if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
-            return wpilot_ok("Code added to footer via mu-plugin: {$filename}");
+            return wpilot_ok("Code merged into consolidated mu-plugin: {$filename}");
+
+        case 'cleanup_mu_plugins':
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) return wpilot_ok("No mu-plugins directory found. Nothing to clean up.");
+            $head_files = glob($mu_dir . '/wpilot-custom-head-*.php') ?: [];
+            $head_files = array_merge($head_files, glob($mu_dir . '/wpilot-*head*.php') ?: []);
+            // Exclude the consolidated file itself
+            $head_files = array_filter($head_files, function($f) { return basename($f) !== 'wpilot-head-styles.php'; });
+            $head_files = array_unique($head_files);
+            $footer_files = glob($mu_dir . '/wpilot-custom-footer-*.php') ?: [];
+            $footer_files = array_merge($footer_files, glob($mu_dir . '/wpilot-*footer*.php') ?: []);
+            $footer_files = array_filter($footer_files, function($f) { return basename($f) !== 'wpilot-footer-scripts.php'; });
+            $footer_files = array_unique($footer_files);
+            // Collect all CSS from old head files
+            $all_css = '';
+            foreach ($head_files as $file) {
+                $content = file_get_contents($file);
+                if (preg_match("/echo\s+<<<'WPILOT_(?:HTML|CSS)'\s*\n(.*?)\nWPILOT_(?:HTML|CSS);/s", $content, $m)) {
+                    $extracted = $m[1];
+                    $extracted = preg_replace('/<\/?style[^>]*>/i', '', $extracted);
+                    $extracted = preg_replace('/\/\* (?:BEGIN|END) CSS \*\//', '', $extracted);
+                    $all_css .= trim($extracted) . "\n";
+                }
+            }
+            // Collect all code from old footer files
+            $all_footer = '';
+            foreach ($footer_files as $file) {
+                $content = file_get_contents($file);
+                if (preg_match("/echo\s+<<<'WPILOT_(?:HTML|CSS)'\s*\n(.*?)\nWPILOT_(?:HTML|CSS);/s", $content, $m)) {
+                    $extracted = $m[1];
+                    $extracted = preg_replace('/\/\* (?:BEGIN|END) FOOTER \*\//', '', $extracted);
+                    $all_footer .= trim($extracted) . "\n";
+                }
+            }
+            // Merge into existing consolidated head file
+            $head_path = $mu_dir . '/wpilot-head-styles.php';
+            $existing_css = '';
+            if (file_exists($head_path)) {
+                $content = file_get_contents($head_path);
+                if (preg_match('/\/\* BEGIN CSS \*\/\s*(.*?)\s*\/\* END CSS \*\//s', $content, $m)) {
+                    $existing_css = trim($m[1]);
+                }
+            }
+            $all_css = trim($all_css);
+            if (!empty($all_css)) {
+                $merged_blocks = [];
+                $combined = $existing_css . "\n" . $all_css;
+                preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $combined, $matches, PREG_SET_ORDER);
+                foreach ($matches as $match) {
+                    $merged_blocks[trim($match[1])] = trim($match[2]);
+                }
+                $merged_css = '';
+                foreach ($merged_blocks as $sel => $body) {
+                    $merged_css .= $sel . " {\n    " . $body . "\n}\n";
+                }
+                $merged_css = trim($merged_css);
+                $php = "<?php\n// WPilot consolidated head styles\nadd_action('wp_head', function() {\n"
+                    . "echo <<<'WPILOT_CSS'\n<style>\n/* BEGIN CSS */\n"
+                    . $merged_css . "\n"
+                    . "/* END CSS */\n</style>\nWPILOT_CSS;\n}, 1);\n";
+                file_put_contents($head_path, $php);
+            }
+            // Merge into existing consolidated footer file
+            $footer_path = $mu_dir . '/wpilot-footer-scripts.php';
+            $existing_footer = '';
+            if (file_exists($footer_path)) {
+                $content = file_get_contents($footer_path);
+                if (preg_match('/\/\* BEGIN FOOTER \*\/\s*(.*?)\s*\/\* END FOOTER \*\//s', $content, $m)) {
+                    $existing_footer = trim($m[1]);
+                }
+            }
+            $all_footer = trim($all_footer);
+            if (!empty($all_footer)) {
+                if (!empty($existing_footer) && strpos($existing_footer, $all_footer) === false) {
+                    $merged_footer = $existing_footer . "\n" . $all_footer;
+                } elseif (empty($existing_footer)) {
+                    $merged_footer = $all_footer;
+                } else {
+                    $merged_footer = $existing_footer;
+                }
+                $php = "<?php\n// WPilot consolidated footer scripts\nadd_action('wp_footer', function() {\n"
+                    . "echo <<<'WPILOT_HTML'\n/* BEGIN FOOTER */\n"
+                    . $merged_footer . "\n"
+                    . "/* END FOOTER */\nWPILOT_HTML;\n});\n";
+                file_put_contents($footer_path, $php);
+            }
+            // Delete old individual files
+            $deleted = 0;
+            foreach (array_merge($head_files, $footer_files) as $file) {
+                if (file_exists($file)) { unlink($file); $deleted++; }
+            }
+            $total_merged = count($head_files) + count($footer_files);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Cleanup complete: {$total_merged} old files merged, {$deleted} deleted. Consolidated into wpilot-head-styles.php and wpilot-footer-scripts.php.");
 
         case 'add_php_snippet':
             $code = $params['code'] ?? '';

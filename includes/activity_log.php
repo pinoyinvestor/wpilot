@@ -27,6 +27,7 @@ add_filter('wpi_after_tool_run', function($result, $tool, $params, $backup_id) {
     $labels = [
         'create_page'          => 'Created page',
         'update_page_content'  => 'Updated page content',
+        'append_page_content'  => 'Appended page content',
         'update_post_title'    => 'Updated post title',
         'set_homepage'         => 'Set homepage',
         'create_menu'          => 'Created menu',
