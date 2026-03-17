@@ -8,6 +8,11 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
 
     $messages = wpilot_build_messages( $message, $context, $history );
 
+    // Smart model routing — use cheaper model for simple tasks
+    $msg_lower = strtolower($message);
+    $needs_design = preg_match('/design|build|create.*page|redesign|style|homepage|landing|hero|section|card|layout|gradient|animation|premium/i', $msg_lower);
+    $model = $needs_design ? CA_MODEL : (defined('CA_MODEL_FAST') ? CA_MODEL_FAST : CA_MODEL);
+
     $response = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
         'timeout' => 90,
         'headers' => [
@@ -16,7 +21,7 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
             'anthropic-version' => '2023-06-01',
         ],
         'body' => wp_json_encode( [
-            'model'      => CA_MODEL,
+            'model'      => $model,
             'max_tokens' => (function_exists('wpilot_memory_ok') && !wpilot_memory_ok(64)) ? 2048 : 4096,
             'system'     => wpilot_system_prompt( $mode, $message ),
             'messages'   => $messages,
@@ -91,10 +96,23 @@ function wpilot_build_messages( $message, $context = [], $history = [] ) {
         ];
     }
 
-    // Replay history (max last 20 turns = 10 exchanges)
-    foreach ( array_slice( $history, -10 ) as $h ) {
+    // Replay history — compressed to save tokens
+    // Only keep last 6 messages, strip HTML content (keep summaries only)
+    foreach ( array_slice( $history, -6 ) as $h ) {
         if ( ! empty( $h['role'] ) && ! empty( $h['content'] ) ) {
-            $messages[] = [ 'role' => $h['role'], 'content' => $h['content'] ];
+            $content = $h['content'];
+            // Strip HTML from history messages — it's been saved to pages already
+            if (strlen($content) > 500) {
+                // Keep first 200 chars + strip HTML + keep action summaries
+                $content = preg_replace('/<style[^>]*>.*?<\/style>/s', '[CSS]', $content);
+                $content = preg_replace('/```html.*?```/s', '[HTML block]', $content);
+                $content = preg_replace('/```json.*?```/s', '[JSON block]', $content);
+                $content = strip_tags($content);
+                if (strlen($content) > 500) {
+                    $content = substr($content, 0, 200) . '...[trimmed]...' . substr($content, -100);
+                }
+            }
+            $messages[] = [ 'role' => $h['role'], 'content' => $content ];
         }
     }
 

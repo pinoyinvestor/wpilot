@@ -59,8 +59,9 @@ add_action( 'wp_ajax_ca_chat', function () {
     $context = json_decode( wp_unslash( $_POST['context'] ?? '{}' ), true ) ?: [];
 
     if ( empty( $message ) ) wp_send_json_error( 'Empty message.' );
-    // Always build fresh context so the AI sees the current site state
-    $context = wpilot_build_context( $mode === 'chat' ? 'general' : $mode );
+    // Context: system prompt now includes pages, design, WooCommerce, plugins, CSS
+    // Only build heavy context for analyze/build modes — chat uses system prompt data
+    $context = ($mode !== 'chat') ? wpilot_build_context($mode) : [];
 
     // ── Smart routing: Brain → WPilot AI → Claude ─────────────
     $result = wpilot_smart_answer( $message, $mode, $context, $history );
@@ -181,7 +182,7 @@ add_action( 'wp_ajax_ca_chat', function () {
     $hist[] = ['role'=>'user',      'content'=>$message,  'time'=>current_time('H:i'), 'mode'=>$mode];
     $hist[] = ['role'=>'assistant', 'content'=>$response, 'time'=>current_time('H:i'),
                'actions'=>$actions, 'source'=>$source, 'memory_id'=>$mem_id, 'id'=>'msg_'.uniqid()];
-    if ( count($hist) > 60 ) $hist = array_slice($hist,-60);
+    if ( count($hist) > 20 ) $hist = array_slice($hist,-20);
     update_option( 'ca_chat_history', $hist, false );
 
     wp_send_json_success( [

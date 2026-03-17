@@ -78,6 +78,7 @@ define( 'CA_SLUG',       'wpilot' );
 define( 'CA_MONTHLY_PRICE',          19   );   // Alias for bubble.php
 define( 'WPI_WEBLEAS_ENDPOINT',      'https://weblease.se/ai-query' );  // WPilot AI server (moved from webleas_ai.php)
 define( 'CA_MODEL',      'claude-sonnet-4-6' );
+define( 'CA_MODEL_FAST', 'claude-haiku-4-5-20251001' ); // 10x cheaper for simple tasks
 
 // ── Always load (lightweight — hooks and helpers) ─────────────
 $_wpilot_core = [
