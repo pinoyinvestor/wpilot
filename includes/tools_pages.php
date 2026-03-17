@@ -505,6 +505,22 @@ function wpilot_run_page_tools($tool, $params = []) {
             }
             return wpilot_err( 'Blueprint system not loaded.' );
 
+        case 'build_site':
+        case 'generate_site':
+        case 'create_site':
+            if ( function_exists( 'wpilot_build_site_from_recipe' ) ) {
+                return wpilot_build_site_from_recipe( $params );
+            }
+            return wpilot_err( 'Site recipe system not loaded.' );
+
+        case 'list_recipes':
+        case 'list_site_recipes':
+        case 'show_recipes':
+            if ( function_exists( 'wpilot_list_site_recipes' ) ) {
+                return wpilot_list_site_recipes( $params );
+            }
+            return wpilot_err( 'Site recipe system not loaded.' );
+
         case 'update_option':
             $key   = sanitize_text_field($params['option_key'] ?? $params['key'] ?? $params['option_name'] ?? $params['name'] ?? '');
             $value = $params['value'] ?? '';

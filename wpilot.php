@@ -112,7 +112,7 @@ function wpilot_load_heavy() {
     $dir = plugin_dir_path(__FILE__) . 'includes/';
 
     // Core modules — always needed for chat
-    $core = ['api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'backup', 'parser_fix', 'design_memory', 'design_blueprints'];
+    $core = ['api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'backup', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes'];
     foreach ($core as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;

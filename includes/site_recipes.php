@@ -1,0 +1,740 @@
+<?php
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+// ═══════════════════════════════════════════════════════════════
+//  SITE RECIPES — Complete site generation from one command
+//
+//  Blueprint = design DNA (colors, fonts, CSS)
+//  Recipe = full site (pages, sections, WooCommerce, menus)
+//
+//  "Build me a premium clothing store" → recipe picks blueprint
+//  + generates homepage, about, contact, shop layout, footer,
+//  WooCommerce config, menus — everything.
+//
+//  Each recipe = JSON instructions the AI executes step by step
+// ═══════════════════════════════════════════════════════════════
+// Built by Christos Ferlachidis & Daniel Hedenberg
+
+// ── Available site recipes ────────────────────────────────────
+function wpilot_get_site_recipes() {
+    return [
+
+        'premium-fashion' => [
+            'name'           => 'Premium Fashion Store',
+            'description'    => 'Lyxig klädbutik inspirerad av Apple/Zara — minimalistisk, bilddriven, premium känsla',
+            'keywords'       => ['fashion','clothing','clothes','apparel','boutique','luxury','apple','zara','h&m','kläder','mode','butik','klädbutik'],
+            'blueprint'      => 'dark-luxury',
+            'woo_required'   => true,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => '{site_name}', 'subheading' => 'Premium {business_type} — curated for the modern aesthetic', 'cta_primary' => 'Shop Now', 'cta_link' => '/shop', 'cta_secondary' => 'Our Story', 'cta_link2' => '/about', 'style' => 'fullscreen dark overlay'],
+                        ['type' => 'products', 'heading' => 'New Arrivals', 'count' => 4, 'style' => 'grid clean'],
+                        ['type' => 'split',    'heading' => 'Crafted with Purpose', 'text' => 'Every piece is selected for quality, sustainability, and timeless design. We believe fashion should be intentional.', 'image' => 'lifestyle', 'style' => 'image-left'],
+                        ['type' => 'products', 'heading' => 'Best Sellers', 'count' => 4, 'orderby' => 'popularity', 'style' => 'grid clean'],
+                        ['type' => 'cta',      'heading' => 'Join the Movement', 'text' => 'Be the first to know about new drops and exclusive offers.', 'cta' => 'Subscribe', 'style' => 'dark gradient'],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About Us',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Our Story', 'subheading' => 'Where quality meets conscious design'],
+                        ['type' => 'text-block', 'content' => 'Founded with a simple mission: to create clothing that speaks through quality, not logos. Every fabric is hand-selected, every stitch intentional.'],
+                        ['type' => 'features', 'items' => [
+                            ['icon' => '✦', 'title' => 'Sustainable Materials', 'desc' => 'Organic cotton, recycled fibers, responsible sourcing'],
+                            ['icon' => '✦', 'title' => 'Timeless Design', 'desc' => 'Pieces that transcend seasons and trends'],
+                            ['icon' => '✦', 'title' => 'Fair Production', 'desc' => 'Ethically manufactured in certified facilities'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Get in Touch', 'subheading' => 'We would love to hear from you'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'minimal'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Shop',    'url' => '/shop'],
+                ['title' => 'New In',  'url' => '/shop?orderby=date'],
+                ['title' => 'About',   'url' => '/about'],
+                ['title' => 'Contact', 'url' => '/contact'],
+            ],
+            'woo_config' => [
+                'currency'       => 'auto',
+                'guest_checkout' => true,
+                'catalog_style'  => 'grid-3',
+            ],
+        ],
+
+        'restaurant-bar' => [
+            'name'           => 'Restaurant & Bar',
+            'description'    => 'Varm restaurangsajt med meny, bokning, öppettider — mörk och inbjudande',
+            'keywords'       => ['restaurant','bar','bistro','cafe','pizza','sushi','food','dining','menu','restaurang','krog','mat','café','pizzeria'],
+            'blueprint'      => 'restaurant',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => '{site_name}', 'subheading' => 'An unforgettable dining experience', 'cta_primary' => 'View Menu', 'cta_link' => '/menu', 'cta_secondary' => 'Reserve a Table', 'cta_link2' => '/contact', 'style' => 'fullscreen dark overlay'],
+                        ['type' => 'split',    'heading' => 'Our Philosophy', 'text' => 'Fresh, local ingredients transformed into extraordinary dishes. Every plate tells a story of tradition and innovation.', 'image' => 'food', 'style' => 'image-right'],
+                        ['type' => 'features', 'items' => [
+                            ['icon' => '🍽', 'title' => 'Fresh Ingredients', 'desc' => 'Locally sourced, seasonal produce'],
+                            ['icon' => '👨‍🍳', 'title' => 'Expert Chefs', 'desc' => 'Passionate about every detail'],
+                            ['icon' => '🍷', 'title' => 'Curated Wines', 'desc' => 'Hand-picked selection from around the world'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Reserve Your Table', 'text' => 'Join us for an evening to remember.', 'cta' => 'Book Now', 'style' => 'warm'],
+                    ],
+                ],
+                [
+                    'slug'     => 'menu',
+                    'title'    => 'Menu',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Our Menu', 'subheading' => 'Seasonal flavors, timeless techniques'],
+                        ['type' => 'menu-section', 'category' => 'Starters', 'items' => [
+                            ['name' => 'Bruschetta', 'desc' => 'Grilled bread, tomato, basil, olive oil', 'price' => '95'],
+                            ['name' => 'Caesar Salad', 'desc' => 'Romaine, parmesan, croutons, anchovy dressing', 'price' => '125'],
+                            ['name' => 'Soup of the Day', 'desc' => 'Ask your server for today\'s selection', 'price' => '85'],
+                        ]],
+                        ['type' => 'menu-section', 'category' => 'Main Courses', 'items' => [
+                            ['name' => 'Grilled Salmon', 'desc' => 'Atlantic salmon, asparagus, lemon butter', 'price' => '265'],
+                            ['name' => 'Beef Tenderloin', 'desc' => 'Aged beef, truffle mash, red wine jus', 'price' => '325'],
+                            ['name' => 'Pasta Primavera', 'desc' => 'Fresh pasta, seasonal vegetables, pesto', 'price' => '195'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Our Story'],
+                        ['type' => 'text-block', 'content' => 'Since opening our doors, we have been dedicated to creating memorable dining experiences. Our kitchen is driven by respect for ingredients and a love for bringing people together.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact & Reservations',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Visit Us'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'show_hours' => true, 'hours' => 'Mon-Thu: 11-22 | Fri-Sat: 11-23 | Sun: 12-21', 'style' => 'warm'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Menu',    'url' => '/menu'],
+                ['title' => 'About',   'url' => '/about'],
+                ['title' => 'Contact', 'url' => '/contact'],
+            ],
+        ],
+
+        'tech-startup' => [
+            'name'           => 'Tech Startup / SaaS',
+            'description'    => 'Modern tech-sajt med pricing, features, CTA — mörk gradient, bold',
+            'keywords'       => ['tech','startup','saas','app','software','digital','product','platform','api','teknik','startup','mjukvara','plattform'],
+            'blueprint'      => 'bold-modern',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => 'The Future of {business_type}', 'subheading' => 'Powerful, simple, built for teams that move fast.', 'cta_primary' => 'Get Started Free', 'cta_link' => '/pricing', 'cta_secondary' => 'See How It Works', 'cta_link2' => '/about', 'style' => 'gradient bold'],
+                        ['type' => 'features', 'heading' => 'Why Teams Choose Us', 'items' => [
+                            ['icon' => '⚡', 'title' => 'Lightning Fast', 'desc' => 'Sub-second response times, globally distributed'],
+                            ['icon' => '🔒', 'title' => 'Enterprise Security', 'desc' => 'SOC2 compliant, end-to-end encryption'],
+                            ['icon' => '🔌', 'title' => 'Integrations', 'desc' => 'Connect with 100+ tools your team already uses'],
+                            ['icon' => '📊', 'title' => 'Analytics', 'desc' => 'Real-time dashboards and custom reports'],
+                        ]],
+                        ['type' => 'stats', 'items' => [
+                            ['number' => '10K+', 'label' => 'Active Users'],
+                            ['number' => '99.9%', 'label' => 'Uptime'],
+                            ['number' => '150+', 'label' => 'Countries'],
+                        ]],
+                        ['type' => 'testimonials', 'items' => [
+                            ['quote' => 'This completely transformed how our team works. We shipped 3x faster in the first month.', 'author' => 'Sarah K., CTO at TechCorp'],
+                            ['quote' => 'Finally a tool that just works. No bloat, no complexity, just results.', 'author' => 'Marcus L., Head of Product'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Ready to Get Started?', 'text' => 'Free 14-day trial. No credit card required.', 'cta' => 'Start Free Trial', 'style' => 'gradient bold'],
+                    ],
+                ],
+                [
+                    'slug'     => 'pricing',
+                    'title'    => 'Pricing',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Simple, Transparent Pricing', 'subheading' => 'No hidden fees. Cancel anytime.'],
+                        ['type' => 'pricing', 'plans' => [
+                            ['name' => 'Starter', 'price' => 'Free', 'features' => ['Up to 3 users', '1 project', 'Basic analytics', 'Community support'], 'cta' => 'Get Started'],
+                            ['name' => 'Pro', 'price' => '$29/mo', 'features' => ['Unlimited users', 'Unlimited projects', 'Advanced analytics', 'Priority support', 'API access'], 'cta' => 'Start Free Trial', 'featured' => true],
+                            ['name' => 'Enterprise', 'price' => 'Custom', 'features' => ['Everything in Pro', 'SSO & SAML', 'Dedicated account manager', 'Custom integrations', 'SLA guarantee'], 'cta' => 'Contact Sales'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Built by Developers, for Developers'],
+                        ['type' => 'text-block', 'content' => 'We started this company because we were tired of tools that promised simplicity but delivered complexity. Our mission is to build software that gets out of your way.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Talk to Us'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'modern'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Features', 'url' => '/#features'],
+                ['title' => 'Pricing',  'url' => '/pricing'],
+                ['title' => 'About',    'url' => '/about'],
+                ['title' => 'Contact',  'url' => '/contact'],
+            ],
+        ],
+
+        'consulting-agency' => [
+            'name'           => 'Consulting / Agency',
+            'description'    => 'Professionell konsultsajt med tjänster, team, case studies',
+            'keywords'       => ['consulting','agency','b2b','services','professional','firm','bureau','byrå','konsult','tjänster','företag','rådgivning'],
+            'blueprint'      => 'corporate-pro',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => '{site_name}', 'subheading' => 'Strategic {business_type} that drives results', 'cta_primary' => 'Our Services', 'cta_link' => '/services', 'cta_secondary' => 'Get in Touch', 'cta_link2' => '/contact', 'style' => 'professional'],
+                        ['type' => 'features', 'heading' => 'How We Help', 'items' => [
+                            ['icon' => '📈', 'title' => 'Strategy', 'desc' => 'Data-driven strategies that align with your business goals'],
+                            ['icon' => '🎯', 'title' => 'Execution', 'desc' => 'From planning to implementation — we deliver results'],
+                            ['icon' => '🤝', 'title' => 'Partnership', 'desc' => 'We work as an extension of your team'],
+                        ]],
+                        ['type' => 'stats', 'items' => [
+                            ['number' => '200+', 'label' => 'Projects Delivered'],
+                            ['number' => '50+', 'label' => 'Happy Clients'],
+                            ['number' => '15+', 'label' => 'Years Experience'],
+                        ]],
+                        ['type' => 'testimonials', 'items' => [
+                            ['quote' => 'Working with this team transformed our digital presence. Revenue increased 40% in 6 months.', 'author' => 'Anna S., CEO'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Let\'s Build Something Great', 'text' => 'Book a free consultation call.', 'cta' => 'Schedule a Call'],
+                    ],
+                ],
+                [
+                    'slug'     => 'services',
+                    'title'    => 'Services',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Our Services', 'subheading' => 'Tailored solutions for your business'],
+                        ['type' => 'features', 'columns' => 2, 'items' => [
+                            ['icon' => '💡', 'title' => 'Strategic Consulting', 'desc' => 'Business analysis, market research, growth strategies, competitive positioning'],
+                            ['icon' => '🖥', 'title' => 'Digital Transformation', 'desc' => 'Technology roadmaps, process automation, system integration'],
+                            ['icon' => '📊', 'title' => 'Marketing & Growth', 'desc' => 'SEO, content strategy, paid advertising, conversion optimization'],
+                            ['icon' => '🛡', 'title' => 'Operations', 'desc' => 'Process improvement, team optimization, quality management'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About Us'],
+                        ['type' => 'text-block', 'content' => 'We are a team of experienced consultants dedicated to helping businesses grow. With decades of combined experience, we bring strategic thinking and hands-on execution to every engagement.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Contact Us'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'professional'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Services', 'url' => '/services'],
+                ['title' => 'About',    'url' => '/about'],
+                ['title' => 'Contact',  'url' => '/contact'],
+            ],
+        ],
+
+        'wellness-spa' => [
+            'name'           => 'Wellness & Spa',
+            'description'    => 'Lugn och harmonisk sajt — bokning, tjänster, priser',
+            'keywords'       => ['spa','wellness','yoga','massage','beauty','salon','therapy','hälsa','skönhet','salong','massage','terapi','yoga'],
+            'blueprint'      => 'warm-organic',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => '{site_name}', 'subheading' => 'Find your balance. Restore your energy.', 'cta_primary' => 'Book a Session', 'cta_link' => '/contact', 'cta_secondary' => 'Our Treatments', 'cta_link2' => '/services', 'style' => 'serene'],
+                        ['type' => 'features', 'heading' => 'Our Treatments', 'items' => [
+                            ['icon' => '🧘', 'title' => 'Yoga & Meditation', 'desc' => 'Group classes and private sessions for all levels'],
+                            ['icon' => '💆', 'title' => 'Massage Therapy', 'desc' => 'Deep tissue, Swedish, hot stone, and aromatherapy'],
+                            ['icon' => '✨', 'title' => 'Facial Treatments', 'desc' => 'Customized skincare with organic products'],
+                        ]],
+                        ['type' => 'split',    'heading' => 'A Space for Healing', 'text' => 'Our sanctuary is designed to help you disconnect from the noise and reconnect with yourself. Every detail is curated for your wellbeing.', 'image' => 'spa', 'style' => 'image-right'],
+                        ['type' => 'cta',      'heading' => 'Your Journey Starts Here', 'text' => 'Book your first session and discover a new you.', 'cta' => 'Book Now', 'style' => 'warm organic'],
+                    ],
+                ],
+                [
+                    'slug'     => 'services',
+                    'title'    => 'Treatments & Prices',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Our Treatments'],
+                        ['type' => 'price-list', 'items' => [
+                            ['name' => 'Swedish Massage (60 min)', 'price' => '895 kr'],
+                            ['name' => 'Deep Tissue Massage (60 min)', 'price' => '995 kr'],
+                            ['name' => 'Hot Stone Massage (75 min)', 'price' => '1 195 kr'],
+                            ['name' => 'Facial Treatment (45 min)', 'price' => '795 kr'],
+                            ['name' => 'Yoga Class (drop-in)', 'price' => '195 kr'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Book & Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Book Your Visit'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'show_hours' => true, 'hours' => 'Mon-Fri: 9-20 | Sat: 10-18 | Sun: Closed', 'style' => 'warm'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Treatments', 'url' => '/services'],
+                ['title' => 'About',      'url' => '/about'],
+                ['title' => 'Book Now',    'url' => '/contact'],
+            ],
+        ],
+
+        'ecommerce-general' => [
+            'name'           => 'General E-commerce',
+            'description'    => 'Skandinavisk webshop — ren, funktionell, perfekt för alla typer av produkter',
+            'keywords'       => ['shop','store','ecommerce','e-commerce','webshop','products','sell','online','butik','handla','produkter','sälja','webbutik'],
+            'blueprint'      => 'scandinavian',
+            'woo_required'   => true,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => 'Welcome to {site_name}', 'subheading' => 'Quality products, thoughtfully curated', 'cta_primary' => 'Shop All', 'cta_link' => '/shop', 'style' => 'clean minimal'],
+                        ['type' => 'products', 'heading' => 'Featured Products', 'count' => 8, 'style' => 'grid-4 clean'],
+                        ['type' => 'split',    'heading' => 'Why Shop With Us', 'text' => 'Free shipping on orders over 499 kr. Easy 30-day returns. Secure payments.', 'style' => 'icons-row'],
+                        ['type' => 'products', 'heading' => 'On Sale', 'count' => 4, 'on_sale' => true],
+                        ['type' => 'cta',      'heading' => 'Stay Updated', 'text' => 'Get exclusive deals and new arrivals straight to your inbox.', 'cta' => 'Subscribe'],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About Us',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About {site_name}'],
+                        ['type' => 'text-block', 'content' => 'We are passionate about bringing you products that combine quality, design, and value. Every item in our store is carefully selected to meet our high standards.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Contact Us'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'clean'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Shop',    'url' => '/shop'],
+                ['title' => 'About',   'url' => '/about'],
+                ['title' => 'Contact', 'url' => '/contact'],
+            ],
+            'woo_config' => [
+                'currency'       => 'auto',
+                'guest_checkout' => true,
+                'catalog_style'  => 'grid-4',
+            ],
+        ],
+    ];
+}
+
+// ── Match description to best recipe ──────────────────────────
+function wpilot_match_recipe( $description ) {
+    $desc_lower = strtolower( $description );
+    $recipes    = wpilot_get_site_recipes();
+    $best       = null;
+    $best_score = 0;
+
+    foreach ( $recipes as $id => $r ) {
+        $score = 0;
+        foreach ( $r['keywords'] as $kw ) {
+            if ( strpos( $desc_lower, strtolower( $kw ) ) !== false ) {
+                $score += strlen( $kw );
+            }
+        }
+        if ( stripos( $desc_lower, strtolower( $r['name'] ) ) !== false ) $score += 25;
+        if ( $score > $best_score ) {
+            $best_score = $score;
+            $best       = $id;
+        }
+    }
+    return $best;
+}
+
+// ── Generate HTML for a section ───────────────────────────────
+// Uses wpilot-* CSS classes from the blueprint system
+function wpilot_render_section( $section, $site_vars = [] ) {
+    $type = $section['type'] ?? 'text-block';
+
+    // Replace {site_name}, {business_type}, {admin_email} placeholders
+    $section = wpilot_replace_vars( $section, $site_vars );
+
+    switch ( $type ) {
+
+        case 'hero':
+            $h     = esc_html( $section['heading'] ?? '' );
+            $sub   = esc_html( $section['subheading'] ?? '' );
+            $cta1  = esc_html( $section['cta_primary'] ?? '' );
+            $link1 = esc_url( $section['cta_link'] ?? '#' );
+            $cta2  = esc_html( $section['cta_secondary'] ?? '' );
+            $link2 = esc_url( $section['cta_link2'] ?? '#' );
+            $html  = "<section class=\"wpilot-hero wpilot-section-full\">\n";
+            $html .= "  <div class=\"wpilot-hero-content\">\n";
+            $html .= "    <h1 class=\"wpilot-heading-xl\">{$h}</h1>\n";
+            if ( $sub ) $html .= "    <p class=\"wpilot-text-lg\">{$sub}</p>\n";
+            $html .= "    <div style=\"margin-top:32px;\">\n";
+            if ( $cta1 ) $html .= "      <a href=\"{$link1}\" class=\"wpilot-btn wpilot-btn-primary wpilot-btn-lg\">{$cta1}</a>\n";
+            if ( $cta2 ) $html .= "      <a href=\"{$link2}\" class=\"wpilot-btn wpilot-btn-secondary wpilot-btn-lg\" style=\"margin-left:12px;\">{$cta2}</a>\n";
+            $html .= "    </div>\n";
+            $html .= "  </div>\n";
+            $html .= "</section>\n";
+            return $html;
+
+        case 'hero-small':
+            $h   = esc_html( $section['heading'] ?? '' );
+            $sub = esc_html( $section['subheading'] ?? '' );
+            return "<section class=\"wpilot-hero\" style=\"padding:80px 40px;\">\n  <div class=\"wpilot-hero-content\">\n    <h1 class=\"wpilot-heading-lg\">{$h}</h1>\n" . ($sub ? "    <p class=\"wpilot-text-lg\">{$sub}</p>\n" : '') . "  </div>\n</section>\n";
+
+        case 'features':
+            $h     = esc_html( $section['heading'] ?? '' );
+            $items = $section['items'] ?? [];
+            $cols  = $section['columns'] ?? count( $items );
+            $col_class = $cols <= 2 ? 'wpilot-col-2' : ($cols <= 3 ? 'wpilot-col-3' : 'wpilot-col-4');
+            $html  = "<section class=\"wpilot-section\">\n";
+            if ( $h ) $html .= "  <h2 class=\"wpilot-heading-lg\" style=\"text-align:center;margin-bottom:50px;\">{$h}</h2>\n";
+            $html .= "  <div class=\"wpilot-row\">\n";
+            foreach ( $items as $item ) {
+                $icon  = $item['icon'] ?? '✦';
+                $title = esc_html( $item['title'] ?? '' );
+                $desc  = esc_html( $item['desc'] ?? '' );
+                $html .= "    <div class=\"{$col_class} wpilot-feature\">\n";
+                $html .= "      <div class=\"wpilot-feature-icon\">{$icon}</div>\n";
+                $html .= "      <h3>{$title}</h3>\n";
+                $html .= "      <p>{$desc}</p>\n";
+                $html .= "    </div>\n";
+            }
+            $html .= "  </div>\n</section>\n";
+            return $html;
+
+        case 'stats':
+            $items = $section['items'] ?? [];
+            $html  = "<section class=\"wpilot-section wpilot-section-alt\" style=\"text-align:center;\">\n  <div class=\"wpilot-row\" style=\"justify-content:center;gap:60px;\">\n";
+            foreach ( $items as $item ) {
+                $html .= "    <div style=\"flex:0 0 auto;\">\n";
+                $html .= "      <div class=\"wpilot-heading-xl\" style=\"color:var(--wp-primary);\">" . esc_html($item['number'] ?? '') . "</div>\n";
+                $html .= "      <div class=\"wpilot-text-sm\" style=\"margin-top:8px;\">" . esc_html($item['label'] ?? '') . "</div>\n";
+                $html .= "    </div>\n";
+            }
+            $html .= "  </div>\n</section>\n";
+            return $html;
+
+        case 'split':
+            $h    = esc_html( $section['heading'] ?? '' );
+            $text = esc_html( $section['text'] ?? '' );
+            $html = "<section class=\"wpilot-section\">\n  <div class=\"wpilot-row\" style=\"align-items:center;\">\n";
+            $html .= "    <div class=\"wpilot-col-2\">\n";
+            $html .= "      <span class=\"wpilot-label\">About</span>\n";
+            $html .= "      <h2 class=\"wpilot-heading-lg\" style=\"margin:16px 0;\">{$h}</h2>\n";
+            $html .= "      <p class=\"wpilot-text-lg\">{$text}</p>\n";
+            $html .= "    </div>\n";
+            $html .= "    <div class=\"wpilot-col-2\" style=\"background:var(--wp-bg-alt);border-radius:var(--wp-radius);min-height:300px;display:flex;align-items:center;justify-content:center;\">\n";
+            $html .= "      <span class=\"wpilot-text-sm\" style=\"opacity:0.5;\">Add image here</span>\n";
+            $html .= "    </div>\n";
+            $html .= "  </div>\n</section>\n";
+            return $html;
+
+        case 'testimonials':
+            $items = $section['items'] ?? [];
+            $html  = "<section class=\"wpilot-section wpilot-section-alt\">\n  <h2 class=\"wpilot-heading-lg\" style=\"text-align:center;margin-bottom:40px;\">What People Say</h2>\n  <div class=\"wpilot-row\">\n";
+            foreach ( $items as $item ) {
+                $html .= "    <div class=\"wpilot-col-2\">\n      <div class=\"wpilot-testimonial\">\n";
+                $html .= "        <p>\"" . esc_html($item['quote'] ?? '') . "\"</p>\n";
+                $html .= "        <cite>— " . esc_html($item['author'] ?? '') . "</cite>\n";
+                $html .= "      </div>\n    </div>\n";
+            }
+            $html .= "  </div>\n</section>\n";
+            return $html;
+
+        case 'cta':
+            $h    = esc_html( $section['heading'] ?? '' );
+            $text = esc_html( $section['text'] ?? '' );
+            $cta  = esc_html( $section['cta'] ?? 'Get Started' );
+            return "<section class=\"wpilot-cta wpilot-section-full\">\n  <h2 class=\"wpilot-heading-lg\">{$h}</h2>\n  <p class=\"wpilot-text-lg\" style=\"color:inherit;opacity:0.8;margin:16px auto 32px;max-width:500px;\">{$text}</p>\n  <a href=\"#\" class=\"wpilot-btn wpilot-btn-lg\" style=\"background:var(--wp-bg);color:var(--wp-primary);\">{$cta}</a>\n</section>\n";
+
+        case 'text-block':
+            $content = wp_kses_post( $section['content'] ?? '' );
+            return "<section class=\"wpilot-section\" style=\"max-width:700px;\">\n  <div class=\"wpilot-text-lg\" style=\"line-height:1.8;\">{$content}</div>\n</section>\n";
+
+        case 'products':
+            // WooCommerce shortcode
+            $count   = intval( $section['count'] ?? 4 );
+            $h       = esc_html( $section['heading'] ?? '' );
+            $orderby = $section['orderby'] ?? 'date';
+            $on_sale = ! empty( $section['on_sale'] );
+            $sc      = $on_sale ? "[sale_products limit=\"{$count}\" columns=\"4\"]" : "[products limit=\"{$count}\" columns=\"4\" orderby=\"{$orderby}\"]";
+            $html    = "<section class=\"wpilot-section\">\n";
+            if ( $h ) $html .= "  <h2 class=\"wpilot-heading-lg\" style=\"text-align:center;margin-bottom:40px;\">{$h}</h2>\n";
+            $html .= "  {$sc}\n</section>\n";
+            return $html;
+
+        case 'contact-info':
+            $email = esc_html( $section['email'] ?? '' );
+            $hours = esc_html( $section['hours'] ?? '' );
+            $html  = "<section class=\"wpilot-section\" style=\"text-align:center;\">\n";
+            if ( $email ) $html .= "  <p class=\"wpilot-text-lg\">Email: <a href=\"mailto:{$email}\">{$email}</a></p>\n";
+            if ( $hours ) $html .= "  <p class=\"wpilot-text-sm\" style=\"margin-top:16px;\">{$hours}</p>\n";
+            $html .= "</section>\n";
+            return $html;
+
+        case 'menu-section':
+            $cat   = esc_html( $section['category'] ?? '' );
+            $items = $section['items'] ?? [];
+            $html  = "<section class=\"wpilot-section\">\n";
+            if ( $cat ) $html .= "  <h2 class=\"wpilot-heading-md\" style=\"margin-bottom:30px;border-bottom:2px solid var(--wp-primary);padding-bottom:12px;display:inline-block;\">{$cat}</h2>\n";
+            foreach ( $items as $item ) {
+                $html .= "  <div style=\"display:flex;justify-content:space-between;align-items:baseline;padding:16px 0;border-bottom:1px solid var(--wp-border);\">\n";
+                $html .= "    <div>\n      <strong style=\"color:var(--wp-heading);\">" . esc_html($item['name'] ?? '') . "</strong>\n";
+                $html .= "      <br><span class=\"wpilot-text-sm\">" . esc_html($item['desc'] ?? '') . "</span>\n    </div>\n";
+                $html .= "    <span style=\"color:var(--wp-primary);font-weight:600;white-space:nowrap;margin-left:20px;\">" . esc_html($item['price'] ?? '') . " kr</span>\n";
+                $html .= "  </div>\n";
+            }
+            $html .= "</section>\n";
+            return $html;
+
+        case 'price-list':
+            $items = $section['items'] ?? [];
+            $html  = "<section class=\"wpilot-section\">\n";
+            foreach ( $items as $item ) {
+                $html .= "  <div style=\"display:flex;justify-content:space-between;align-items:center;padding:20px 0;border-bottom:1px solid var(--wp-border);\">\n";
+                $html .= "    <span style=\"font-size:1.1rem;\">" . esc_html($item['name'] ?? '') . "</span>\n";
+                $html .= "    <span style=\"color:var(--wp-primary);font-weight:600;font-size:1.1rem;\">" . esc_html($item['price'] ?? '') . "</span>\n";
+                $html .= "  </div>\n";
+            }
+            $html .= "</section>\n";
+            return $html;
+
+        case 'pricing':
+            $plans = $section['plans'] ?? [];
+            $html  = "<section class=\"wpilot-section\">\n  <div class=\"wpilot-row\" style=\"justify-content:center;\">\n";
+            foreach ( $plans as $plan ) {
+                $featured = ! empty( $plan['featured'] );
+                $border   = $featured ? 'border:2px solid var(--wp-primary);' : 'border:1px solid var(--wp-border);';
+                $html .= "    <div class=\"wpilot-col-3 wpilot-card\" style=\"text-align:center;{$border}\">\n";
+                if ( $featured ) $html .= "      <span class=\"wpilot-label\" style=\"margin-bottom:16px;display:block;\">Most Popular</span>\n";
+                $html .= "      <h3 class=\"wpilot-heading-md\">" . esc_html($plan['name'] ?? '') . "</h3>\n";
+                $html .= "      <div class=\"wpilot-heading-lg\" style=\"color:var(--wp-primary);margin:16px 0;\">" . esc_html($plan['price'] ?? '') . "</div>\n";
+                $html .= "      <ul style=\"list-style:none;padding:0;margin:24px 0;text-align:left;\">\n";
+                foreach ( ($plan['features'] ?? []) as $feat ) {
+                    $html .= "        <li style=\"padding:8px 0;border-bottom:1px solid var(--wp-border);\">✓ " . esc_html($feat) . "</li>\n";
+                }
+                $html .= "      </ul>\n";
+                $btn_class = $featured ? 'wpilot-btn-primary' : 'wpilot-btn-secondary';
+                $html .= "      <a href=\"#\" class=\"wpilot-btn {$btn_class}\" style=\"width:100%;\">" . esc_html($plan['cta'] ?? 'Get Started') . "</a>\n";
+                $html .= "    </div>\n";
+            }
+            $html .= "  </div>\n</section>\n";
+            return $html;
+
+        default:
+            return "<!-- Unknown section type: {$type} -->\n";
+    }
+}
+
+// ── Replace template variables ────────────────────────────────
+function wpilot_replace_vars( $data, $vars = [] ) {
+    if ( empty( $vars ) ) {
+        $vars = [
+            '{site_name}'     => get_bloginfo( 'name' ),
+            '{admin_email}'   => get_option( 'admin_email' ),
+            '{business_type}' => $vars['{business_type}'] ?? 'business',
+        ];
+    }
+    array_walk_recursive( $data, function( &$val ) use ( $vars ) {
+        if ( is_string( $val ) ) {
+            $val = str_replace( array_keys( $vars ), array_values( $vars ), $val );
+        }
+    });
+    return $data;
+}
+
+// ── Build a complete site from a recipe ───────────────────────
+function wpilot_build_site_from_recipe( $params ) {
+    $recipe_id   = sanitize_text_field( $params['recipe'] ?? $params['id'] ?? '' );
+    $description = sanitize_text_field( $params['description'] ?? $params['business'] ?? '' );
+    $biz_type    = sanitize_text_field( $params['business_type'] ?? $description );
+
+    // Auto-match if no ID given
+    if ( empty( $recipe_id ) && ! empty( $description ) ) {
+        $recipe_id = wpilot_match_recipe( $description );
+    }
+
+    $recipes = wpilot_get_site_recipes();
+    if ( ! $recipe_id || ! isset( $recipes[$recipe_id] ) ) {
+        $available = array_map( fn($id, $r) => "{$id}: {$r['name']}", array_keys($recipes), $recipes );
+        return wpilot_err( "No matching recipe. Available: " . implode( ', ', $available ) );
+    }
+
+    $recipe = $recipes[$recipe_id];
+    $results = [];
+
+    // Template variables
+    $site_vars = [
+        '{site_name}'     => get_bloginfo( 'name' ),
+        '{admin_email}'   => get_option( 'admin_email' ),
+        '{business_type}' => $biz_type ?: $recipe['name'],
+    ];
+
+    // 1. Apply blueprint (design system)
+    if ( function_exists( 'wpilot_apply_blueprint' ) ) {
+        $bp_result = wpilot_apply_blueprint( ['blueprint' => $recipe['blueprint']] );
+        $results[] = "Blueprint '{$recipe['blueprint']}' applied";
+    }
+
+    // 2. Create all pages
+    foreach ( $recipe['pages'] as $page_def ) {
+        $html = '';
+        foreach ( $page_def['sections'] as $section ) {
+            $html .= wpilot_render_section( $section, $site_vars );
+        }
+
+        // Wrap in wp:html block for Gutenberg compatibility
+        $wrapped = "<!-- wp:html -->\n{$html}\n<!-- /wp:html -->";
+
+        $page_params = [
+            'title'   => $page_def['title'],
+            'slug'    => $page_def['slug'],
+            'html'    => $wrapped,
+            'status'  => 'publish',
+        ];
+        if ( ! empty( $page_def['set_home'] ) ) {
+            $page_params['set_as_homepage'] = true;
+        }
+
+        if ( function_exists( 'wpilot_create_html_page' ) ) {
+            $r = wpilot_create_html_page( $page_params );
+            $results[] = "Page '{$page_def['title']}' " . ($r['success'] ? 'created' : 'failed: ' . ($r['message'] ?? ''));
+        }
+    }
+
+    // 3. Create menu
+    if ( ! empty( $recipe['menu'] ) && function_exists( 'wpilot_run_tool' ) ) {
+        $menu_items = array_map( function($m) {
+            return ['title' => $m['title'], 'url' => home_url( $m['url'] )];
+        }, $recipe['menu'] );
+        $menu_result = wpilot_run_tool( 'create_menu', [
+            'name'     => 'Main Menu',
+            'location' => 'primary',
+            'items'    => $menu_items,
+        ]);
+        $results[] = "Menu created with " . count($recipe['menu']) . " items";
+    }
+
+    // 4. WooCommerce config
+    if ( ! empty( $recipe['woo_config'] ) && class_exists( 'WooCommerce' ) ) {
+        $woo = $recipe['woo_config'];
+        if ( ($woo['currency'] ?? '') === 'auto' ) {
+            // Detect from locale
+            $locale = get_locale();
+            $currency = 'USD';
+            if ( strpos($locale, 'sv') === 0 ) $currency = 'SEK';
+            elseif ( strpos($locale, 'da') === 0 ) $currency = 'DKK';
+            elseif ( strpos($locale, 'nb') === 0 || strpos($locale, 'nn') === 0 ) $currency = 'NOK';
+            elseif ( strpos($locale, 'de') === 0 || strpos($locale, 'fr') === 0 ) $currency = 'EUR';
+            elseif ( strpos($locale, 'en_GB') === 0 ) $currency = 'GBP';
+            update_option( 'woocommerce_currency', $currency );
+            $results[] = "WooCommerce currency set to {$currency}";
+        }
+        if ( ! empty( $woo['guest_checkout'] ) ) {
+            update_option( 'woocommerce_enable_guest_checkout', 'yes' );
+        }
+    }
+
+    // 5. Bust cache
+    if ( function_exists( 'wpilot_bust_cache' ) ) wpilot_bust_cache();
+    if ( function_exists( 'wpilot_invalidate_blueprint' ) ) wpilot_invalidate_blueprint();
+
+    $summary = "Site built with recipe \"{$recipe['name']}\"!\n";
+    $summary .= implode( "\n", array_map( fn($r) => "• {$r}", $results ) );
+    $summary .= "\n\nPages created: " . count($recipe['pages']);
+    $summary .= "\nBlueprint: {$recipe['blueprint']}";
+    if ( $recipe['woo_required'] && ! class_exists('WooCommerce') ) {
+        $summary .= "\n⚠️ This recipe works best with WooCommerce — install it for full features.";
+    }
+
+    return wpilot_ok( $summary, [
+        'recipe'  => $recipe_id,
+        'name'    => $recipe['name'],
+        'pages'   => count($recipe['pages']),
+        'results' => $results,
+    ]);
+}
+
+// ── List available recipes ────────────────────────────────────
+function wpilot_list_site_recipes( $params = [] ) {
+    $recipes = wpilot_get_site_recipes();
+    $desc    = strtolower( $params['description'] ?? $params['query'] ?? '' );
+
+    $list = [];
+    foreach ( $recipes as $id => $r ) {
+        $score = 0;
+        if ( $desc ) {
+            foreach ( $r['keywords'] as $kw ) {
+                if ( strpos( $desc, strtolower($kw) ) !== false ) $score += strlen($kw);
+            }
+        }
+        $list[] = [
+            'id'          => $id,
+            'name'        => $r['name'],
+            'description' => $r['description'],
+            'blueprint'   => $r['blueprint'],
+            'pages'       => count($r['pages']),
+            'woo'         => $r['woo_required'],
+            'score'       => $score,
+        ];
+    }
+
+    // Sort by relevance if query given
+    if ( $desc ) usort( $list, fn($a, $b) => $b['score'] - $a['score'] );
+
+    $summary = count($list) . " site recipes available:\n";
+    foreach ( $list as $r ) {
+        $woo = $r['woo'] ? ' [WooCommerce]' : '';
+        $summary .= "• **{$r['name']}** (`{$r['id']}`) — {$r['description']}{$woo} ({$r['pages']} pages)\n";
+    }
+
+    return wpilot_ok( $summary, ['recipes' => $list] );
+}

@@ -126,7 +126,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
     $tools = [];
 
     // Always include core tools
-    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, edit_page_css, replace_in_page, list_pages, get_page, delete_post, create_html_page, check_frontend, save_design_profile, reset_design_profile, apply_blueprint, list_blueprints, suggest_blueprint, set_page_template, clear_sidebar, add_head_code, add_footer_code, add_php_snippet";
+    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, edit_page_css, replace_in_page, list_pages, get_page, delete_post, create_html_page, check_frontend, save_design_profile, reset_design_profile, apply_blueprint, list_blueprints, suggest_blueprint, build_site, list_recipes, set_page_template, clear_sidebar, add_head_code, add_footer_code, add_php_snippet";
 
     // Mode-based inclusions
     if ( $mode === 'build' || $mode === 'analyze' ) {
@@ -495,10 +495,16 @@ THINKING ORDER for any task:
 1. check_frontend to see what's there now
 2. **READ THE DESIGN PROFILE** below — if it exists, FOLLOW IT EXACTLY for colors, fonts, style.
 
-**STEP 2 — Choose or apply a blueprint (if no design profile exists):**
-3. Use list_blueprints to show available design packages to the customer
-4. Use suggest_blueprint with the customer's business type to recommend one
-5. Use apply_blueprint to apply a complete design package — this sets CSS variables, Google Fonts, builder overrides (Elementor/Divi/Gutenberg), WooCommerce styles, AND saves the design profile automatically.
+**STEP 2 — Build entire site OR choose a blueprint:**
+3. **build_site** = THE ULTIMATE TOOL. One command builds EVERYTHING: design + all pages + menu + WooCommerce config.
+   Example: [ACTION: build_site | Building complete premium fashion store]
+   ```json
+   {"description": "premium clothing store"}
+   ```
+   Available recipes: premium-fashion, restaurant-bar, tech-startup, consulting-agency, wellness-spa, ecommerce-general
+   Use list_recipes to show all options.
+4. Or for design-only: apply_blueprint to apply just the design system without creating pages.
+5. Use suggest_blueprint with the customer's business type to recommend one.
    Available blueprints: dark-luxury, white-minimal, colorful-playful, corporate-pro, warm-organic, bold-modern, scandinavian, restaurant
    Example: [ACTION: apply_blueprint | Applying Dark Luxury design for jewelry store]
    ```json
@@ -606,6 +612,8 @@ reset_design_profile: {} — clears all design memory for this site
 apply_blueprint: {"blueprint":"dark-luxury"} or {"description":"elegant fashion store"} — applies complete design package
 list_blueprints: {} or {"description":"bakery"} — shows available designs, sorted by relevance
 suggest_blueprint: {"description":"tech startup"} — recommends best matching design
+build_site: {"description":"premium clothing store"} or {"recipe":"premium-fashion"} — builds COMPLETE site (all pages, menu, design, WooCommerce)
+list_recipes: {} or {"description":"restaurant"} — shows available site packages
 
 ## CONTEXT
 Compressed blueprint every message: pages, products, plugins, menus, theme HTML structure, security, WooCommerce config. Auto-refreshes on changes.
