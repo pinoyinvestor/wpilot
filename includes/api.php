@@ -461,6 +461,8 @@ woo_update_product: {"product_id":75,"price":"299"}
 set_featured_image: {"post_id":75,"image_url":"https://..."}
 create_menu: {"name":"X","location":"menu-1","items":[{"title":"Home","url":"/"}]}
 create_html_page: {"title":"X","html":"<div style=...>"}
+append_page_content: {"id":123,"content":"<section>...</section>"} — APPENDS to existing content
+update_page_content: {"id":123,"content":"...","append":true} — same as append_page_content
 CSS tools: {"css":"body{...}"} — actual code with { }
 
 ## CONTEXT
@@ -549,6 +551,8 @@ On the FIRST design request, set up the entire visual system:
 
 STEP 3 — BUILD PAGES
 When creating page content with create_html_page or update_page_content:
+- To ADD more content to an existing page, use append_page_content (or update_page_content with append:true) — this APPENDS instead of replacing
+- NEVER use update_page_content after create_html_page on the same page unless you intend to REPLACE — use append_page_content to add sections
 - EVERY section must be full-width (width:100vw;margin-left:calc(-50vw + 50%)) to break out of theme container
 - EVERY button must link to a REAL page (/shop, /contact, /about-us, /cart)
 - EVERY section alternates background: white → off-white #faf8f6 → soft color → white
