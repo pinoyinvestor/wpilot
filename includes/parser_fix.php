@@ -84,10 +84,18 @@ function wpilot_parse_compact_actions($text) {
         $after = trim($after);
         // Try HTML block first (```html ... ```) — preferred for page content
         $params = [];
-        if (preg_match('/```html\s*(.*?)```/s', $after, $hm)) {
+        $bt = '`' . '`' . '`';
+        // Match closed block first, then unclosed (truncated response)
+        if (preg_match('/' . preg_quote($bt) . 'html\s*(.*?)' . preg_quote($bt) . '/s', $after, $hm)
+            || preg_match('/' . preg_quote($bt) . 'html\s*(.*)/s', $after, $hm)) {
             $html_content = trim($hm[1]);
+            // Clean up truncated HTML — remove trailing incomplete tags and close style/div
+            $html_content = preg_replace('/<[^>]*$/', '', $html_content); // remove incomplete tag at end
+            if (substr_count($html_content, '<style') > substr_count($html_content, '</style')) $html_content .= '</style>';
+            if (substr_count($html_content, '<div') > substr_count($html_content, '</div>')) $html_content .= '</div>';
+            // Remove error messages appended after HTML
+            $html_content = preg_replace('/\n\n.*Auto-approved:.*$/s', '', $html_content);
             if (strlen($html_content) > 10) {
-                // Extract slug/title/id from the ACTION label
                 $params = ['html' => $html_content];
                 if (preg_match('/slug[:\s]+["\']?([a-z0-9\-]+)/i', $tool, $sm)) $params['slug'] = $sm[1];
                 if (preg_match('/title[:\s]+["\']?([^"\']+)/i', $tool, $tm)) $params['title'] = trim($tm[1]);
@@ -163,8 +171,10 @@ function wpilot_enhance_action_params(&$actions, $text) {
                 $end = isset($action_positions[$idx + 1]) ? $action_positions[$idx + 1] : strlen($text);
                 $segment = substr($text, $start, max($end - $start, 50000));
 
-                // Try HTML block first (```html ... ```)
-                if (preg_match('/```html\s*(.*?)```/s', $segment, $hm)) {
+                // Try HTML block first — closed or unclosed (truncated)
+                $bt = '`' . '`' . '`';
+                if (preg_match('/' . preg_quote($bt) . 'html\s*(.*?)' . preg_quote($bt) . '/s', $segment, $hm)
+                    || preg_match('/' . preg_quote($bt) . 'html\s*(.*)/s', $segment, $hm)) {
                     $html = trim($hm[1]);
                     if (strlen($html) > 10) {
                         $action['params'] = array_merge($action['params'] ?: [], ['html' => $html]);
