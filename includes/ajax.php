@@ -140,6 +140,42 @@ add_action( 'wp_ajax_ca_chat', function () {
         $response .= $auto_summary;
     }
 
+    // ── Auto-verify: after design changes, send a follow-up to check & fix ──
+    $design_tools = ['create_html_page','update_page_content','append_page_content','add_head_code','add_footer_code','add_php_snippet'];
+    $did_design = false;
+    $failed_any = false;
+    foreach ($actions as $a) {
+        if (in_array($a['tool'], $design_tools) && ($a['auto_status'] ?? '') === 'done') $did_design = true;
+        if (($a['auto_status'] ?? '') === 'failed') $failed_any = true;
+    }
+    // If design was done and something failed, auto-retry the failed action
+    if ($failed_any && $source === 'claude' && wpilot_auto_approve()) {
+        $failed_tools = [];
+        foreach ($actions as $a) {
+            if (($a['auto_status'] ?? '') === 'failed') {
+                $failed_tools[] = $a['tool'] . ' (' . ($a['auto_error'] ?? 'unknown') . ')';
+            }
+        }
+        $retry_msg = "Some actions failed: " . implode(', ', $failed_tools) . ". Fix these issues and try again. Use different params or a different tool.";
+        $retry_result = wpilot_call_claude($retry_msg, $mode, $context, array_merge($history, [
+            ['role' => 'assistant', 'content' => $response],
+            ['role' => 'user', 'content' => $retry_msg],
+        ]));
+        if (!is_wp_error($retry_result)) {
+            $retry_text = is_array($retry_result) ? $retry_result['text'] : $retry_result;
+            $retry_actions = wpilot_parse_actions($retry_text);
+            if (empty($retry_actions) && function_exists("wpilot_parse_compact_actions")) $retry_actions = wpilot_parse_compact_actions($retry_text);
+            if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($retry_actions, $retry_text);
+            foreach ($retry_actions as &$ra) {
+                $rr = wpilot_safe_run_tool($ra['tool'], $ra['params'] ?? []);
+                $ra['auto_status'] = !empty($rr['success']) ? 'done' : 'failed';
+                if (!empty($rr['success'])) $ok_count++;
+            }
+            $actions = array_merge($actions, $retry_actions);
+            $response .= "\n\n🔄 Auto-retry: " . count($retry_actions) . " actions attempted.";
+        }
+    }
+
     // Persist history after auto-approve so response & action statuses are final
     $hist   = get_option( 'ca_chat_history', [] );
     $hist[] = ['role'=>'user',      'content'=>$message,  'time'=>current_time('H:i'), 'mode'=>$mode];

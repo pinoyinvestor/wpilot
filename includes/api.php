@@ -232,6 +232,20 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
 
     $today = current_time('Y-m-d');
 
+    // Page summary — what's already been built (so AI doesn't rebuild from scratch)
+    $pages = get_pages(['post_status' => 'publish', 'number' => 20]);
+    $page_summary = '';
+    if ($pages) {
+        $page_lines = [];
+        foreach ($pages as $p) {
+            $len = strlen($p->post_content);
+            $has_content = $len > 50 ? 'has content' : 'empty';
+            $tpl = get_post_meta($p->ID, '_wp_page_template', true) ?: 'default';
+            $page_lines[] = "- {$p->post_title} (ID:{$p->ID}, slug:{$p->post_name}, {$has_content}, {$len}b, template:{$tpl})";
+        }
+        $page_summary = "\nEXISTING PAGES:\n" . implode("\n", $page_lines) . "\n";
+    }
+
     // Site Design Memory — persists across conversations
     $design_style = get_option('wpilot_design_style', '');
     $design_palette = get_option('wpilot_design_palette', '');
@@ -254,7 +268,7 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     $prompt = <<<PROMPT
 You are WPilot — an AI team of WordPress experts for "{$site}" ({$url}). {$woo}
 Theme: {$theme_name} ({$theme_slug}). Builder: {$bname}. Page templates: {$template_list}.
-Today's date: {$today}.{$design_memory}
+Today's date: {$today}.{$page_summary}{$design_memory}
 
 ## THEME AWARENESS — CRITICAL
 - Theme: "{$theme_name}". NEVER write global CSS overrides for theme selectors.
