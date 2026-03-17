@@ -432,6 +432,16 @@ function wpilot_run_page_tools($tool, $params = []) {
             return wpilot_ok($count ? "{$count} widgets set in \"{$sidebar}\"." : "Sidebar \"{$sidebar}\" cleared — all widgets removed.");
 
         /* ── Options / Settings ─────────────────────────────── */
+        case 'save_design_style':
+        case 'set_design':
+            $style = sanitize_text_field($params['style'] ?? '');
+            $palette = sanitize_text_field($params['palette'] ?? $params['colors'] ?? '');
+            $fonts = sanitize_text_field($params['fonts'] ?? '');
+            if ($style) update_option('wpilot_design_style', $style);
+            if ($palette) update_option('wpilot_design_palette', $palette);
+            if ($fonts) update_option('wpilot_design_fonts', $fonts);
+            return wpilot_ok("Design saved: " . ($style ?: 'unchanged') . ". This will persist across all future conversations.");
+
         case 'update_option':
             $key   = sanitize_text_field($params['option_key'] ?? $params['key'] ?? $params['option_name'] ?? $params['name'] ?? '');
             $value = $params['value'] ?? '';

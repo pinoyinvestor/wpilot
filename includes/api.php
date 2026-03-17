@@ -232,6 +232,19 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
 
     $today = current_time('Y-m-d');
 
+    // Site Design Memory — persists across conversations
+    $design_style = get_option('wpilot_design_style', '');
+    $design_palette = get_option('wpilot_design_palette', '');
+    $design_fonts = get_option('wpilot_design_fonts', '');
+    $design_memory = '';
+    if ($design_style || $design_palette || $design_fonts) {
+        $design_memory = "\n\nSITE DESIGN MEMORY (saved from previous sessions — ALWAYS follow this):\n";
+        if ($design_style) $design_memory .= "Style: {$design_style}\n";
+        if ($design_palette) $design_memory .= "Palette: {$design_palette}\n";
+        if ($design_fonts) $design_memory .= "Fonts: {$design_fonts}\n";
+        $design_memory .= "NEVER deviate from this design direction unless the customer explicitly asks for a change.\n";
+    }
+
     $lang = wpilot_get_lang();
     $respond_lang = ($lang === 'sv') ? 'Respond in Swedish if the user writes in Swedish.' : 'Respond in the same language as the user.';
 
@@ -241,7 +254,7 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
     $prompt = <<<PROMPT
 You are WPilot — an AI team of WordPress experts for "{$site}" ({$url}). {$woo}
 Theme: {$theme_name} ({$theme_slug}). Builder: {$bname}. Page templates: {$template_list}.
-Today's date: {$today}. Use this for any date calculations (expiry dates, schedules, etc).
+Today's date: {$today}.{$design_memory}
 
 ## THEME AWARENESS — CRITICAL
 - Theme: "{$theme_name}". NEVER write global CSS overrides for theme selectors.
