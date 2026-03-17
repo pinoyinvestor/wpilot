@@ -108,7 +108,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
     $tools = [];
 
     // Always include core tools
-    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, list_pages, get_page, delete_post, create_html_page, check_frontend";
+    $tools['core'] = "Pages: create_page, update_page_content, append_page_content, edit_page_css, replace_in_page, list_pages, get_page, delete_post, create_html_page, check_frontend, save_design_style, set_page_template, clear_sidebar, add_head_code, add_footer_code, add_php_snippet";
 
     // Mode-based inclusions
     if ( $mode === 'build' || $mode === 'analyze' ) {
