@@ -34,14 +34,30 @@ function wpilot_run_page_tools($tool, $params = []) {
 
         case 'set_page_template':
             $id = intval($params['id'] ?? $params['page_id'] ?? $params['post_id'] ?? 0);
-            $template = sanitize_text_field($params['template'] ?? 'default');
+            $template = sanitize_text_field($params['template'] ?? '');
             if (!$id) return wpilot_err('Page ID required.');
+            // Auto-detect full-width template if none specified
+            if (empty($template)) {
+                $available = wp_get_theme()->get_page_templates(null, 'page');
+                foreach ($available as $file => $name) {
+                    if (preg_match('/full[- ]?width|no[- ]?sidebar|blank|canvas/i', $name . ' ' . $file)) {
+                        $template = $file; break;
+                    }
+                }
+                if (empty($template)) $template = 'default';
+            }
             update_post_meta($id, '_wp_page_template', $template);
             // For Elementor
             if (strpos($template, 'elementor') !== false) {
                 update_post_meta($id, '_elementor_edit_mode', 'builder');
             }
-            return wpilot_ok("Page #{$id} template set to {$template}.");
+            // For Storefront: also disable sidebar via theme mod
+            $theme_slug = get_option('stylesheet');
+            if ($theme_slug === 'storefront' && preg_match('/full|blank|no.*sidebar/i', $template)) {
+                set_theme_mod('storefront_layout', 'none');
+            }
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Page #{$id} template set to \"{$template}\".");
 
         case 'set_homepage':
             // Accept any ID variant
@@ -347,24 +363,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             if (isset($params['tags'])) wp_set_post_tags($id, $params['tags']);
             return wpilot_ok("Post #{$id} updated.");
 
-        case 'set_page_template':
-            $id = intval($params['page_id'] ?? $params['post_id'] ?? $params['id'] ?? 0);
-            $template = sanitize_text_field($params['template'] ?? '');
-            if (!$id) return wpilot_err('page_id required.');
-            if (empty($template)) {
-                // Auto-detect full-width template
-                $available = wp_get_theme()->get_page_templates();
-                foreach ($available as $file => $name) {
-                    if (preg_match('/full[- ]?width|no[- ]?sidebar|blank|canvas/i', $name . ' ' . $file)) {
-                        $template = $file;
-                        break;
-                    }
-                }
-                if (empty($template)) return wpilot_err('No full-width template found. Available: ' . implode(', ', array_keys($available)));
-            }
-            update_post_meta($id, '_wp_page_template', $template);
-            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
-            return wpilot_ok("Page #{$id} template set to \"{$template}\".");
+        // Duplicate set_page_template removed — handled at line 35
 
         case 'delete_post':
             $id = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
