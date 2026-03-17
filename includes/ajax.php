@@ -294,7 +294,7 @@ add_action('wp_ajax_wpi_smart_scan', function() {
     if (function_exists('wpilot_run_tool')) {
         $recs = wpilot_run_tool('recommend_plugins', []);
         if (!empty($recs['recommendations'])) {
-            $_SESSION['wpilot_recommendations'] = $recs['recommendations'];
+            set_transient('wpilot_recommendations_' . get_current_user_id(), $recs['recommendations'], 300);
         }
     }
     if ( ! wpilot_user_has_access() ) wp_send_json_error('You don\'t have WPilot access. Ask your admin to grant it.', 403);

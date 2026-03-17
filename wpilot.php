@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot powered by Claude AI
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:           2.2.0
+ * Version:           2.2.1
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -14,6 +14,15 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+// ── Recovery page handler ──
+if ( is_admin() && isset( $_GET['wpilot-recover'] ) && $_GET['wpilot-recover'] === '1' ) {
+    add_action( 'admin_init', function() {
+        if ( current_user_can( 'manage_options' ) && file_exists( __DIR__ . '/wpilot-recovery.php' ) ) {
+            require_once __DIR__ . '/wpilot-recovery.php';
+        }
+    });
+}
+
 // ── Safe Mode: skip loading if crashed 3+ times ──
 $safe_mode_file = WP_CONTENT_DIR . '/wpilot-safe-mode.txt';
 if (file_exists($safe_mode_file)) {
@@ -21,7 +30,7 @@ if (file_exists($safe_mode_file)) {
     if (($sm['crashes'] ?? 0) >= 3 && strtotime($sm['last_crash'] ?? '') > time() - 600) {
         // Don't load WPilot — safe mode active
         add_action('admin_notices', function() {
-            echo '<div class="notice notice-error"><p><strong>WPilot Safe Mode:</strong> Plugin disabled due to repeated crashes. <a href="' . admin_url('?wpilot-recover=1') . '">Open Recovery</a></p></div>';
+            echo '<div class="notice notice-error"><p><strong>WPilot Safe Mode:</strong> Plugin disabled due to repeated crashes. <a href="' . esc_url(admin_url('?wpilot-recover=1')) . '">Open Recovery</a></p></div>';
         });
         return; // Stop loading the plugin
     }
@@ -45,7 +54,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( "CA_VERSION", "2.2.0" );
+if ( ! defined( 'CA_VERSION' ) ) define( "CA_VERSION", "2.2.1" );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
@@ -89,6 +98,8 @@ foreach ( $_wpilot_core as $f ) {
 if ( is_admin() ) {
     require_once CA_PATH . 'includes/menu.php';
     require_once CA_PATH . 'includes/onboarding.php';
+    // Migrate plaintext API keys to encrypted storage (runs once)
+    add_action( 'admin_init', 'wpilot_migrate_encrypt_keys' );
 }
 
 // ── Heavy modules — loaded on demand ─────────────────────────
