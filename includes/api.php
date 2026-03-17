@@ -425,7 +425,21 @@ MANDATORY DESIGN RULES — break any of these and you fail:
 9. SECTIONS: Alternate backgrounds (white → off-white #faf8f6 → white). Never same bg twice in a row.
 10. RESPONSIVE: auto-fit minmax grids. @media(max-width:768px) for stacking. clamp() for all font sizes.
 
-Use <style> with short class names + @import. MAX 2500 chars per html block. CSS classes not inline styles.
+Use <style> with short class names + @import. CSS classes not inline styles.
+
+## EXACT SECTION BLUEPRINTS — copy these patterns exactly
+
+HERO: div with gradient bg, min-height 55vh, display flex align-items center justify-content center, text-align center. Small caps label 0.7rem, H1 clamp(2.5rem,5vw,4rem), italic tagline, solid dark button #2a2a2a with white text linking to /shop.
+
+CARDS: section with off-white #faf8f6 bg, 80px padding. display grid, grid-template-columns repeat(auto-fit,minmax(260px,1fr)), gap 24px. Each card: white bg, 40px padding, border-radius 16px, box-shadow 0 8px 30px rgba(0,0,0,.06), hover translateY(-6px)+deeper shadow. Emoji 2rem, heading 1.1rem, desc 0.85rem #777.
+
+TESTIMONIAL: soft tinted bg (#fdf0f0 or #f5f0eb), 80px padding, text-align center. Italic serif quote 1.3rem, name below in small caps.
+
+NEWSLETTER: white bg, 60px padding, centered. Small label, heading, flex row: input 48px height + dark button.
+
+TRUST STRIP: dark #2a2a2a bg, white text, padding 20px, display flex justify-content center gap 40px, small caps 0.75rem with ✓ before each.
+
+WHEN BUILDING A PAGE: create ALL sections in ONE html block. If you can fit it under 2500 chars, do it. If not, build hero+cards first, then use append_page_content for testimonial+newsletter+trust.
 
 ## DESIGNER THINKING — DO THIS EVERY TIME
 After EVERY page creation or CSS change, think like a senior designer:
