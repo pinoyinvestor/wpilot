@@ -7,23 +7,28 @@ function wpilot_find_json_in_text($text) {
     $text = preg_replace('/```(?:json)?\s*/i', '', $text);
     $text = preg_replace('/\s*```/', '', $text);
     $text = trim($text);
-    $start = strpos($text, '{');
-    if ($start === false) return null;
-    $depth = 0;
-    $in_string = false;
-    for ($i = $start; $i < strlen($text); $i++) {
-        $ch = $text[$i];
-        if ($ch === '"' && ($i === 0 || $text[$i-1] !== '\\')) $in_string = !$in_string;
-        if (!$in_string) {
-            if ($ch === '{') $depth++;
-            if ($ch === '}') $depth--;
-            if ($depth === 0) {
-                $json = substr($text, $start, $i - $start + 1);
-                $decoded = json_decode($json, true);
-                if (is_array($decoded) && !empty($decoded)) return $decoded;
-                return null;
+    // Try ALL { positions, not just the first one — handles inline JSON after prose
+    $offset = 0;
+    while (($start = strpos($text, '{', $offset)) !== false) {
+        $depth = 0;
+        $in_string = false;
+        $valid = true;
+        for ($i = $start; $i < strlen($text); $i++) {
+            $ch = $text[$i];
+            if ($ch === '"' && ($i === 0 || $text[$i-1] !== '\\')) $in_string = !$in_string;
+            if (!$in_string) {
+                if ($ch === '{') $depth++;
+                if ($ch === '}') $depth--;
+                if ($depth === 0) {
+                    $json = substr($text, $start, $i - $start + 1);
+                    $decoded = json_decode($json, true);
+                    if (is_array($decoded) && !empty($decoded)) return $decoded;
+                    break; // This { didn't produce valid JSON, try next one
+                }
             }
         }
+        if ($depth !== 0) break; // Unclosed brace — stop searching
+        $offset = $start + 1;
     }
     return null;
 }

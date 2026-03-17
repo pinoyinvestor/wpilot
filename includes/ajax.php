@@ -15,12 +15,18 @@ function wpilot_parse_actions( $text ) {
     // Flexible: matches [ACTION: tool], [ACTION: tool | label], [ACTION: tool | label | desc | icon]
     if ( preg_match_all( '/\[ACTION:\s*([^\]\|]+?)(?:\|([^\]\|]*?))?(?:\|([^\]\|]*?))?(?:\|([^\]]*?))?\]/', $text, $m, PREG_SET_ORDER ) ) {
         foreach ( $m as $match ) {
+            $label = trim( $match[2] ?? '' );
+            // Try to extract inline JSON from label (e.g. "Installing plugin slug: wordfence")
+            $inline_params = [];
+            if ( preg_match('/slug[:\s]+([a-z0-9\-]+)/i', $label, $sp) ) {
+                $inline_params['slug'] = $sp[1];
+            }
             $actions[] = [
                 'tool'        => trim( $match[1] ),
-                'label'       => trim( $match[2] ),
+                'label'       => $label,
                 'description' => trim( $match[3] ?? "" ),
                 'icon'        => trim( $match[4] ?? "" ),
-                'params'      => [],
+                'params'      => $inline_params,
             ];
         }
     }

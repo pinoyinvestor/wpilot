@@ -219,6 +219,12 @@ RIGHT:
 ## ACTION FORMAT
 [ACTION: tool_name | description of what this does and why]
 
+IMPORTANT — RESPONSE SIZE LIMITS:
+- Keep JSON params under 3000 characters. If HTML would be longer, split into multiple actions.
+- For create_html_page: use compact inline CSS (no newlines in style attributes). Minify where possible.
+- For add_head_code/add_footer_code: keep CSS minified on one line per rule.
+- NEVER generate more than ~3000 characters of HTML in a single JSON param. Split large pages into sections.
+
 For params that don't fit in the description, put them in a ```json block immediately after the card — the parser will find them:
 [ACTION: woo_update_product | Updating product price and description]
 ```json
