@@ -82,8 +82,25 @@ function wpilot_parse_compact_actions($text) {
         $after = preg_replace('/```(?:json)?\s*/i', '', $after);
         $after = preg_replace('/\s*```/', '', $after);
         $after = trim($after);
-        $params = wpilot_find_json_in_text($after) ?: [];
-        
+        // Try HTML block first (```html ... ```) — preferred for page content
+        $params = [];
+        if (preg_match('/```html\s*(.*?)```/s', $after, $hm)) {
+            $html_content = trim($hm[1]);
+            if (strlen($html_content) > 10) {
+                // Extract slug/title/id from the ACTION label
+                $params = ['html' => $html_content];
+                if (preg_match('/slug[:\s]+["\']?([a-z0-9\-]+)/i', $tool, $sm)) $params['slug'] = $sm[1];
+                if (preg_match('/title[:\s]+["\']?([^"\']+)/i', $tool, $tm)) $params['title'] = trim($tm[1]);
+                if (preg_match('/(?:ID|id)\s+(\d+)/', $tool, $im)) $params['post_id'] = intval($im[1]);
+            }
+        }
+        // Fallback: try JSON block
+        if (empty($params)) {
+            $clean_after = preg_replace('/```(?:json)?\s*/i', '', $after);
+            $clean_after = preg_replace('/\s*```/', '', $clean_after);
+            $params = wpilot_find_json_in_text(trim($clean_after)) ?: [];
+        }
+
         $actions[] = [
             'tool' => $tool,
             'label' => $tool,
@@ -140,16 +157,29 @@ function wpilot_enhance_action_params(&$actions, $text) {
                 if (!empty($p['from']) && !empty($p['to'])) { $action['params'] = $p; continue; }
             }
 
-            // Scope JSON search: from this action's position to the next action's position
+            // Scope search from this action's position to the next
             if (isset($action_positions[$idx])) {
                 $start = $action_positions[$idx];
                 $end = isset($action_positions[$idx + 1]) ? $action_positions[$idx + 1] : strlen($text);
-                // Use full segment — HTML pages can be very large
                 $segment = substr($text, $start, max($end - $start, 50000));
-                // Clean markdown fences from segment
-                $segment = preg_replace('/```(?:json)?\s*/i', '', $segment);
-                $segment = preg_replace('/\s*```/', '', $segment);
-                $found = wpilot_find_json_in_text($segment);
+
+                // Try HTML block first (```html ... ```)
+                if (preg_match('/```html\s*(.*?)```/s', $segment, $hm)) {
+                    $html = trim($hm[1]);
+                    if (strlen($html) > 10) {
+                        $action['params'] = array_merge($action['params'] ?: [], ['html' => $html]);
+                        // Extract slug/title/id from action label
+                        $label = $action['label'] . ' ' . ($action_matches[0][$idx][0] ?? '');
+                        if (preg_match('/slug[:\s]+["\']?([a-z0-9\-]+)/i', $label, $sm)) $action['params']['slug'] = $sm[1];
+                        if (preg_match('/(?:ID|id)\s+(\d+)/', $label, $im)) $action['params']['post_id'] = intval($im[1]);
+                        continue;
+                    }
+                }
+
+                // Try JSON block
+                $clean = preg_replace('/```(?:json)?\s*/i', '', $segment);
+                $clean = preg_replace('/\s*```/', '', $clean);
+                $found = wpilot_find_json_in_text($clean);
                 if ($found) { $action['params'] = $found; continue; }
             }
 
