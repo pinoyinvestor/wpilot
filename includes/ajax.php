@@ -18,8 +18,15 @@ function wpilot_parse_actions( $text ) {
             $label = trim( $match[2] ?? '' );
             // Try to extract inline JSON from label (e.g. "Installing plugin slug: wordfence")
             $inline_params = [];
-            if ( preg_match('/slug[:\s]+([a-z0-9\-]+)/i', $label, $sp) ) {
+            if ( preg_match('/slug[:\s]+["\']?([a-z0-9\-_]+)["\']?/i', $label, $sp) ) {
                 $inline_params['slug'] = $sp[1];
+            }
+            // Also extract common param patterns from label
+            if ( preg_match('/(?:post|page|product)[_\s]*(?:id|ID)[:\s]+(\d+)/i', $label, $ip) ) {
+                $inline_params['post_id'] = intval($ip[1]);
+            }
+            if ( preg_match('/(?:price|pris)[:\s]+\$?(\d+(?:\.\d+)?)/i', $label, $pp) ) {
+                $inline_params['price'] = $pp[1];
             }
             $actions[] = [
                 'tool'        => trim( $match[1] ),
