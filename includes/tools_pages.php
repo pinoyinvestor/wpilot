@@ -18,10 +18,25 @@ function wpilot_run_page_tools($tool, $params = []) {
 
         case 'update_page_content':
             $id      = intval( $params['id'] ?? $params['page_id'] ?? $params['post_id'] ?? 0 );
-            $content = wp_kses_post( $params['content'] ?? '' );
+            $content = $params['content'] ?? $params['html'] ?? '';
             if ( !$id ) return wpilot_err('Page ID required.');
+            if ( empty($content) ) return wpilot_err('Content required.');
+            // Auto-fix: wrap orphan CSS in <style> tags
+            if (preg_match('/^@import|^[.#*{]|^body\s*{/m', $content) && strpos($content, '<style') === false) {
+                $content = '<style>' . $content;
+                if (($pos = strpos($content, '</div>')) !== false || ($pos = strpos($content, '<div')) !== false || ($pos = strpos($content, '<section')) !== false) {
+                    $content = substr($content, 0, $pos) . '</style>' . substr($content, $pos);
+                } else {
+                    $content .= '</style>';
+                }
+            }
+            // Wrap in Gutenberg HTML block
+            if (strpos($content, '<!-- wp:') === false) {
+                $content = '<!-- wp:html -->' . $content . '<!-- /wp:html -->';
+            }
             wpilot_save_post_snapshot( $id );
             wp_update_post( ['ID'=>$id,'post_content'=>$content] );
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             return wpilot_ok( "Page #{$id} content updated." );
 
         case 'update_post_title':
