@@ -74,12 +74,17 @@ function wpilot_run_tool( $tool, $params = [] ) {
     $modules = [
         'wpilot_run_page_tools',
         'wpilot_run_woo_tools',
+        'wpilot_run_woo_advanced_tools',
         'wpilot_run_design_tools',
         'wpilot_run_seo_tools',
         'wpilot_run_security_tools',
         'wpilot_run_file_tools',
         'wpilot_run_api_tools',
         'wpilot_run_media_tools',
+        'wpilot_run_mobile_nav_tool',
+        'wpilot_run_form_tools',
+        'wpilot_run_comment_tools',
+        'wpilot_run_pwa_tools',
     ];
 
     // Built by Christos Ferlachidis & Daniel Hedenberg
