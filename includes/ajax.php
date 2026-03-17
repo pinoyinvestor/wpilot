@@ -59,6 +59,10 @@ add_action( 'wp_ajax_ca_chat', function () {
     $context = json_decode( wp_unslash( $_POST['context'] ?? '{}' ), true ) ?: [];
 
     if ( empty( $message ) ) wp_send_json_error( 'Empty message.' );
+
+    // Load heavy modules (API, tools, context, brain) before processing
+    if ( function_exists( 'wpilot_load_heavy' ) ) wpilot_load_heavy();
+
     // Context: system prompt now includes pages, design, WooCommerce, plugins, CSS
     // Only build heavy context for analyze/build modes — chat uses system prompt data
     $context = ($mode !== 'chat') ? wpilot_build_context($mode) : [];
