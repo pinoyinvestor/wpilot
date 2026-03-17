@@ -435,7 +435,7 @@ function wpilot_run_page_tools($tool, $params = []) {
         /* ── Security Scanner ───────────────────────────────── */
         /* ── Code Injection (mu-plugin) ──────────────────── */
         case 'add_head_code':
-            $code = $params['code'] ?? '';
+            $code = $params['code'] ?? $params['html'] ?? $params['css'] ?? $params['content'] ?? '';
             $name = sanitize_file_name($params['name'] ?? 'custom-head-' . time());
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
@@ -453,7 +453,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
 
         case 'add_footer_code':
-            $code = $params['code'] ?? '';
+            $code = $params['code'] ?? $params['html'] ?? $params['content'] ?? '';
             $name = sanitize_file_name($params['name'] ?? 'custom-footer-' . time());
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
