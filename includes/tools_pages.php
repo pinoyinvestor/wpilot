@@ -16,6 +16,20 @@ function wpilot_run_page_tools($tool, $params = []) {
             if ( is_wp_error($id) ) return wpilot_err( $id->get_error_message() );
             return wpilot_ok( "Page \"{$title}\" created (ID: {$id}, status: {$status}).", ['id'=>$id] );
 
+        case 'edit_page_css':
+        case 'replace_in_page':
+            $id = intval($params['page_id'] ?? $params['post_id'] ?? $params['id'] ?? 0);
+            $search = $params['search'] ?? $params['find'] ?? $params['old'] ?? '';
+            $replace = $params['replace'] ?? $params['new'] ?? '';
+            if (!$id) return wpilot_err('page_id required.');
+            if (empty($search)) return wpilot_err('search string required.');
+            $content = get_post_field('post_content', $id);
+            if (strpos($content, $search) === false) return wpilot_err("Text not found in page #{$id}.");
+            $content = str_replace($search, $replace, $content);
+            wp_update_post(['ID' => $id, 'post_content' => $content]);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Replaced in page #{$id}.");
+
         case 'append_page_content':
             $params['append'] = true;
             // Fall through to update_page_content
