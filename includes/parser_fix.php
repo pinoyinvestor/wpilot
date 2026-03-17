@@ -7,6 +7,28 @@ function wpilot_find_json_in_text($text) {
     $text = preg_replace('/```(?:json)?\s*/i', '', $text);
     $text = preg_replace('/\s*```/', '', $text);
     $text = trim($text);
+    // Strategy 0: Try to repair truncated JSON — add missing closing braces/quotes
+    if (strpos($text, '{') !== false && json_decode($text, true) === null) {
+        $repair = rtrim($text);
+        // If JSON was truncated mid-string, close the string and object
+        if (preg_match('/```json\s*(\{.+)/s', $repair, $jm)) {
+            $jsonish = $jm[1];
+            // Try progressively adding closing characters
+            foreach (['"}', '"}', '"}}', '"}}}', "\"}"] as $suffix) {
+                $try = $jsonish . $suffix;
+                $decoded = json_decode($try, true);
+                if (is_array($decoded) && !empty($decoded)) return $decoded;
+            }
+            // Try closing all open braces
+            $open = substr_count($jsonish, '{') - substr_count($jsonish, '}');
+            $open_q = (substr_count($jsonish, '"') % 2 !== 0) ? '"' : '';
+            if ($open > 0) {
+                $try = $jsonish . $open_q . str_repeat('}', $open);
+                $decoded = json_decode($try, true);
+                if (is_array($decoded) && !empty($decoded)) return $decoded;
+            }
+        }
+    }
     // Strategy 1: Use PHP's json_decode with progressive substring extraction
     // Find all { positions and try json_decode from each one
     $offset = 0;
