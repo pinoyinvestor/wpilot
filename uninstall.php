@@ -87,3 +87,5 @@ wp_clear_scheduled_hook( 'wpi_tracking_heartbeat' );
 wp_clear_scheduled_hook( 'wpi_flush_queue' );
 wp_clear_scheduled_hook( 'wpi_shadow_test_event' );
 wp_clear_scheduled_hook( 'wpilot_daily_cleanup' );
+wp_clear_scheduled_hook( 'wpilot_heartbeat' );
+wp_clear_scheduled_hook( 'wpilot_run_scheduled' );

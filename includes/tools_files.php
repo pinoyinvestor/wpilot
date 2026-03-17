@@ -160,15 +160,8 @@ function wpilot_run_file_tools($tool, $params = []) {
                 if ($wpdb->last_error) return wpilot_err("SQL error: " . $wpdb->last_error);
                 return wpilot_ok(count($results) . " rows.", ['rows' => array_slice($results, 0, 100), 'total' => count($results)]);
             }
-            if (strpos($query_upper, 'UPDATE') === 0 || strpos($query_upper, 'INSERT') === 0 || strpos($query_upper, 'DELETE') === 0) {
-                if (empty($params['confirm'])) {
-                    return wpilot_err("Write query requires confirm:true. Query: " . substr($query, 0, 200));
-                }
-                $affected = $wpdb->query($query);
-                if ($wpdb->last_error) return wpilot_err("SQL error: " . $wpdb->last_error);
-                return wpilot_ok("{$affected} rows affected.", ['affected' => $affected]);
-            }
-            return wpilot_err("Unsupported query type. Use SELECT, SHOW, UPDATE, INSERT, or DELETE.");
+            // Write queries disabled for security — use WordPress API functions instead
+            return wpilot_err("Only SELECT, SHOW, and DESCRIBE queries are allowed. Use WordPress tools for data modifications.");
 
         // ═══ WP-CLI WRAPPER ═══
         case 'wp_cli':
@@ -176,10 +169,20 @@ function wpilot_run_file_tools($tool, $params = []) {
             $cmd = $params['command'] ?? $params['cmd'] ?? '';
             if (empty($cmd)) return wpilot_err('WP-CLI command required. Example: command="post list --post_type=page"');
             if (preg_match('/[;&|`$()\\{}]/', $cmd)) return wpilot_err('Shell operators not allowed in WP-CLI commands.');
-            $blocked_cmds = ['db export', 'db import', 'db reset', 'db drop', 'db query', 'core download', 'config set', 'config delete', 'package install', 'super-admin', 'shell', 'eval-file', 'eval '];
-            foreach ($blocked_cmds as $bc) {
-                if (strpos($cmd, $bc) !== false) return wpilot_err("Blocked command: {$bc}");
+            // Security: allowlist of safe WP-CLI subcommands only
+            $allowed_cmds = ['post list', 'post get', 'post meta list', 'post meta get',
+                'page list', 'plugin list', 'plugin status', 'theme list', 'theme status',
+                'option get', 'option list', 'user list', 'user get',
+                'widget list', 'menu list', 'menu item list', 'sidebar list',
+                'cron event list', 'db tables', 'db size', 'cache flush', 'rewrite flush',
+                'transient list', 'transient get', 'role list', 'cap list',
+                'term list', 'taxonomy list', 'comment list', 'media list'];
+            $cmd_lower = strtolower(trim($cmd));
+            $allowed = false;
+            foreach ($allowed_cmds as $ac) {
+                if (strpos($cmd_lower, $ac) === 0) { $allowed = true; break; }
             }
+            if (!$allowed) return wpilot_err("Command not allowed. Permitted: " . implode(', ', array_slice($allowed_cmds, 0, 10)) . '...');
             // Split command into args for safe execution
             $args = ['wp', '--allow-root', '--path=' . ABSPATH];
             $parts = preg_split('/\s+/', trim($cmd));

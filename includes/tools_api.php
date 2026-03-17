@@ -17,9 +17,25 @@ function wpilot_run_api_tools($tool, $params = []) {
             $body = $params['body'] ?? $params['data'] ?? '';
             $api_key_name = $params['api_key'] ?? '';
             if (empty($url)) return wpilot_err('URL required. Example: url="https://api.stripe.com/v1/charges"');
-            // Security: block internal/private IPs
+            // Security: block internal/private/metadata IPs
             $host = parse_url($url, PHP_URL_HOST);
-            if (in_array($host, ['localhost', '127.0.0.1', '0.0.0.0']) || preg_match('/^(10\.|172\.(1[6-9]|2|3[01])\.|192\.168\.)/', gethostbyname($host))) {
+            $blocked_hosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]', 'metadata.google.internal'];
+            if (in_array(strtolower($host), $blocked_hosts)) {
+                return wpilot_err('Cannot call internal/private IP addresses.');
+            }
+            $resolved = gethostbyname($host);
+            if ($resolved === $host && !filter_var($host, FILTER_VALIDATE_IP)) {
+                return wpilot_err('Cannot resolve hostname.');
+            }
+            $ip_long = ip2long($resolved);
+            if ($ip_long !== false && (
+                ($ip_long >= ip2long('10.0.0.0') && $ip_long <= ip2long('10.255.255.255')) ||
+                ($ip_long >= ip2long('172.16.0.0') && $ip_long <= ip2long('172.31.255.255')) ||
+                ($ip_long >= ip2long('192.168.0.0') && $ip_long <= ip2long('192.168.255.255')) ||
+                ($ip_long >= ip2long('127.0.0.0') && $ip_long <= ip2long('127.255.255.255')) ||
+                ($ip_long >= ip2long('169.254.0.0') && $ip_long <= ip2long('169.254.255.255')) ||
+                $ip_long === ip2long('0.0.0.0')
+            )) {
                 return wpilot_err('Cannot call internal/private IP addresses.');
             }
             // Load stored API key if referenced
@@ -27,10 +43,11 @@ function wpilot_run_api_tools($tool, $params = []) {
                 $keys = get_option('wpilot_api_keys', []);
                 if (isset($keys[$api_key_name])) {
                     $key_data = $keys[$api_key_name];
+                    $decrypted_key = function_exists('wpilot_decrypt') ? wpilot_decrypt($key_data['key']) : $key_data['key'];
                     // Auto-add auth header
-                    if ($key_data['type'] === 'bearer') $headers['Authorization'] = 'Bearer ' . $key_data['key'];
-                    elseif ($key_data['type'] === 'basic') $headers['Authorization'] = 'Basic ' . base64_encode($key_data['key']);
-                    elseif ($key_data['type'] === 'header') $headers[$key_data['header_name']] = $key_data['key'];
+                    if ($key_data['type'] === 'bearer') $headers['Authorization'] = 'Bearer ' . $decrypted_key;
+                    elseif ($key_data['type'] === 'basic') $headers['Authorization'] = 'Basic ' . base64_encode($decrypted_key);
+                    elseif ($key_data['type'] === 'header') $headers[$key_data['header_name']] = $decrypted_key;
                 }
             }
             $wp_args = ['method' => $method, 'timeout' => 30, 'headers' => $headers, 'sslverify' => true];
@@ -58,7 +75,8 @@ function wpilot_run_api_tools($tool, $params = []) {
             $header_name = sanitize_text_field($params['header_name'] ?? 'X-API-Key');
             if (empty($name) || empty($key)) return wpilot_err('name and key required. Example: name="stripe", key="sk_live_..."');
             $keys = get_option('wpilot_api_keys', []);
-            $keys[$name] = ['key' => $key, 'type' => $type, 'header_name' => $header_name, 'added' => date('Y-m-d H:i:s')];
+            $encrypted_key = function_exists('wpilot_encrypt') ? wpilot_encrypt($key) : $key;
+            $keys[$name] = ['key' => $encrypted_key, 'type' => $type, 'header_name' => $header_name, 'added' => date('Y-m-d H:i:s')];
             update_option('wpilot_api_keys', $keys);
             return wpilot_ok("API key '{$name}' saved ({$type} auth).", ['name' => $name, 'type' => $type]);
 

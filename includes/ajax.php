@@ -289,6 +289,7 @@ add_action( 'wp_ajax_ca_restore_backup', function () {
 
 // ── Smart site scan — AI proactively reviews installed plugins ──
 add_action('wp_ajax_wpi_smart_scan', function() {
+    check_ajax_referer('ca_nonce','nonce');
     // Check for missing essential plugins during scan
     if (function_exists('wpilot_run_tool')) {
         $recs = wpilot_run_tool('recommend_plugins', []);
@@ -296,7 +297,6 @@ add_action('wp_ajax_wpi_smart_scan', function() {
             $_SESSION['wpilot_recommendations'] = $recs['recommendations'];
         }
     }
-    check_ajax_referer('ca_nonce','nonce');
     if ( ! wpilot_user_has_access() ) wp_send_json_error('You don\'t have WPilot access. Ask your admin to grant it.', 403);
     if (!wpilot_is_connected()) wp_send_json_error('Not connected');
     if (wpilot_is_locked()) wp_send_json_error('Free limit reached. Please activate your license.');
@@ -458,6 +458,7 @@ add_action('wp_ajax_wpi_check_replies', function() {
 add_action('wp_ajax_wpilot_subscribe', 'wpilot_handle_subscribe');
 add_action('wp_ajax_nopriv_wpilot_subscribe', 'wpilot_handle_subscribe');
 function wpilot_handle_subscribe() {
+    check_ajax_referer('ca_nonce', 'nonce');
     $email = sanitize_email($_POST['email'] ?? '');
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         wp_send_json_error(['message' => 'Valid email required.']);
@@ -475,9 +476,5 @@ function wpilot_handle_subscribe() {
     }
     $subscribers[$email] = ['date' => date('Y-m-d H:i:s'), 'ip' => $ip, 'source' => 'popup'];
     update_option('wpilot_subscribers', $subscribers);
-    // Also create WP user if they don't exist
-    if (!email_exists($email)) {
-        wp_create_user($email, wp_generate_password(), $email);
-    }
     wp_send_json_success(['message' => 'Subscribed! Check your email.', 'email' => $email]);
 }

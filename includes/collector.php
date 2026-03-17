@@ -30,6 +30,11 @@ function wpilot_anonymize( $text ) {
     $text = preg_replace( '/https?:\/\/[^\s"\'<>]+/', '[URL]', $text );
     $text = preg_replace( '/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/', '[EMAIL]', $text );
     $text = preg_replace( '/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/', '[IP]', $text );
+    // Phone numbers (international formats)
+    $text = preg_replace( '/(\+?\d{1,4}[\s\-]?)?\(?\d{2,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{2,4}/', '[PHONE]', $text );
+    // API keys and secrets
+    $text = preg_replace( '/\b(sk_live_|sk_test_|pk_live_|pk_test_|ghp_|gho_|Bearer\s+)[a-zA-Z0-9_\-]+/', '[API_KEY]', $text );
+    $text = preg_replace( '/\b(api[_\-]?key|secret[_\-]?key|access[_\-]?token|password)\s*[:=]\s*[\'"]?[^\s\'"<>]+/i', '[SECRET]', $text );
     $site = get_bloginfo('name');
     if ( $site ) $text = str_ireplace( $site, '[SITE]', $text );
     $text = preg_replace( '/\b[a-z0-9\-]{3,}\.(se|com|net|org|io|dev|co\.uk)\b/i', '[DOMAIN]', $text );
