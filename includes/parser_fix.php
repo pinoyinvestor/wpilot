@@ -85,7 +85,9 @@ function wpilot_enhance_action_params(&$actions, $text) {
     $action_positions = array_map(function($m) { return $m[1]; }, $action_matches[0] ?? []);
 
     foreach ($actions as $idx => &$action) {
-        if (empty($action['params']) || $action['params'] === []) {
+        // Always try to find full JSON params — even if we have partial inline params
+        $has_full_params = !empty($action['params']) && (isset($action['params']['html']) || isset($action['params']['code']) || isset($action['params']['content']) || count($action['params']) >= 3);
+        if (!$has_full_params) {
             // Extract params from description/label for common tools
             $desc = $action['label'] . ' ' . $action['description'];
 
