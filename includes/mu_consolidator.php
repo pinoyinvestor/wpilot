@@ -37,6 +37,8 @@ function wpilot_mu_load_order() {
         'lazy-load',
         'pwa',
         'woo-filter',
+        'redirects',
+        'cookie-banner',
     ];
 }
 

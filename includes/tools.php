@@ -86,6 +86,8 @@ function wpilot_run_tool( $tool, $params = [] ) {
         'wpilot_run_comment_tools',
         'wpilot_run_pwa_tools',
         'wpilot_run_mu_tools',
+        'wpilot_run_gdpr_tools',
+        'wpilot_run_content_tools',
     ];
 
     // Built by Christos Ferlachidis & Daniel Hedenberg

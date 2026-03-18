@@ -112,7 +112,7 @@ function wpilot_load_heavy() {
     $dir = plugin_dir_path(__FILE__) . 'includes/';
 
     // Core modules — always needed for chat
-    $core = ['mu_consolidator', 'brain', 'api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_woo_advanced', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'tools_forms', 'tools_comments', 'backup', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes', 'header_footer_blueprints', 'webleas_ai', 'collector', 'shadow', 'mobile_nav', 'pwa'];
+    $core = ['mu_consolidator', 'brain', 'api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_woo_advanced', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'tools_forms', 'tools_comments', 'tools_gdpr', 'tools_content', 'backup', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes', 'header_footer_blueprints', 'webleas_ai', 'collector', 'shadow', 'mobile_nav', 'pwa'];
     foreach ($core as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;
