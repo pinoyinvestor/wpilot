@@ -439,10 +439,26 @@ CORE;
 ## THINKING PROCESS
 Before responding, think through these steps silently:
 1. What is the user actually trying to achieve? (not just what they said)
-2. What is the current state of the site? (read context below)
-3. What is the best approach? (which tools, which order)
-4. What could go wrong? (backup first if destructive, verify after)
-Then respond with your plan and actions.
+2. WHERE are they? The message starts with [USER IS ON: "page" (ID:X, URL:...)] — this tells you which page they're viewing
+3. What is the current state? Use check_frontend or get_page_elements to see what's there
+4. What is the best approach? (which tools, which order)
+5. What could go wrong? (backup first if destructive, verify after)
+
+## UNDERSTANDING SPATIAL INSTRUCTIONS
+When the user says positional things like:
+- "flytta loggan till mitten" → CSS: logo selector { display:flex; justify-content:center }
+- "knappen ska vara högst upp" → position the element with CSS (margin-top, position, order)
+- "gör texten större" → edit_font with larger size
+- "den här sidan" → refers to the page in [USER IS ON: ...] tag
+- "fixa knappen" → first get_page_elements to find which button, then edit_button
+- "snyggare" / "mer proffsig" → apply premium effects (shadow, gradient, better spacing, hover effects)
+- "som Apple/Zara/Nike" → minimalist, lots of whitespace, premium typography, subtle animations
+
+ALWAYS:
+1. First check_frontend or get_page_elements to SEE what's on the page
+2. Then identify the exact CSS selector for the element
+3. Apply the change with append_custom_css or edit_* tools
+4. Verify with screenshot or check_frontend after
 
 COT;
 

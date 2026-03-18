@@ -63,13 +63,25 @@ add_action( 'wp_ajax_ca_chat', function () {
     // Load heavy modules (API, tools, context, brain) before processing
     if ( function_exists( 'wpilot_load_heavy' ) ) wpilot_load_heavy();
 
+    // Get page context from bubble (which page the user is currently viewing)
+    $bubble_ctx = json_decode( wp_unslash( $_POST['context'] ?? '{}' ), true ) ?: [];
+    $current_page = '';
+    if ( ! empty( $bubble_ctx['post_id'] ) && intval($bubble_ctx['post_id']) > 0 ) {
+        $pid = intval( $bubble_ctx['post_id'] );
+        $current_page = "[USER IS ON: \"{$bubble_ctx['page']}\" (ID:{$pid}, URL:{$bubble_ctx['url']})]";
+    } elseif ( ! empty( $bubble_ctx['url'] ) ) {
+        $current_page = "[USER IS ON: {$bubble_ctx['url']}]";
+    }
+    // Prepend page location to message so AI knows WHERE the user is
+    if ( $current_page ) {
+        $message = $current_page . "\n" . $message;
+    }
+
     // Smart context: only build heavy context when the message needs it
-    // Simple greetings/questions don't need 2000 tokens of site data
     $needs_context = ($mode !== 'chat');
     if ( !$needs_context ) {
-        // Check if chat message references site-specific things
         $msg_check = strtolower($message);
-        $needs_context = preg_match('/produkt|product|sida|page|order|design|bygg|build|shop|plugin|tema|theme|css|meny|menu|woo|seo|säkerhet|secur|prestanda|perform|analys/u', $msg_check);
+        $needs_context = preg_match('/produkt|product|sida|page|order|design|bygg|build|shop|plugin|tema|theme|css|meny|menu|woo|seo|säkerhet|secur|prestanda|perform|analys|knapp|button|logg|logo|bild|image|text|rubrik|heading|färg|color|flytta|move|mitt|center|snygg|pretty|ändra|change|ta bort|remove|fixa|fix/u', $msg_check);
     }
     $context = $needs_context ? wpilot_build_context($needs_context === true ? 'general' : $mode) : [];
 
