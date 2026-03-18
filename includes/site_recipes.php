@@ -1020,10 +1020,15 @@ function wpilot_build_site_from_recipe( $params ) {
         $results[] = "Blueprint '{$recipe['blueprint']}' applied";
     }
 
-    // 2. Create all pages
+    // 2. Create all pages — personalized with business profile
+    $biz = function_exists( 'wpilot_get_business_profile' ) ? wpilot_get_business_profile() : [];
     foreach ( $recipe['pages'] as $page_def ) {
         $html = '';
         foreach ( $page_def['sections'] as $section ) {
+            // Personalize section content with business info
+            if ( ! empty( $biz ) && function_exists( 'wpilot_personalize_section' ) ) {
+                $section = wpilot_personalize_section( $section, $biz );
+            }
             $html .= wpilot_render_section( $section, $site_vars );
         }
 

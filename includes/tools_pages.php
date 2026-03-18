@@ -714,6 +714,26 @@ function wpilot_run_page_tools($tool, $params = []) {
             delete_option('wpilot_design_fonts');
             return wpilot_ok("Design profile reset.");
 
+        case 'save_business_profile':
+        case 'save_business':
+        case 'set_business_info':
+            if ( function_exists( 'wpilot_save_business_profile' ) ) {
+                return wpilot_save_business_profile( $params );
+            }
+            return wpilot_err( 'Business profile module not loaded.' );
+
+        case 'get_business_profile':
+        case 'get_business':
+            $p = function_exists( 'wpilot_get_business_profile' ) ? wpilot_get_business_profile() : [];
+            return empty( $p ) ? wpilot_err( 'No business profile set.' ) : wpilot_ok( 'Business: ' . ($p['name'] ?? '?'), $p );
+
+        case 'reset_business_profile':
+            if ( function_exists( 'wpilot_reset_business_profile' ) ) {
+                return wpilot_reset_business_profile();
+            }
+            delete_option( 'wpilot_business_profile' );
+            return wpilot_ok( 'Business profile cleared.' );
+
         case 'apply_blueprint':
         case 'use_blueprint':
         case 'apply_design':

@@ -182,6 +182,8 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
         // Design system
         'save_design_profile', 'reset_design_profile', 'apply_blueprint', 'list_blueprints',
         'suggest_blueprint', 'build_site', 'list_recipes',
+        // Business
+        'save_business_profile', 'get_business_profile',
         // Header/Footer
         'apply_header_blueprint', 'apply_footer_blueprint',
         // CSS
@@ -465,12 +467,17 @@ COT;
     // ── 4. SITE STATE (compact) ───────────────────────────────
     $prompt .= wpilot_site_state_block( $woo_active );
 
-    // ── 5. DESIGN PROFILE ─────────────────────────────────────
+    // ── 5. BUSINESS PROFILE (who this customer is) ─────────────
+    if ( function_exists( 'wpilot_business_context_block' ) ) {
+        $prompt .= wpilot_business_context_block();
+    }
+
+    // ── 6. DESIGN PROFILE ─────────────────────────────────────
     if ( function_exists( 'wpilot_design_context_block' ) ) {
         $prompt .= wpilot_design_context_block();
     }
 
-    // ── 6. BRAIN MEMORY ───────────────────────────────────────
+    // ── 7. BRAIN MEMORY ───────────────────────────────────────
     $brain_ctx = wpilot_brain_context_block();
     if ( $brain_ctx ) $prompt .= $brain_ctx;
 
