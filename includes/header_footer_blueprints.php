@@ -792,11 +792,21 @@ function wpilot_apply_header_blueprint( $params = [] ) {
     $mu_php .= "    remove_action('storefront_after_footer', 'storefront_handheld_footer_bar', 999);\n";
     $mu_php .= "}, 99);\n\n";
 
-    // ── 2. Inject custom header right after <body> ──
-    $mu_php .= "// Inject custom header right after <body>\n";
+    // ── 2. Inject header CSS in <head>, HTML in <body> (block themes strip style from body) ──
+    $mu_php .= "// Header CSS → wp_head (block themes sanitize wp_body_open)\n";
+    $mu_php .= "add_action('wp_head', function() {\n";
+    $mu_php .= "    \$header = get_option('wpilot_custom_header', '');\n";
+    $mu_php .= "    // Extract <style> blocks and output in head\n";
+    $mu_php .= "    if (preg_match_all('/<style[^>]*>.*?<\\/style>/s', \$header, \$styles)) {\n";
+    $mu_php .= "        foreach (\$styles[0] as \$s) echo \$s . \"\\n\";\n";
+    $mu_php .= "    }\n";
+    $mu_php .= "}, 99);\n\n";
+    $mu_php .= "// Header HTML → wp_body_open (without style tags)\n";
     $mu_php .= "add_action('wp_body_open', function() {\n";
     $mu_php .= "    \$header = get_option('wpilot_custom_header', '');\n";
-    $mu_php .= "    if (\$header) echo \$header;\n";
+    $mu_php .= "    // Strip <style> blocks — they're already in <head>\n";
+    $mu_php .= "    \$html = preg_replace('/<style[^>]*>.*?<\\/style>/s', '', \$header);\n";
+    $mu_php .= "    if (trim(\$html)) echo \$html;\n";
     $mu_php .= "}, 1);\n\n";
 
     // ── 3. Body class for conflict prevention ──
