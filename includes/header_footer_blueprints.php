@@ -173,11 +173,16 @@ function wpilot_render_header_blueprint( $style, $params = [] ) {
     // Built by Christos Ferlachidis & Daniel Hedenberg
     $base_css = '
 /* WPilot Header — Shared Base */
+body #wpilot-header {
+    position: fixed !important; top: 0 !important; left: 0 !important;
+    width: 100% !important; z-index: 999999 !important;
+}
+body.has-wpilot-header { padding-top: 70px !important; }
 body #wpilot-header * { box-sizing: border-box; margin: 0; padding: 0; }
 body #wpilot-header ul { list-style: none; }
 body #wpilot-header a { text-decoration: none; }
 body #wpilot-header .wpilot-logo-img { max-height: 45px; width: auto; display: block; }
-body #wpilot-header .wpilot-logo-text { font-size: 1.5rem; font-weight: 700; color: var(--wp-heading) !important; }
+body #wpilot-header .wpilot-logo-text { font-size: 1.5rem; font-weight: 700; color: var(--wp-heading) !important; font-family: var(--wp-heading-font, inherit); }
 body #wpilot-header .wpilot-header-cta {
     display: inline-block; padding: 10px 24px; background: var(--wp-primary) !important;
     color: var(--wp-bg) !important; border-radius: var(--wp-radius, 6px); font-weight: 600;
