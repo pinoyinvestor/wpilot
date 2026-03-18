@@ -89,38 +89,48 @@ function wpilot_run_marketing_tools($tool, $params = []) {
             $banner_id = 'banner-' . wp_generate_password(8, false);
             $popups    = get_option('wpilot_popups', []);
 
+            // Store banner data
             $popups[$banner_id] = [
-                'id'               => $banner_id,
-                'title'            => '',
-                'content'          => $text,
-                'type'             => $position . '-bar',
-                'trigger'          => 'load',
-                'style'            => 'minimal',
-                'cta_text'         => $cta_text,
-                'cta_url'          => $cta_url,
-                'dismiss_days'     => 1,
-                'show_on'          => 'all',
-                'background_image' => '',
-                'bg_color'         => $bg_color,
-                'dismissible'      => $dismissible,
-                'countdown_to'     => $countdown_to,
-                'active'           => true,
-                'impressions'      => 0,
-                'clicks'           => 0,
-                'dismissals'       => 0,
-                'created_at'       => current_time('mysql'),
-                'schedule_start'   => '',
-                'schedule_end'     => '',
+                'id' => $banner_id, 'text' => $text, 'cta_text' => $cta_text,
+                'cta_url' => $cta_url, 'position' => $position, 'bg_color' => $bg_color,
+                'dismissible' => $dismissible, 'countdown_to' => $countdown_to,
+                'active' => true, 'created_at' => current_time('mysql'),
             ];
             update_option('wpilot_popups', $popups, false);
 
-            $mu_code = wpilot_build_popup_mu_code($popups);
-            wpilot_mu_register('popups', $mu_code);
+            // Build simple, direct HTML injection — no complex render system
+            $bg = $bg_color ?: 'var(--wp-primary, #333)';
+            $is_top = ($position === 'top');
+            $pos_css = $is_top ? 'top:0;' : 'bottom:0;';
+            $dismiss_btn = $dismissible ? '<button onclick="this.parentElement.remove();document.body.style.paddingTop=document.getElementById(\'wpilot-header\')?\'70px\':\'0\'" style="background:none;border:none;color:inherit;font-size:1.3rem;cursor:pointer;margin-left:8px;opacity:0.7;">&times;</button>' : '';
+            $cta_html = ($cta_text && $cta_url) ? '<a href="' . esc_url($cta_url) . '" style="background:var(--wp-bg,#fff);color:' . $bg . ';padding:6px 18px;border-radius:var(--wp-radius,6px);font-weight:600;text-decoration:none;font-size:0.85rem;white-space:nowrap;">' . esc_html($cta_text) . '</a>' : '';
+            $countdown_js = '';
+            if ($countdown_to) {
+                $countdown_js = '<script>(function(){var d=new Date("' . esc_js($countdown_to) . '").getTime(),el=document.getElementById("wpilot-banner-countdown");if(!el)return;setInterval(function(){var n=d-Date.now();if(n<0){el.textContent="Erbjudandet har gått ut";return;}var h=Math.floor(n/36e5),m=Math.floor(n%36e5/6e4),s=Math.floor(n%6e4/1e3);el.textContent=h+"h "+m+"m "+s+"s";},1000);})()</script>';
+            }
+            $countdown_span = $countdown_to ? ' <span id="wpilot-banner-countdown" style="font-weight:700;"></span>' : '';
+
+            $banner_el = '<div id="wpilot-top-banner" style="position:fixed;' . $pos_css . 'left:0;width:100%;z-index:9999999;background:' . $bg . ';color:var(--wp-bg,#fff);text-align:center;padding:10px 40px;font-family:var(--wp-body-font,system-ui);font-size:0.9rem;display:flex;align-items:center;justify-content:center;gap:16px;"><span>' . esc_html($text) . $countdown_span . '</span>' . $cta_html . $dismiss_btn . '</div>' . $countdown_js;
+
+            // Mu-plugin: inject banner + adjust header position
+            $mu_code  = "<?php\n";
+            $mu_code .= "add_action('wp_body_open', function() {\n";
+            $mu_code .= "    if (is_admin()) return;\n";
+            $mu_code .= "    echo '" . addslashes($banner_el) . "';\n";
+            $mu_code .= "}, 0);\n";
+            if ($is_top) {
+                $mu_code .= "add_action('wp_head', function() {\n";
+                $mu_code .= "    echo '<style>#wpilot-header{top:42px !important;}body.has-wpilot-header{padding-top:112px !important;}</style>';\n";
+                $mu_code .= "}, 999999);\n";
+            }
+
+            if (function_exists('wpilot_mu_register')) {
+                wpilot_mu_register('top-banner', $mu_code);
+            }
 
             function_exists("wpilot_log_activity") && wpilot_log_activity('create_banner', "Created {$position} banner", $banner_id);
-            return wpilot_ok("Banner created at {$position} of page.", [
-                'banner_id' => $banner_id,
-                'position'  => $position,
+            return wpilot_ok("Banner created at {$position} of page. Header pushed down automatically.", [
+                'banner_id' => $banner_id, 'position' => $position,
             ]);
 
         // ── list_popups ──────────────────────────────────────────
@@ -142,6 +152,20 @@ function wpilot_run_marketing_tools($tool, $params = []) {
                 ];
             }
             return wpilot_ok(count($list) . ' popup(s)/banner(s) found.', ['popups' => $list]);
+
+        // ── remove_banner ──────────────────────────────────────────
+        case 'remove_banner':
+        case 'delete_banner':
+        case 'hide_banner':
+            if (function_exists('wpilot_mu_remove')) wpilot_mu_remove('top-banner');
+            // Also clear popups that are banners
+            $popups = get_option('wpilot_popups', []);
+            foreach ($popups as $id => $p) {
+                if (strpos($id, 'banner-') === 0) unset($popups[$id]);
+            }
+            update_option('wpilot_popups', $popups, false);
+            if (function_exists('wpilot_regenerate_mu')) wpilot_regenerate_mu();
+            return wpilot_ok('Banner removed.');
 
         // ── delete_popup ─────────────────────────────────────────
         case 'delete_popup':
