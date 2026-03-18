@@ -99,42 +99,41 @@ function wpilot_build_messages( $message, $context = [], $history = [] ) {
     // knows the current state of the site — even mid-conversation.
     // This replaces the old logic that only sent context on the first message.
     if ( ! empty( $context ) ) {
-        // Ultra-compact context — only essential data, pipe-delimited, minimal JSON
-        $compact = [];
-        if ( isset( $context['blueprint'] ) ) {
-            $bp = $context['blueprint'];
-            // Site basics
-            $compact['site'] = ($bp['name'] ?? '') . '|' . ($bp['url'] ?? '') . '|' . ($bp['theme'] ?? '') . '|WP' . ($bp['wp'] ?? '');
-            // Pages as pipe-delimited: id|slug|status|builder
-            if ( isset($bp['pages']) ) {
-                $compact['pages'] = array_slice($bp['pages'], 0, 12);
-            }
-            // Products compact (first 8)
-            if ( isset($bp['products']) ) {
-                $compact['products'] = count($bp['products']) . ' total';
-                $compact['product_list'] = array_slice($bp['products'], 0, 8);
-            }
-            // WooCommerce
-            if ( isset($bp['woo']) ) $compact['woo'] = $bp['woo'];
-            // Plugins as names only
-            if ( isset($bp['plugins']) ) $compact['plugins'] = implode(',', array_slice($bp['plugins'], 0, 15));
-            // Menus
-            if ( isset($bp['menus']) ) $compact['menus'] = $bp['menus'];
-            // Design profile (already compact)
-            if ( isset($bp['design_profile']) ) $compact['design'] = $bp['design_profile'];
-            // Security summary
-            if ( isset($bp['security']) ) $compact['security'] = $bp['security'];
-            // SEO
-            if ( isset($bp['seo']) ) $compact['seo'] = $bp['seo'];
-            // Users
-            if ( isset($bp['users']) ) $compact['users'] = implode(',', $bp['users']);
-            // Skip: header_html, footer_html, css_head, theme_files, php_ext, db_custom, tpl, shortcodes
+        // Ultra-compact context — strip verbose data, keep essentials
+        $compact = $context;
+
+        // Works with both old format (site/theme/pages) and blueprint format
+        $bp = $compact['blueprint'] ?? $compact;
+
+        // Remove verbose/unnecessary fields
+        $remove_keys = ['header_html', 'footer_html', 'css_head', 'css_bytes', 'theme_files',
+                        'php_ext', 'wp_const', 'db_custom', 'tpl', 'shortcodes', 'theme_html',
+                        'rest', 'file_map', 'product_map', 'favicon', 'hash', 'ts', 'v',
+                        'mem', 'php', 'permalink'];
+        foreach ( $remove_keys as $k ) {
+            unset( $bp[$k] );
+            unset( $compact[$k] );
         }
+
+        // Truncate arrays
+        if ( isset($bp['pages']) && is_array($bp['pages']) ) $bp['pages'] = array_slice($bp['pages'], 0, 10);
+        if ( isset($bp['products']) && is_array($bp['products']) ) $bp['products'] = array_slice($bp['products'], 0, 8);
+        if ( isset($bp['plugins']) && is_array($bp['plugins']) ) $bp['plugins'] = array_slice($bp['plugins'], 0, 12);
+        if ( isset($bp['posts']) && is_array($bp['posts']) ) $bp['posts'] = array_slice($bp['posts'], 0, 5);
+
+        // Same for old format
+        if ( isset($compact['pages']) && is_array($compact['pages']) ) $compact['pages'] = array_slice($compact['pages'], 0, 10);
+        if ( isset($compact['plugins']) && is_array($compact['plugins']) ) $compact['plugins'] = array_slice($compact['plugins'], 0, 12);
+
+        if ( isset($compact['blueprint']) ) $compact['blueprint'] = $bp;
+
         $ctx_json = json_encode( $compact, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+
         // Hard limit: 4000 chars max
         if ( strlen($ctx_json) > 4000 ) {
-            $ctx_json = substr($ctx_json, 0, 4000) . '...}';
+            $ctx_json = substr($ctx_json, 0, 3990) . '...}';
         }
+
         $messages[] = [
             'role'    => 'user',
             'content' => "SITE:" . $ctx_json,
