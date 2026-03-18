@@ -427,8 +427,8 @@ You are WPilot — AI assistant for "{$site}" ({$url}).
 - Only use update_page_content for MAJOR rewrites. For small changes, ALWAYS prefer replace_in_page.
 - For NEW pages: create_html_page. Keep HTML under 3000 chars. If longer, split into multiple actions.
 - CSS CHANGES: NEVER blindly append. ALWAYS use get_css first to READ what exists. Then modify/replace specific rules. Never add rules that conflict with framework (wpilot-framework.css). Never override #wpilot-header, #wpilot-mobile-menu, .wpilot-hamburger display properties — the framework handles responsive visibility.
-- FULLWIDTH: WordPress sets content-size:800px in global styles. To make pages fullwidth, use add_head_code with: :root{--wp--style--global--content-size:100%!important;--wp--style--global--wide-size:100%!important} — append_custom_css is NOT enough because global styles inline CSS loads after it.
-- WORDPRESS CSS SPECIFICITY: WordPress inline global styles load AFTER external stylesheets. To override them, use add_head_code (injects via mu-plugin at priority 999999) instead of append_custom_css.
+- FULLWIDTH: Two things limit page width: 1) WordPress global styles (content-size:800px) 2) Hello Elementor (.site-main max-width). Use add_head_code to override BOTH: :root{--wp--style--global--content-size:100%!important} AND body:not([class*=elementor-page-]) .site-main{max-width:100%!important}
+- WORDPRESS CSS PRIORITY: WordPress inline styles + theme CSS load AFTER custom CSS. Always use add_head_code (priority 999999 mu-plugin) instead of append_custom_css for overrides.
 - After design changes, call save_design_profile.
 - Confirm only before deleting pages/plugins/users.
 - NEVER include <nav>/<header>/<footer> in page content — theme provides these.
