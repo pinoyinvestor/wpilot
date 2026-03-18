@@ -63,9 +63,15 @@ add_action( 'wp_ajax_ca_chat', function () {
     // Load heavy modules (API, tools, context, brain) before processing
     if ( function_exists( 'wpilot_load_heavy' ) ) wpilot_load_heavy();
 
-    // Context: system prompt now includes pages, design, WooCommerce, plugins, CSS
-    // Only build heavy context for analyze/build modes — chat uses system prompt data
-    $context = ($mode !== 'chat') ? wpilot_build_context($mode) : [];
+    // Smart context: only build heavy context when the message needs it
+    // Simple greetings/questions don't need 2000 tokens of site data
+    $needs_context = ($mode !== 'chat');
+    if ( !$needs_context ) {
+        // Check if chat message references site-specific things
+        $msg_check = strtolower($message);
+        $needs_context = preg_match('/produkt|product|sida|page|order|design|bygg|build|shop|plugin|tema|theme|css|meny|menu|woo|seo|säkerhet|secur|prestanda|perform|analys/u', $msg_check);
+    }
+    $context = $needs_context ? wpilot_build_context($needs_context === true ? 'general' : $mode) : [];
 
     // ── Smart routing: Brain → WPilot AI → Claude ─────────────
     $result = wpilot_smart_answer( $message, $mode, $context, $history );

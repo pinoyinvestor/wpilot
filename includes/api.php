@@ -13,17 +13,31 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
     $needs_design = preg_match('/design|build|create.*page|redesign|style|homepage|landing|hero|section|card|layout|gradient|animation|premium/i', $msg_lower);
     $model = $needs_design ? CA_MODEL : (defined('CA_MODEL_FAST') ? CA_MODEL_FAST : CA_MODEL);
 
+    // Build system prompt with caching support
+    $system_prompt = wpilot_system_prompt( $mode, $message );
+
+    // Use Anthropic prompt caching — system prompt rarely changes between messages
+    // Cache the static part (prompt), only pay full price for user message
+    $system_blocks = [
+        [
+            'type' => 'text',
+            'text' => $system_prompt,
+            'cache_control' => ['type' => 'ephemeral'],
+        ],
+    ];
+
     $response = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
         'timeout' => 90,
         'headers' => [
             'Content-Type'      => 'application/json',
             'x-api-key'         => $api_key,
             'anthropic-version' => '2023-06-01',
+            'anthropic-beta'    => 'prompt-caching-2024-07-31',
         ],
         'body' => wp_json_encode( [
             'model'      => $model,
             'max_tokens' => (function_exists('wpilot_memory_ok') && !wpilot_memory_ok(64)) ? 2048 : 4096,
-            'system'     => wpilot_system_prompt( $mode, $message ),
+            'system'     => $system_blocks,
             'messages'   => $messages,
         ] ),
     ] );
@@ -54,11 +68,12 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
                 'Content-Type'      => 'application/json',
                 'x-api-key'         => $api_key,
                 'anthropic-version' => '2023-06-01',
+                'anthropic-beta'    => 'prompt-caching-2024-07-31',
             ],
             'body' => wp_json_encode( [
                 'model'      => CA_MODEL,
                 'max_tokens' => 4096,
-                'system'     => wpilot_system_prompt( $mode, $message ),
+                'system'     => $system_blocks,
                 'messages'   => $continue_messages,
             ] ),
         ] );
@@ -84,33 +99,49 @@ function wpilot_build_messages( $message, $context = [], $history = [] ) {
     // knows the current state of the site — even mid-conversation.
     // This replaces the old logic that only sent context on the first message.
     if ( ! empty( $context ) ) {
-        // Compress context to save tokens — strip large arrays, keep essentials
-        $compressed = $context;
-        if ( isset( $compressed['blueprint'] ) ) {
-            $bp = &$compressed['blueprint'];
-            // Truncate large fields
-            if ( isset($bp['header_html']) && strlen($bp['header_html']) > 200 ) $bp['header_html'] = substr($bp['header_html'], 0, 200) . '...';
-            if ( isset($bp['footer_html']) && strlen($bp['footer_html']) > 200 ) $bp['footer_html'] = substr($bp['footer_html'], 0, 200) . '...';
-            if ( isset($bp['css_head']) && strlen($bp['css_head']) > 150 ) $bp['css_head'] = substr($bp['css_head'], 0, 150) . '...';
-            // Limit products to first 10
-            if ( isset($bp['products']) && count($bp['products']) > 10 ) $bp['products'] = array_slice($bp['products'], 0, 10);
-            // Limit pages to first 15
-            if ( isset($bp['pages']) && count($bp['pages']) > 15 ) $bp['pages'] = array_slice($bp['pages'], 0, 15);
-            // Remove theme_files (not needed for AI)
-            unset($bp['theme_files'], $bp['php_ext'], $bp['wp_const'], $bp['db_custom']);
+        // Ultra-compact context — only essential data, pipe-delimited, minimal JSON
+        $compact = [];
+        if ( isset( $context['blueprint'] ) ) {
+            $bp = $context['blueprint'];
+            // Site basics
+            $compact['site'] = ($bp['name'] ?? '') . '|' . ($bp['url'] ?? '') . '|' . ($bp['theme'] ?? '') . '|WP' . ($bp['wp'] ?? '');
+            // Pages as pipe-delimited: id|slug|status|builder
+            if ( isset($bp['pages']) ) {
+                $compact['pages'] = array_slice($bp['pages'], 0, 12);
+            }
+            // Products compact (first 8)
+            if ( isset($bp['products']) ) {
+                $compact['products'] = count($bp['products']) . ' total';
+                $compact['product_list'] = array_slice($bp['products'], 0, 8);
+            }
+            // WooCommerce
+            if ( isset($bp['woo']) ) $compact['woo'] = $bp['woo'];
+            // Plugins as names only
+            if ( isset($bp['plugins']) ) $compact['plugins'] = implode(',', array_slice($bp['plugins'], 0, 15));
+            // Menus
+            if ( isset($bp['menus']) ) $compact['menus'] = $bp['menus'];
+            // Design profile (already compact)
+            if ( isset($bp['design_profile']) ) $compact['design'] = $bp['design_profile'];
+            // Security summary
+            if ( isset($bp['security']) ) $compact['security'] = $bp['security'];
+            // SEO
+            if ( isset($bp['seo']) ) $compact['seo'] = $bp['seo'];
+            // Users
+            if ( isset($bp['users']) ) $compact['users'] = implode(',', $bp['users']);
+            // Skip: header_html, footer_html, css_head, theme_files, php_ext, db_custom, tpl, shortcodes
         }
-        $ctx_json = json_encode( $compressed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
-        // Hard limit: if still > 8000 chars, truncate
-        if ( strlen($ctx_json) > 8000 ) {
-            $ctx_json = substr($ctx_json, 0, 8000) . '...[truncated]';
+        $ctx_json = json_encode( $compact, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        // Hard limit: 4000 chars max
+        if ( strlen($ctx_json) > 4000 ) {
+            $ctx_json = substr($ctx_json, 0, 4000) . '...}';
         }
         $messages[] = [
             'role'    => 'user',
-            'content' => "SITE STATE:\n" . $ctx_json,
+            'content' => "SITE:" . $ctx_json,
         ];
         $messages[] = [
             'role'    => 'assistant',
-            'content' => 'Got it.',
+            'content' => 'OK',
         ];
     }
 
