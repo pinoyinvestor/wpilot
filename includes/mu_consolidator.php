@@ -39,6 +39,7 @@ function wpilot_mu_load_order() {
         'woo-filter',
         'redirects',
         'cookie-banner',
+        'popups',
     ];
 }
 
