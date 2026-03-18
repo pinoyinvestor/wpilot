@@ -118,6 +118,11 @@ function wpilot_create_html_page( $params ) {
 
     if ( empty( $html ) ) return wpilot_err( 'html or content parameter required.' );
 
+    // Strip wrapping <!-- wp:html --> if AI accidentally added it
+    // This ensures Gutenberg blocks inside render as real blocks, not raw HTML
+    $html = preg_replace( '/^<!--\s*wp:html\s*-->\s*/s', '', $html );
+    $html = preg_replace( '/\s*<!--\s*\/wp:html\s*-->$/s', '', $html );
+
     $existing = get_page_by_path( $slug );
     if ( $existing ) {
         wpilot_save_post_snapshot( $existing->ID );

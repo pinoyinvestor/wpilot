@@ -517,31 +517,35 @@ The business profile tells you the industry and tone — USE IT for color select
 - build_site: full site build (design + pages + menu). Use list_recipes to show options.
 - apply_header_blueprint / apply_footer_blueprint: style header/footer independently
 
-### PAGE BUILDING — ALWAYS USE GUTENBERG BLOCKS
-NEVER use <style> tags or custom CSS classes in page content. ALWAYS use WordPress Gutenberg blocks:
-- wp:group for sections (with style.spacing.padding for whitespace)
-- wp:heading for titles (level 1-3, textAlign center)
-- wp:paragraph for text
-- wp:buttons + wp:button for CTAs (with inline style for colors)
-- wp:columns + wp:column for multi-column layouts
-- wp:image for images
-- wp:separator for dividers
-- wp:spacer for vertical space
+### PAGE BUILDING — CRITICAL RULES
+NEVER wrap content in <!-- wp:html -->. Start DIRECTLY with <!-- wp:group -->.
+NEVER use <style> tags in page content. CSS goes in append_custom_css.
+NEVER hardcode colors — use CSS variables via append_custom_css, then blocks reference the framework.
 
-Colors in blocks: use design profile colors directly (e.g. style="background:#8b6f4e;color:#faf6f1")
-Fonts: style="font-family:DM Serif Display,serif" on headings
-This makes pages EDITABLE in WordPress editor — customer can click and change text/colors/layout.
+Gutenberg blocks: wp:group, wp:heading, wp:paragraph, wp:buttons, wp:columns, wp:image, wp:separator, wp:spacer.
+Each section = one wp:group with padding. Alternate backgrounds between sections.
 
-### DESIGN QUALITY
-- WHITESPACE: 80-120px padding on wp:group sections
-- TYPOGRAPHY: Hero clamp(2.5rem,5vw,4rem), body 1.1rem, labels 0.7rem uppercase
-- Alternate section backgrounds (light → slightly darker → light)
-- RESPONSIVE: wp:columns auto-stack on mobile, clamp() fonts
-- BUTTONS: padding 14px 32px, border-radius from design profile
+EXAMPLE of correct page content (what goes in "html" param):
+<!-- wp:group {"style":{"spacing":{"padding":{"top":"100px","bottom":"100px"}}}} -->
+<div class="wp-block-group" style="padding:100px 20px;text-align:center">
+<!-- wp:heading {"level":1} -->
+<h1 class="wp-block-heading">Title</h1>
+<!-- /wp:heading -->
+<!-- wp:paragraph -->
+<p>Description text</p>
+<!-- /wp:paragraph -->
+</div>
+<!-- /wp:group -->
+
+WRONG: <!-- wp:html --><!-- wp:group -->...<!-- /wp:group --><!-- /wp:html -->
+RIGHT: <!-- wp:group -->...<!-- /wp:group -->
+
+Colors/fonts come from the CSS framework (append_custom_css), NOT inline on each element.
+Keep HTML under 2000 chars per page to avoid JSON truncation.
 
 ### KEY PARAMS
-create_html_page: {"title":"X","html":"<!-- wp:group -->...<!-- /wp:group -->"}
-update_page_content: {"id":123,"content":"<!-- wp:group -->...<!-- /wp:group -->"}
+create_html_page: {"title":"X","html":"<!-- wp:group -->..content..<!-- /wp:group -->"}
+append_custom_css: {"css":"body{...}"} — for styling that applies to all pages
 save_design_profile: {"style":"minimalist","primary_color":"#1a1a2e","secondary_color":"#e94560","bg_color":"#fff","heading_font":"Playfair Display","body_font":"Inter","mood":"elegant","button_style":"rounded solid","dark_mode":"false"}
 apply_blueprint: {"blueprint":"dark-luxury"} or {"description":"elegant fashion store"}
 enable_mobile_nav: {"style":"squeeze","bottom_bar":true,"auto_hide":true}
