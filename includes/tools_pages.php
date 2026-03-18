@@ -876,12 +876,15 @@ function wpilot_run_page_tools($tool, $params = []) {
                 $merged_css .= $sel . " {\n    " . $body . "\n}\n";
             }
             $merged_css = trim($merged_css);
-            // Write consolidated file
-            $php = "<?php\n// WPilot consolidated head styles\nadd_action('wp_head', function() {\n"
-                . "echo <<<'WPILOT_CSS'\n<style>\n/* BEGIN CSS */\n"
-                . $merged_css . "\n"
-                . "/* END CSS */\n</style>\nWPILOT_CSS;\n}, 1);\n";
-            file_put_contents($filepath, $php);
+            // Write via mu-register (priority 999999 = loads AFTER WordPress global styles)
+            $php = "<?php\nadd_action('wp_head', function() {\necho '<style id=\"wpilot-head-styles\">\n/* BEGIN CSS */\n"
+                . addslashes($merged_css) . "\n"
+                . "/* END CSS */\n</style>';\n}, 999999);\n";
+            if (function_exists('wpilot_mu_register')) {
+                wpilot_mu_register('head-styles', $php);
+            } else {
+                file_put_contents($filepath, $php);
+            }
             if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             $sel_count = count($new_blocks);
             return wpilot_ok("CSS merged into consolidated mu-plugin: {$filename} ({$sel_count} selector(s) added/updated, " . count($merged) . " total)");
