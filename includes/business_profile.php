@@ -93,55 +93,26 @@ function wpilot_get_business_profile() {
 function wpilot_business_context_block() {
     $p = wpilot_get_business_profile();
     if ( empty( $p ) ) {
-        return "\n\n## BUSINESS PROFILE: NOT SET\n"
-            . "No business profile exists. On the FIRST interaction, ask the customer:\n"
-            . "1. What is your business name?\n"
-            . "2. What do you do? (products/services)\n"
-            . "3. What is your story? Why did you start?\n"
-            . "4. Who are your customers? (target audience)\n"
-            . "5. What tone do you want? (casual, professional, playful, luxury)\n"
-            . "6. What is the goal of your website? (sell, book appointments, showcase work)\n"
-            . "Then call save_business_profile with all the answers.\n"
-            . "After saving, suggest a blueprint and offer to build the complete site.\n";
+        return "\n\n## BIZ: not set — ask: name, what they do, their story, target audience, tone, website goal. Then save_business_profile.\n";
     }
 
-    $block = "\n\n## BUSINESS PROFILE — WHO THIS CUSTOMER IS\n";
-    $block .= "**Use this information in ALL content you write. Make it personal, not generic.**\n\n";
-
-    $labels = [
-        'name'            => 'Business Name',
-        'tagline'         => 'Tagline',
-        'description'     => 'What They Do',
-        'story'           => 'Their Story',
-        'founder'         => 'Founder',
-        'location'        => 'Location',
-        'target_audience' => 'Target Audience',
-        'unique_selling'  => 'What Makes Them Special',
-        'tone'            => 'Brand Tone',
-        'industry'        => 'Industry',
-        'services'        => 'Services/Products',
-        'website_goal'    => 'Website Goal',
-        'competitors'     => 'Inspiration/Competitors',
-        'keywords'        => 'SEO Keywords',
-    ];
-
-    foreach ( $labels as $key => $label ) {
-        if ( ! empty( $p[$key] ) ) {
-            $block .= "- **{$label}**: {$p[$key]}\n";
-        }
+    // Ultra-compact: pipe-delimited, no labels (AI understands context)
+    $block = "\n\n## BIZ\n";
+    $parts = [];
+    foreach ( ['name','tagline','description','industry','tone','location','founder','services','target_audience','unique_selling','website_goal'] as $key ) {
+        if ( ! empty( $p[$key] ) ) $parts[] = $p[$key];
     }
-
-    // Social links
-    $socials = [];
-    if ( ! empty( $p['social_instagram'] ) ) $socials[] = "IG: {$p['social_instagram']}";
-    if ( ! empty( $p['social_facebook'] ) )  $socials[] = "FB: {$p['social_facebook']}";
-    if ( ! empty( $p['social_tiktok'] ) )    $socials[] = "TT: {$p['social_tiktok']}";
-    if ( ! empty( $p['social_linkedin'] ) )  $socials[] = "LI: {$p['social_linkedin']}";
-    if ( $socials ) $block .= "- **Social**: " . implode( ', ', $socials ) . "\n";
-
-    $block .= "\n**CONTENT RULES**: When writing ANY text (hero, about, services, CTA), use the customer's own words and story. ";
-    $block .= "Match their tone ({$p['tone']}). Reference their unique selling points. ";
-    $block .= "Don't use generic phrases like 'We are a leading company' — be specific to THEIR business.\n";
+    $block .= implode( ' | ', $parts ) . "\n";
+    // Story on own line (most important for content)
+    if ( ! empty( $p['story'] ) ) $block .= "Story: {$p['story']}\n";
+    // Socials compact
+    $socials = array_filter([
+        !empty($p['social_instagram']) ? "IG:{$p['social_instagram']}" : '',
+        !empty($p['social_facebook']) ? "FB:{$p['social_facebook']}" : '',
+        !empty($p['social_tiktok']) ? "TT:{$p['social_tiktok']}" : '',
+    ]);
+    if ( $socials ) $block .= implode(' ', $socials) . "\n";
+    $block .= "USE their words+story in ALL content. Tone: " . ($p['tone'] ?? 'professional') . ". No generic text.\n";
 
     return $block;
 }

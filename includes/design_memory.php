@@ -90,45 +90,31 @@ function wpilot_get_design_profile() {
 function wpilot_design_context_block() {
     $profile = wpilot_get_design_profile();
     if ( empty( $profile ) ) {
-        return "\n\n## DESIGN PROFILE: NOT SET\n"
-            . "No design profile exists yet. After ANY design change, ALWAYS call save_design_profile to store the chosen style.\n"
-            . "Example: save_design_profile with style='minimalist', primary_color='#1a1a2e', heading_font='Playfair Display', mood='elegant'\n"
-            . "This ensures every future prompt stays consistent with the customer's chosen design.\n";
+        return "\n\n## DESIGN: not set — after any design change call save_design_profile\n";
     }
 
-    $block = "\n\n## DESIGN PROFILE — THIS SITE'S VISUAL DNA (v{$profile['version']})\n";
-    $block .= "**YOU MUST follow this profile for ALL design work. Do NOT deviate unless the customer explicitly asks for a change.**\n\n";
-
-    $fields = [
-        'style'           => 'Overall Style',
-        'mood'            => 'Mood',
-        'primary_color'   => 'Primary Color',
-        'secondary_color' => 'Secondary Color',
-        'accent_color'    => 'Accent Color',
-        'bg_color'        => 'Background Color',
-        'text_color'      => 'Text Color',
-        'heading_font'    => 'Heading Font',
-        'body_font'       => 'Body Font',
-        'border_radius'   => 'Border Radius',
-        'button_style'    => 'Button Style',
-        'spacing'         => 'Spacing',
-        'gradient'        => 'Gradient',
-        'shadow_style'    => 'Shadow Style',
-        'dark_mode'       => 'Dark Mode',
-        'notes'           => 'Design Notes',
-    ];
-
-    foreach ( $fields as $key => $label ) {
-        if ( ! empty( $profile[$key] ) ) {
-            $val = $profile[$key];
-            if ( $key === 'dark_mode' ) $val = $val ? 'Yes' : 'No';
-            $block .= "- **{$label}**: {$val}\n";
-        }
-    }
-
-    $block .= "\nLast updated: {$profile['updated_at']}\n";
-    $block .= "\n**RULES**: Use these exact colors, fonts, and style in all CSS/HTML you generate. ";
-    $block .= "If the customer asks for a design change, update the profile with save_design_profile AFTER applying it.\n";
+    // Ultra-compact design profile — one line per category
+    $block = "\n\n## DESIGN (follow exactly, use var() in CSS)\n";
+    $colors = array_filter([
+        !empty($profile['primary_color']) ? "pri:{$profile['primary_color']}" : '',
+        !empty($profile['secondary_color']) ? "sec:{$profile['secondary_color']}" : '',
+        !empty($profile['accent_color']) ? "acc:{$profile['accent_color']}" : '',
+        !empty($profile['bg_color']) ? "bg:{$profile['bg_color']}" : '',
+        !empty($profile['text_color']) ? "txt:{$profile['text_color']}" : '',
+    ]);
+    if ($colors) $block .= implode(' ', $colors) . "\n";
+    $typo = array_filter([
+        !empty($profile['heading_font']) ? "H:{$profile['heading_font']}" : '',
+        !empty($profile['body_font']) ? "B:{$profile['body_font']}" : '',
+        !empty($profile['border_radius']) ? "r:{$profile['border_radius']}" : '',
+    ]);
+    if ($typo) $block .= implode(' ', $typo) . "\n";
+    $meta = array_filter([
+        !empty($profile['style']) ? $profile['style'] : '',
+        !empty($profile['mood']) ? $profile['mood'] : '',
+        !empty($profile['dark_mode']) && $profile['dark_mode'] === 'true' ? 'DARK' : '',
+    ]);
+    if ($meta) $block .= implode(' | ', $meta) . "\n";
 
     return $block;
 }
