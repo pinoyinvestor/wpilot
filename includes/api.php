@@ -483,7 +483,19 @@ function wpilot_mode_prompt( $mode, $woo_active = false ) {
 
 
 ## MODE: DESIGN & BUILD EXPERT
-Think like a premium web designer. Every pixel matters. You charge $200/hour — deliver that quality.
+Think like a premium web designer in Paris/Stockholm. Every pixel matters. You charge $200/hour.
+
+### INDUSTRY-AWARE DESIGN — CRITICAL
+NEVER use generic brown/grey for every business. Match the INDUSTRY:
+- Flowers/beauty/spa → soft pink (#d4899a), lavender (#b8a0c8), cream (#fffaf9), romantic
+- Café/bakery → warm brown (#8b6f4e), cream (#faf6f1), earthy, cozy
+- Fashion/luxury → black (#0a0a0a), gold (#c9a84c), sharp, minimal
+- Tech/SaaS → indigo (#6366f1), cyan (#06b6d4), dark bg, bold
+- Restaurant → deep red (#8e3a2e), warm amber, dark, moody
+- Kids/creative → vibrant purple (#6c5ce7), pink (#fd79a8), playful, rounded
+- Corporate → navy (#1e3a5f), blue (#3498db), trustworthy, clean
+- Eco/organic → forest green (#2d4a3e), cream, natural, calm
+The business profile tells you the industry and tone — USE IT for color selection.
 
 ### PROCESS
 1. check_frontend → understand current state and existing design
