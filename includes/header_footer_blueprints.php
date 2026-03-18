@@ -780,7 +780,12 @@ function wpilot_apply_header_blueprint( $params = [] ) {
     $mu_php .= "    echo '</style>';\n";
     $mu_php .= "}, 999999);\n";
 
-    $result = file_put_contents( $mu_dir . '/wpilot-custom-header.php', $mu_php );
+    if ( function_exists( 'wpilot_mu_register' ) ) {
+        $result = wpilot_mu_register( 'header', $mu_php );
+    } else {
+        // Fallback: write directly
+        $result = file_put_contents( $mu_dir . '/wpilot-custom-header.php', $mu_php );
+    }
     if ( $result === false ) {
         return wpilot_err( 'Failed to write mu-plugin file. Check file permissions on wp-content/mu-plugins/.' );
     }
@@ -792,7 +797,7 @@ function wpilot_apply_header_blueprint( $params = [] ) {
         [
             'style'    => $style,
             'name'     => $blueprints[$style]['name'],
-            'mu_file'  => 'wpilot-custom-header.php',
+            'mu_file'  => WPILOT_MU_FILENAME ?? 'wpilot-custom-header.php',
         ]
     );
 }
@@ -853,7 +858,12 @@ function wpilot_apply_footer_blueprint( $params = [] ) {
     $mu_php .= "    echo '</style>';\n";
     $mu_php .= "}, 999999);\n";
 
-    $result = file_put_contents( $mu_dir . '/wpilot-custom-footer.php', $mu_php );
+    if ( function_exists( 'wpilot_mu_register' ) ) {
+        $result = wpilot_mu_register( 'footer', $mu_php );
+    } else {
+        // Fallback: write directly
+        $result = file_put_contents( $mu_dir . '/wpilot-custom-footer.php', $mu_php );
+    }
     if ( $result === false ) {
         return wpilot_err( 'Failed to write mu-plugin file. Check file permissions on wp-content/mu-plugins/.' );
     }
@@ -865,7 +875,7 @@ function wpilot_apply_footer_blueprint( $params = [] ) {
         [
             'style'    => $style,
             'name'     => $blueprints[$style]['name'],
-            'mu_file'  => 'wpilot-custom-footer.php',
+            'mu_file'  => WPILOT_MU_FILENAME ?? 'wpilot-custom-footer.php',
         ]
     );
 }

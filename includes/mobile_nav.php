@@ -875,11 +875,17 @@ function wpilot_run_mobile_nav_tool( $tool, $params = [] ) {
 
             // Generate and write mu-plugin
             $mu_code = wpilot_generate_mobile_nav_mu();
-            $mu_dir  = defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
-            if ( ! is_dir( $mu_dir ) ) wp_mkdir_p( $mu_dir );
-            $mu_file = $mu_dir . '/wpilot-mobile-nav.php';
+            if ( function_exists( 'wpilot_mu_register' ) ) {
+                $write_ok = wpilot_mu_register( 'mobile-nav', $mu_code );
+            } else {
+                // Fallback: write directly
+                $mu_dir  = defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+                if ( ! is_dir( $mu_dir ) ) wp_mkdir_p( $mu_dir );
+                $write_ok = file_put_contents( $mu_dir . '/wpilot-mobile-nav.php', $mu_code );
+            }
+            $mu_file = ( function_exists( 'wpilot_mu_dir' ) ? wpilot_mu_dir() : ( defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins' ) ) . '/' . ( defined( 'WPILOT_MU_FILENAME' ) ? WPILOT_MU_FILENAME : 'wpilot-mobile-nav.php' );
 
-            if ( file_put_contents( $mu_file, $mu_code ) === false ) {
+            if ( $write_ok === false ) {
                 return wpilot_err( 'Failed to write mu-plugin. Check wp-content/mu-plugins permissions.' );
             }
 
@@ -895,6 +901,10 @@ function wpilot_run_mobile_nav_tool( $tool, $params = [] ) {
         // ── Disable Mobile Nav ──
         case 'disable_mobile_nav':
             update_option( 'wpilot_mobile_nav', [ 'enabled' => false ] );
+            if ( function_exists( 'wpilot_mu_remove' ) ) {
+                wpilot_mu_remove( 'mobile-nav' );
+            }
+            // Also remove legacy file
             $mu_file = ( defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins' ) . '/wpilot-mobile-nav.php';
             if ( file_exists( $mu_file ) ) @unlink( $mu_file );
             return wpilot_ok( 'Mobile navigation disabled and mu-plugin removed.' );
@@ -925,9 +935,13 @@ function wpilot_run_mobile_nav_tool( $tool, $params = [] ) {
             // Regenerate mu-plugin
             if ( $conf['enabled'] ) {
                 $mu_code = wpilot_generate_mobile_nav_mu();
-                $mu_dir  = defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
-                if ( ! is_dir( $mu_dir ) ) wp_mkdir_p( $mu_dir );
-                file_put_contents( $mu_dir . '/wpilot-mobile-nav.php', $mu_code );
+                if ( function_exists( 'wpilot_mu_register' ) ) {
+                    wpilot_mu_register( 'mobile-nav', $mu_code );
+                } else {
+                    $mu_dir  = defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+                    if ( ! is_dir( $mu_dir ) ) wp_mkdir_p( $mu_dir );
+                    file_put_contents( $mu_dir . '/wpilot-mobile-nav.php', $mu_code );
+                }
             }
 
             return wpilot_ok(

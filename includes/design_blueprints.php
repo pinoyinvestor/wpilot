@@ -614,7 +614,12 @@ function wpilot_apply_blueprint( $params ) {
     $override_php .= "    // Remove Storefront inline customizer CSS that uses !important\n";
     $override_php .= "    remove_action('wp_head', 'storefront_add_customizer_css', 130);\n";
     $override_php .= "}, 999);\n";
-    file_put_contents( $mu_dir . '/wpilot-blueprint-override.php', $override_php );
+    if ( function_exists( 'wpilot_mu_register' ) ) {
+        wpilot_mu_register( 'css-override', $override_php );
+    } else {
+        // Fallback: write directly
+        file_put_contents( $mu_dir . '/wpilot-blueprint-override.php', $override_php );
+    }
 
     // Clean up old scattered mu-plugins that conflict
     $old_files = ['wpilot-custom-css.php', 'wpilot-head-code.php'];
@@ -641,7 +646,12 @@ function wpilot_apply_blueprint( $params ) {
     if ( ! is_dir( $mu_dir ) ) wp_mkdir_p( $mu_dir );
     $font_url = "https://fonts.googleapis.com/css2?family={$bp['google_fonts']}&display=swap";
     $font_php = "<?php\n// WPilot Blueprint Font Loader — {$bp['name']}\nif (!defined('ABSPATH')) exit;\nadd_action('wp_enqueue_scripts', function() {\n    wp_enqueue_style('wpilot-blueprint-fonts', '" . esc_url($font_url) . "', [], null);\n}, 5);\n";
-    file_put_contents( $mu_dir . '/wpilot-blueprint-fonts.php', $font_php );
+    if ( function_exists( 'wpilot_mu_register' ) ) {
+        wpilot_mu_register( 'fonts', $font_php );
+    } else {
+        // Fallback: write directly
+        file_put_contents( $mu_dir . '/wpilot-blueprint-fonts.php', $font_php );
+    }
 
     // 4. Fire blueprint invalidation
     if ( function_exists( 'wpilot_invalidate_blueprint' ) ) wpilot_invalidate_blueprint();

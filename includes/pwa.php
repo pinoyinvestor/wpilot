@@ -695,10 +695,19 @@ function wpilot_pwa_install_mu_plugin() {
     $mu_code .= "    }\n";
     $mu_code .= "}, 0);\n";
 
-    file_put_contents( $mu_path, $mu_code );
+    if ( function_exists( 'wpilot_mu_register' ) ) {
+        wpilot_mu_register( 'pwa', $mu_code );
+    } else {
+        // Fallback: write directly
+        file_put_contents( $mu_path, $mu_code );
+    }
 }
 
 function wpilot_pwa_remove_mu_plugin() {
+    if ( function_exists( 'wpilot_mu_remove' ) ) {
+        wpilot_mu_remove( 'pwa' );
+    }
+    // Also remove legacy file if it exists
     $mu_dir  = defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
     $mu_path = $mu_dir . '/wpilot-pwa-sw.php';
     if ( file_exists( $mu_path ) ) @unlink( $mu_path );

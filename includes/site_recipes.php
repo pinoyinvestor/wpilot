@@ -381,6 +381,390 @@ function wpilot_get_site_recipes() {
                 'catalog_style'  => 'grid-4',
             ],
         ],
+
+        'portfolio-photographer' => [
+            'name'           => 'Portfolio / Photographer',
+            'description'    => 'Bilddriven portfolio med galleri, lightbox, om-sida och kontakt — minimalistisk och kreativ',
+            'keywords'       => ['portfolio','photographer','photo','gallery','creative','artist','designer','fotograf','konstnär','kreativ','galleri','bilder'],
+            'blueprint'      => 'white-minimal',
+            'header_style'   => 'minimal',
+            'footer_style'   => 'centered',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => '{site_name}', 'subheading' => 'Capturing moments that last forever', 'cta_primary' => 'View Portfolio', 'cta_link' => '/portfolio', 'cta_secondary' => 'About Me', 'cta_link2' => '/about', 'style' => 'fullscreen minimal'],
+                        ['type' => 'features', 'heading' => 'Selected Work', 'items' => [
+                            ['icon' => '📸', 'title' => 'Portraits', 'desc' => 'Natural light, authentic expressions, timeless results'],
+                            ['icon' => '🏔', 'title' => 'Landscape', 'desc' => 'Wide vistas and intimate details from around the world'],
+                            ['icon' => '💍', 'title' => 'Weddings', 'desc' => 'Your love story told through honest, beautiful imagery'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Let\'s Create Something Beautiful', 'text' => 'Available for commissions, collaborations, and events.', 'cta' => 'Get in Touch', 'style' => 'minimal'],
+                    ],
+                ],
+                [
+                    'slug'     => 'portfolio',
+                    'title'    => 'Portfolio',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Portfolio', 'subheading' => 'A selection of recent work'],
+                        ['type' => 'features', 'heading' => 'Gallery', 'columns' => 3, 'items' => [
+                            ['icon' => '◻', 'title' => 'Project 1', 'desc' => 'Add your images here'],
+                            ['icon' => '◻', 'title' => 'Project 2', 'desc' => 'Add your images here'],
+                            ['icon' => '◻', 'title' => 'Project 3', 'desc' => 'Add your images here'],
+                            ['icon' => '◻', 'title' => 'Project 4', 'desc' => 'Add your images here'],
+                            ['icon' => '◻', 'title' => 'Project 5', 'desc' => 'Add your images here'],
+                            ['icon' => '◻', 'title' => 'Project 6', 'desc' => 'Add your images here'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About Me'],
+                        ['type' => 'split',    'heading' => 'The Person Behind the Lens', 'text' => 'With a passion for light and composition, I create images that tell stories. Every shoot is an opportunity to find beauty in the everyday.', 'image' => 'portrait', 'style' => 'image-right'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Get in Touch', 'subheading' => 'Bookings, collaborations, or just to say hello'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'minimal'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Portfolio', 'url' => '/portfolio'],
+                ['title' => 'About',     'url' => '/about'],
+                ['title' => 'Contact',   'url' => '/contact'],
+            ],
+        ],
+
+        'blog-magazine' => [
+            'name'           => 'Blog / Magazine',
+            'description'    => 'Tidningsinspirerad blogg med featured posts, kategorier, sidebar och nyhetsbrev',
+            'keywords'       => ['blog','magazine','news','journalist','writer','blogger','tidning','nyheter','artikel','skribent','blogg','magasin'],
+            'blueprint'      => 'scandinavian',
+            'header_style'   => 'modern',
+            'footer_style'   => 'columns',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => '{site_name}', 'subheading' => 'Stories, insights, and ideas that matter', 'cta_primary' => 'Read Latest', 'cta_link' => '/blog', 'cta_secondary' => 'About Us', 'cta_link2' => '/about', 'style' => 'clean editorial'],
+                        ['type' => 'features', 'heading' => 'Recent Articles', 'columns' => 3, 'items' => [
+                            ['icon' => '📝', 'title' => 'Featured Article', 'desc' => 'Your most important story goes here — compelling headline and excerpt'],
+                            ['icon' => '📝', 'title' => 'Latest Post', 'desc' => 'Fresh perspectives on topics your readers care about'],
+                            ['icon' => '📝', 'title' => 'Popular Read', 'desc' => 'The article everyone is talking about this week'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Never Miss a Story', 'text' => 'Subscribe to our newsletter and get the best articles delivered to your inbox every week.', 'cta' => 'Subscribe', 'style' => 'clean'],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About {site_name}', 'subheading' => 'Our mission and the team behind the stories'],
+                        ['type' => 'text-block', 'content' => 'We believe in the power of well-told stories. Our team of writers and editors is dedicated to bringing you thoughtful, well-researched content that informs, inspires, and entertains.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Contact Us', 'subheading' => 'Pitches, feedback, and collaboration inquiries'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'clean'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Home',    'url' => '/'],
+                ['title' => 'Blog',    'url' => '/blog'],
+                ['title' => 'About',   'url' => '/about'],
+                ['title' => 'Contact', 'url' => '/contact'],
+            ],
+        ],
+
+        'real-estate' => [
+            'name'           => 'Real Estate',
+            'description'    => 'Professionell fastighetssajt med listningar, sökfilter, karta och mäklarprofiler',
+            'keywords'       => ['real estate','property','realtor','apartment','house','fastigheter','mäklare','bostad','lägenhet','villa','hem','hyra','köpa'],
+            'blueprint'      => 'corporate-pro',
+            'header_style'   => 'modern',
+            'footer_style'   => 'rich',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => 'Find Your Dream Home', 'subheading' => '{site_name} — trusted real estate professionals', 'cta_primary' => 'Browse Properties', 'cta_link' => '/properties', 'cta_secondary' => 'Contact an Agent', 'cta_link2' => '/contact', 'style' => 'professional bold'],
+                        ['type' => 'features', 'heading' => 'Featured Listings', 'columns' => 3, 'items' => [
+                            ['icon' => '🏠', 'title' => 'Modern Apartment', 'desc' => '3 rooms, 85 m² — centrally located with balcony and parking'],
+                            ['icon' => '🏡', 'title' => 'Family Villa', 'desc' => '5 rooms, 180 m² — quiet neighborhood, large garden, garage'],
+                            ['icon' => '🏢', 'title' => 'Penthouse Suite', 'desc' => '4 rooms, 120 m² — rooftop terrace with panoramic city views'],
+                        ]],
+                        ['type' => 'stats', 'items' => [
+                            ['number' => '500+', 'label' => 'Properties Sold'],
+                            ['number' => '98%', 'label' => 'Client Satisfaction'],
+                            ['number' => '15+', 'label' => 'Years Experience'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Ready to Make a Move?', 'text' => 'Book a free consultation with one of our experienced agents.', 'cta' => 'Get Started', 'style' => 'professional'],
+                    ],
+                ],
+                [
+                    'slug'     => 'properties',
+                    'title'    => 'Properties',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Our Properties', 'subheading' => 'Browse available listings'],
+                        ['type' => 'features', 'columns' => 3, 'items' => [
+                            ['icon' => '🏠', 'title' => 'Listing 1', 'desc' => 'Property details, location, and price'],
+                            ['icon' => '🏠', 'title' => 'Listing 2', 'desc' => 'Property details, location, and price'],
+                            ['icon' => '🏠', 'title' => 'Listing 3', 'desc' => 'Property details, location, and price'],
+                            ['icon' => '🏠', 'title' => 'Listing 4', 'desc' => 'Property details, location, and price'],
+                            ['icon' => '🏠', 'title' => 'Listing 5', 'desc' => 'Property details, location, and price'],
+                            ['icon' => '🏠', 'title' => 'Listing 6', 'desc' => 'Property details, location, and price'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About Us',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About {site_name}'],
+                        ['type' => 'text-block', 'content' => 'With decades of combined experience in the property market, our team of dedicated agents helps buyers and sellers navigate every step of the process with confidence and care.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Contact Us', 'subheading' => 'Get in touch with our team'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'show_hours' => true, 'hours' => 'Mon-Fri: 9-18 | Sat: 10-14 | Sun: By appointment', 'style' => 'professional'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Properties', 'url' => '/properties'],
+                ['title' => 'About',      'url' => '/about'],
+                ['title' => 'Contact',    'url' => '/contact'],
+            ],
+        ],
+
+        'education-courses' => [
+            'name'           => 'Education / Courses',
+            'description'    => 'Utbildningsplattform med kurskatalog, prisnivåer, omdömen och FAQ',
+            'keywords'       => ['education','courses','school','academy','learn','training','utbildning','kurser','skola','akademi','lärande','undervisning','kurs'],
+            'blueprint'      => 'bold-modern',
+            'header_style'   => 'glass',
+            'footer_style'   => 'columns',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => 'Learn Without Limits', 'subheading' => '{site_name} — courses designed for real-world results', 'cta_primary' => 'Browse Courses', 'cta_link' => '/courses', 'cta_secondary' => 'About Us', 'cta_link2' => '/about', 'style' => 'gradient bold'],
+                        ['type' => 'features', 'heading' => 'Popular Courses', 'columns' => 3, 'items' => [
+                            ['icon' => '🎓', 'title' => 'Fundamentals', 'desc' => 'Build a strong foundation with our beginner-friendly courses'],
+                            ['icon' => '🚀', 'title' => 'Advanced', 'desc' => 'Take your skills to the next level with in-depth training'],
+                            ['icon' => '💼', 'title' => 'Professional', 'desc' => 'Industry-ready programs with certification'],
+                        ]],
+                        ['type' => 'stats', 'items' => [
+                            ['number' => '5,000+', 'label' => 'Students'],
+                            ['number' => '50+', 'label' => 'Courses'],
+                            ['number' => '95%', 'label' => 'Completion Rate'],
+                        ]],
+                        ['type' => 'testimonials', 'items' => [
+                            ['quote' => 'The courses are practical and well-structured. I landed my dream job within 3 months of completing the program.', 'author' => 'Emma L., Graduate'],
+                            ['quote' => 'Best investment I have made in my career. The instructors are world-class.', 'author' => 'Johan S., Student'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Start Learning Today', 'text' => 'Join thousands of students building their future.', 'cta' => 'Explore Courses', 'style' => 'gradient bold'],
+                    ],
+                ],
+                [
+                    'slug'     => 'courses',
+                    'title'    => 'Courses',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Our Courses', 'subheading' => 'Choose the plan that fits your goals'],
+                        ['type' => 'pricing', 'plans' => [
+                            ['name' => 'Starter', 'price' => 'Free', 'features' => ['3 free courses', 'Community access', 'Email support'], 'cta' => 'Get Started'],
+                            ['name' => 'Pro', 'price' => '$49/mo', 'features' => ['All courses', 'Certificates', 'Priority support', 'Live sessions', 'Downloadable resources'], 'cta' => 'Start Free Trial', 'featured' => true],
+                            ['name' => 'Team', 'price' => '$199/mo', 'features' => ['Everything in Pro', 'Up to 20 seats', 'Admin dashboard', 'Custom learning paths', 'Dedicated manager'], 'cta' => 'Contact Us'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About {site_name}'],
+                        ['type' => 'text-block', 'content' => 'We believe education should be accessible, practical, and transformative. Our expert instructors bring real-world experience to every course, ensuring you learn skills that matter.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Contact Us'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'modern'],
+                    ],
+                ],
+                [
+                    'slug'     => 'faq',
+                    'title'    => 'FAQ',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Frequently Asked Questions'],
+                        ['type' => 'text-block', 'content' => '<strong>How do I enroll?</strong><br>Click any course and select your plan. You will get instant access.<br><br><strong>Can I cancel anytime?</strong><br>Yes — no lock-in, cancel with one click.<br><br><strong>Do I get a certificate?</strong><br>Pro and Team plans include certificates upon completion.<br><br><strong>Is there a refund policy?</strong><br>Full refund within 14 days if the course is not for you.'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Courses', 'url' => '/courses'],
+                ['title' => 'About',   'url' => '/about'],
+                ['title' => 'FAQ',     'url' => '/faq'],
+                ['title' => 'Contact', 'url' => '/contact'],
+            ],
+        ],
+
+        'nonprofit-charity' => [
+            'name'           => 'Nonprofit / Charity',
+            'description'    => 'Välgörenhetssajt med mission, donation, impact-statistik och volontär-CTA',
+            'keywords'       => ['nonprofit','charity','donate','volunteer','ngo','foundation','ideell','förening','donation','välgörenhet','volontär','bidrag','hjälp'],
+            'blueprint'      => 'warm-organic',
+            'header_style'   => 'minimal',
+            'footer_style'   => 'rich',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => 'Together We Make a Difference', 'subheading' => '{site_name} — empowering communities, changing lives', 'cta_primary' => 'Donate Now', 'cta_link' => '/contact', 'cta_secondary' => 'Get Involved', 'cta_link2' => '/get-involved', 'style' => 'warm inspiring'],
+                        ['type' => 'split',    'heading' => 'Our Mission', 'text' => 'We believe everyone deserves access to opportunity. Through education, community programs, and direct support, we are building a more equitable world — one person at a time.', 'image' => 'community', 'style' => 'image-right'],
+                        ['type' => 'stats', 'items' => [
+                            ['number' => '10,000+', 'label' => 'Lives Impacted'],
+                            ['number' => '25+', 'label' => 'Active Programs'],
+                            ['number' => '98%', 'label' => 'Funds to Mission'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Your Support Matters', 'text' => 'Every contribution — big or small — helps us reach more people in need.', 'cta' => 'Donate Today', 'style' => 'warm organic'],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About Us',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About {site_name}', 'subheading' => 'Our story, our values, our team'],
+                        ['type' => 'text-block', 'content' => 'Founded with the belief that compassion and action can transform communities, we work tirelessly to create lasting change. Our dedicated team of staff and volunteers brings heart and expertise to everything we do.'],
+                        ['type' => 'features', 'items' => [
+                            ['icon' => '❤', 'title' => 'Compassion', 'desc' => 'Every decision starts with empathy and understanding'],
+                            ['icon' => '🤝', 'title' => 'Transparency', 'desc' => '98% of funds go directly to programs and people'],
+                            ['icon' => '🌍', 'title' => 'Impact', 'desc' => 'Measurable results in every community we serve'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'get-involved',
+                    'title'    => 'Get Involved',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Get Involved', 'subheading' => 'There are many ways to help'],
+                        ['type' => 'features', 'columns' => 3, 'items' => [
+                            ['icon' => '💝', 'title' => 'Donate', 'desc' => 'One-time or monthly — every gift makes a difference'],
+                            ['icon' => '🙋', 'title' => 'Volunteer', 'desc' => 'Join our team of dedicated volunteers in your area'],
+                            ['icon' => '📢', 'title' => 'Spread the Word', 'desc' => 'Share our mission with your network and community'],
+                        ]],
+                        ['type' => 'cta',      'heading' => 'Ready to Help?', 'text' => 'Contact us to find the best way for you to contribute.', 'cta' => 'Contact Us', 'style' => 'warm'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Contact Us'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'style' => 'warm'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'About',        'url' => '/about'],
+                ['title' => 'Get Involved', 'url' => '/get-involved'],
+                ['title' => 'Donate',       'url' => '/contact'],
+                ['title' => 'Contact',      'url' => '/contact'],
+            ],
+        ],
+
+        'salon-barber' => [
+            'name'           => 'Salon / Barber',
+            'description'    => 'Snygg salong/frisörsajt med tjänster, team, bokning och prislista — mörk lyxig känsla',
+            'keywords'       => ['salon','barber','hairdresser','frisör','salong','barbershop','hårsalong','klippning','hår','styling','skägg','beauty'],
+            'blueprint'      => 'dark-luxury',
+            'header_style'   => 'glass',
+            'footer_style'   => 'minimal',
+            'woo_required'   => false,
+            'pages'          => [
+                [
+                    'slug'     => 'home',
+                    'title'    => 'Home',
+                    'set_home' => true,
+                    'sections' => [
+                        ['type' => 'hero',     'heading' => '{site_name}', 'subheading' => 'Premium cuts, sharp style, effortless confidence', 'cta_primary' => 'Book Now', 'cta_link' => '/contact', 'cta_secondary' => 'Our Services', 'cta_link2' => '/services', 'style' => 'fullscreen dark overlay'],
+                        ['type' => 'features', 'heading' => 'What We Offer', 'items' => [
+                            ['icon' => '✂', 'title' => 'Haircuts', 'desc' => 'Classic and modern styles tailored to you'],
+                            ['icon' => '🪒', 'title' => 'Beard Grooming', 'desc' => 'Precision trims, hot towel shaves, beard care'],
+                            ['icon' => '💈', 'title' => 'Styling', 'desc' => 'Color, highlights, treatments, and special occasion looks'],
+                        ]],
+                        ['type' => 'split',    'heading' => 'Our Team', 'text' => 'Our skilled stylists bring years of experience and a passion for craft. Every visit is a premium experience — from the first consultation to the final touch.', 'image' => 'salon', 'style' => 'image-right'],
+                        ['type' => 'cta',      'heading' => 'Book Your Appointment', 'text' => 'Walk-ins welcome, but booking guarantees your spot.', 'cta' => 'Book Now', 'style' => 'dark gradient'],
+                    ],
+                ],
+                [
+                    'slug'     => 'services',
+                    'title'    => 'Services & Prices',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Services & Prices', 'subheading' => 'Quality grooming at fair prices'],
+                        ['type' => 'price-list', 'items' => [
+                            ['name' => 'Haircut', 'price' => '350 kr'],
+                            ['name' => 'Haircut + Beard Trim', 'price' => '450 kr'],
+                            ['name' => 'Beard Grooming', 'price' => '200 kr'],
+                            ['name' => 'Hot Towel Shave', 'price' => '300 kr'],
+                            ['name' => 'Color / Highlights', 'price' => 'from 600 kr'],
+                            ['name' => 'Kids Haircut (under 12)', 'price' => '250 kr'],
+                        ]],
+                    ],
+                ],
+                [
+                    'slug'     => 'about',
+                    'title'    => 'About',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'About Us'],
+                        ['type' => 'text-block', 'content' => 'We are more than just a salon — we are a destination for those who value craftsmanship and attention to detail. From classic barbering to modern styling, our team delivers results that make you feel your best.'],
+                    ],
+                ],
+                [
+                    'slug'     => 'contact',
+                    'title'    => 'Contact & Booking',
+                    'sections' => [
+                        ['type' => 'hero-small', 'heading' => 'Book Your Visit'],
+                        ['type' => 'contact-info', 'email' => '{admin_email}', 'show_hours' => true, 'hours' => 'Mon-Fri: 9-19 | Sat: 9-17 | Sun: Closed', 'style' => 'dark'],
+                    ],
+                ],
+            ],
+            'menu' => [
+                ['title' => 'Services', 'url' => '/services'],
+                ['title' => 'About',    'url' => '/about'],
+                ['title' => 'Book Now', 'url' => '/contact'],
+            ],
+        ],
     ];
 }
 
