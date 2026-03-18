@@ -401,10 +401,12 @@ body #wpilot-header.wpilot-header-centered .wpilot-hamburger { position: absolut
     }
 
     // ── Assemble full output ───────────────────────────────────
+    // CSS + HTML + overlay (NO script — script goes in wp_footer via mu-plugin)
     $output  = '<style id="wpilot-header-css">' . $base_css . $style_css . '</style>';
     $output .= $header_html;
     $output .= $mobile_overlay;
-    $output .= $mobile_js;
+    // Store JS separately — will be injected via wp_footer in mu-plugin
+    update_option( 'wpilot_header_js', $mobile_js, false );
 
     return $output;
 }
@@ -820,6 +822,13 @@ function wpilot_apply_header_blueprint( $params = [] ) {
     $mu_php .= "add_action('wp_head', function() {\n";
     $mu_php .= "    echo '<style>body{padding-top:72px}@media(max-width:768px){body{padding-top:64px}}</style>';\n";
     $mu_php .= "}, 1);\n\n";
+
+    // ── 4b. Mobile menu JS via wp_footer (AFTER all DOM elements exist) ──
+    $mu_php .= "// Mobile menu JS — wp_footer guarantees DOM is ready\n";
+    $mu_php .= "add_action('wp_footer', function() {\n";
+    $mu_php .= "    \$js = get_option('wpilot_header_js', '');\n";
+    $mu_php .= "    if (\$js) echo \$js;\n";
+    $mu_php .= "}, 99);\n\n";
 
     // ── 5. CSS fallback for non-Storefront themes (Elementor, Divi, Astra, etc) ──
     $mu_php .= "// CSS fallback — hides theme headers on non-Storefront themes\n";
