@@ -121,3 +121,7 @@ body:has(#wpilot-top-banner).has-wpilot-header { padding-top: 114px !important; 
 
 /* ─── DISABLE CONFLICTS ─── */
 body.has-wpilot-header .wpilot-mn-trigger, body.has-wpilot-header #wpilotMnHeader { display: none !important; }
+
+/* Hide page titles - theme shows them automatically */
+.entry-title, .page-title, .entry-header .entry-title, h1.entry-title { display: none !important; }
+
