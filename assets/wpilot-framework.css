@@ -125,3 +125,22 @@ body.has-wpilot-header .wpilot-mn-trigger, body.has-wpilot-header #wpilotMnHeade
 /* Hide page titles - theme shows them automatically */
 .entry-title, .page-title, .entry-header .entry-title, h1.entry-title { display: none !important; }
 
+
+/* ─── FULL WIDTH FIX — override WordPress content-size ─── */
+:root {
+  --wp--style--global--content-size: 100% !important;
+  --wp--style--global--wide-size: 100% !important;
+}
+.is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)) {
+  max-width: 100% !important;
+}
+.wp-site-blocks, .entry-content, .site-content, .page-content {
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+body, html {
+  overflow-x: hidden;
+}
