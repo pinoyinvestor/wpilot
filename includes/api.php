@@ -36,7 +36,7 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
         ],
         'body' => wp_json_encode( [
             'model'      => $model,
-            'max_tokens' => (function_exists('wpilot_memory_ok') && !wpilot_memory_ok(64)) ? 2048 : 4096,
+            'max_tokens' => (function_exists('wpilot_memory_ok') && !wpilot_memory_ok(64)) ? 4096 : 8192,
             'system'     => $system_blocks,
             'messages'   => $messages,
         ] ),
@@ -72,7 +72,7 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
             ],
             'body' => wp_json_encode( [
                 'model'      => CA_MODEL,
-                'max_tokens' => 4096,
+                'max_tokens' => 8192,
                 'system'     => $system_blocks,
                 'messages'   => $continue_messages,
             ] ),
@@ -422,9 +422,10 @@ You are WPilot — AI assistant for "{$site}" ({$url}).
 - Use var(--wp-primary), var(--wp-bg), etc. for CSS — never hardcode colors when blueprint is active.
 - NEVER use update_custom_css — it REPLACES all CSS and destroys the framework.
 - PREFER direct HTML changes over CSS overrides. To change an element: get_page → modify HTML → update_page_content. CSS overrides (append_custom_css) only for GLOBAL changes like colors/fonts.
-- To remove an element: get_page, remove it from HTML, update_page_content.
-- To change text: get_page, find the text, replace it, update_page_content.
-- To move an element: get_page, cut the HTML block, paste in new position, update_page_content.
+- To change text/buttons: use replace_in_page {"id":X, "search":"old text", "replace":"new text"} — fast, no rewrite needed.
+- To remove an element: replace_in_page {"id":X, "search":"the element HTML", "replace":""}.
+- Only use update_page_content for MAJOR rewrites. For small changes, ALWAYS prefer replace_in_page.
+- For NEW pages: create_html_page. Keep HTML under 3000 chars. If longer, split into multiple actions.
 - After design changes, call save_design_profile.
 - Confirm only before deleting pages/plugins/users.
 - NEVER include <nav>/<header>/<footer> in page content — theme provides these.
