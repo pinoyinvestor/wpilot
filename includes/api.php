@@ -187,7 +187,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
         // Header/Footer
         'apply_header_blueprint', 'apply_footer_blueprint',
         // CSS
-        'update_custom_css', 'append_custom_css',
+        'append_custom_css',
         // Vision
         'screenshot', 'analyze_design', 'check_frontend',
         // Mobile + PWA
@@ -210,7 +210,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
     // Mode-specific tool sets
     $mode_tools = [
         'build' => [
-            'design' => ['update_custom_css', 'append_custom_css', 'edit_text', 'edit_button', 'edit_colors',
+            'design' => ['append_custom_css', 'edit_text', 'edit_button', 'edit_colors',
                          'edit_font', 'add_animation', 'create_section', 'create_grid', 'hover_effects',
                          'glassmorphism', 'gradient_text', 'premium_buttons', 'responsive_fix', 'responsive_grid',
                          'responsive_text', 'inject_html', 'create_table', 'add_css_variable', 'add_css_class'],
@@ -229,7 +229,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
                         'minify_assets', 'database_cleanup'],
             'security' => ['security_audit', 'add_security_headers', 'disable_xmlrpc', 'block_ip',
                             'configure_wordfence', 'failed_logins'],
-            'design' => ['update_custom_css', 'append_custom_css', 'responsive_fix'],
+            'design' => ['append_custom_css', 'responsive_fix'],
             'plugins' => ['plugin_install', 'activate_plugin', 'deactivate_plugin', 'list_plugins', 'update_plugins'],
             'vision' => ['responsive_check', 'check_visual_bugs', 'compare_before_after'],
             'verify' => ['verify_site', 'fix_all_issues'],
@@ -288,7 +288,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
             => ['security_audit', 'security_scan', 'add_security_headers', 'disable_xmlrpc', 'block_ip',
                 'configure_wordfence', 'failed_logins', 'full_security_check', 'security_enable_2fa'],
         '/design|css|style|färg|color|font|animation|hover|glass|3d|responsive|mobil|tablet|header|footer|meny|menu|snygg|pretty|layout|makeover|bygg|build|sajt|site|hemsida|website|landning|landing/u'
-            => ['update_custom_css', 'append_custom_css', 'edit_text', 'edit_button', 'edit_colors',
+            => ['append_custom_css', 'edit_text', 'edit_button', 'edit_colors',
                 'edit_font', 'add_animation', 'hover_effects', 'glassmorphism', 'gradient_text',
                 'premium_buttons', 'responsive_fix', 'build_header', 'build_footer', 'build_mobile_menu',
                 'design_all', 'premium_makeover', 'responsive_check', 'check_visual_bugs',
@@ -420,6 +420,7 @@ You are WPilot — AI assistant for "{$site}" ({$url}).
 - ALWAYS include [ACTION: tool | description] in every response. No exceptions.
 - {$respond_lang}
 - Use var(--wp-primary), var(--wp-bg), etc. for CSS — never hardcode colors when blueprint is active.
+- NEVER use update_custom_css — it REPLACES all CSS and destroys the framework. ALWAYS use append_custom_css to ADD rules.
 - After design changes, call save_design_profile.
 - Confirm only before deleting pages/plugins/users.
 - NEVER include <nav>/<header>/<footer> in page content — theme provides these.
