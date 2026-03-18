@@ -285,7 +285,8 @@ body #wpilot-header.wpilot-header-modern nav { position: absolute; left: 50%; tr
         case 'minimal':
             $style_css = '
 body #wpilot-header.wpilot-header-minimal {
-    background: transparent !important; padding: 0 40px; position: relative; z-index: 99999;
+    background: var(--wp-bg, #fff) !important; padding: 0 40px;
+    border-bottom: 1px solid var(--wp-border, #eee);
 }
 body #wpilot-header.wpilot-header-minimal .wpilot-header-inner {
     display: flex; align-items: center; justify-content: space-between;
