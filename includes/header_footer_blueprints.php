@@ -758,8 +758,16 @@ function wpilot_apply_header_blueprint( $params = [] ) {
         return $html; // Error from render
     }
 
-    // Store in wp_options
-    update_option( 'wpilot_custom_header', $html, false );
+    // Store CSS and HTML SEPARATELY (block themes can't have <style> in body)
+    $header_css = '';
+    $header_html_only = $html;
+    if ( preg_match_all( '/<style[^>]*>.*?<\/style>/s', $html, $style_matches ) ) {
+        $header_css = implode( "\n", $style_matches[0] );
+        $header_html_only = preg_replace( '/<style[^>]*>.*?<\/style>/s', '', $html );
+    }
+    update_option( 'wpilot_custom_header', $html, false );  // full (legacy compat)
+    update_option( 'wpilot_header_css', $header_css, false );  // CSS only
+    update_option( 'wpilot_header_html', trim($header_html_only), false );  // HTML only
     update_option( 'wpilot_header_style', $style, false );
 
     // Create mu-plugin to inject header
@@ -793,20 +801,15 @@ function wpilot_apply_header_blueprint( $params = [] ) {
     $mu_php .= "}, 99);\n\n";
 
     // ── 2. Inject header CSS in <head>, HTML in <body> (block themes strip style from body) ──
-    $mu_php .= "// Header CSS → wp_head (block themes sanitize wp_body_open)\n";
+    $mu_php .= "// Header CSS → wp_head (separate option, no regex needed)\n";
     $mu_php .= "add_action('wp_head', function() {\n";
-    $mu_php .= "    \$header = get_option('wpilot_custom_header', '');\n";
-    $mu_php .= "    // Extract <style> blocks and output in head\n";
-    $mu_php .= "    if (preg_match_all('/<style[^>]*>.*?<\\/style>/s', \$header, \$styles)) {\n";
-    $mu_php .= "        foreach (\$styles[0] as \$s) echo \$s . \"\\n\";\n";
-    $mu_php .= "    }\n";
+    $mu_php .= "    \$css = get_option('wpilot_header_css', '');\n";
+    $mu_php .= "    if (\$css) echo \$css;\n";
     $mu_php .= "}, 99);\n\n";
-    $mu_php .= "// Header HTML → wp_body_open (without style tags)\n";
+    $mu_php .= "// Header HTML → wp_body_open (no style tags, clean HTML only)\n";
     $mu_php .= "add_action('wp_body_open', function() {\n";
-    $mu_php .= "    \$header = get_option('wpilot_custom_header', '');\n";
-    $mu_php .= "    // Strip <style> blocks — they're already in <head>\n";
-    $mu_php .= "    \$html = preg_replace('/<style[^>]*>.*?<\\/style>/s', '', \$header);\n";
-    $mu_php .= "    if (trim(\$html)) echo \$html;\n";
+    $mu_php .= "    \$html = get_option('wpilot_header_html', '');\n";
+    $mu_php .= "    if (\$html) echo \$html;\n";
     $mu_php .= "}, 1);\n\n";
 
     // ── 3. Body class for conflict prevention ──
