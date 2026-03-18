@@ -524,6 +524,98 @@ function wpilot_run_page_tools($tool, $params = []) {
             }, $users);
             return wpilot_ok("Found " . count($list) . " users.", ['users' => $list]);
 
+        case 'reset_password':
+        case 'change_password':
+            $uid = intval($params['user_id'] ?? 0);
+            $username = sanitize_text_field($params['username'] ?? $params['user'] ?? '');
+            $email = sanitize_email($params['email'] ?? '');
+            $new_pass = $params['password'] ?? $params['new_password'] ?? '';
+            // Find user
+            $user = null;
+            if ($uid) $user = get_user_by('ID', $uid);
+            elseif ($username) $user = get_user_by('login', $username);
+            elseif ($email) $user = get_user_by('email', $email);
+            if (!$user) return wpilot_err('User not found. Provide user_id, username, or email.');
+            // Generate password if not provided
+            if (empty($new_pass)) $new_pass = wp_generate_password(16, true, true);
+            wp_set_password($new_pass, $user->ID);
+            return wpilot_ok("Password reset for {$user->user_login} (ID:{$user->ID}). New password: {$new_pass}", ['user_id' => $user->ID, 'username' => $user->user_login, 'password' => $new_pass]);
+
+        case 'send_password_reset':
+        case 'send_reset_link':
+            $username = sanitize_text_field($params['username'] ?? $params['user'] ?? '');
+            $email = sanitize_email($params['email'] ?? '');
+            $user = null;
+            if ($username) $user = get_user_by('login', $username);
+            elseif ($email) $user = get_user_by('email', $email);
+            if (!$user) return wpilot_err('User not found.');
+            $key = get_password_reset_key($user);
+            if (is_wp_error($key)) return wpilot_err('Could not generate reset key.');
+            $link = network_site_url("wp-login.php?action=rp&key=$key&login=" . rawurlencode($user->user_login));
+            // Send email
+            $subject = sprintf('[%s] Password Reset', get_bloginfo('name'));
+            $body = "Hi {$user->display_name},\n\nClick the link below to reset your password:\n\n{$link}\n\nIf you didn't request this, ignore this email.\n\n— {$blogname}";
+            $sent = wp_mail($user->user_email, $subject, $body);
+            return wpilot_ok("Password reset link " . ($sent ? "sent to {$user->user_email}" : "generated (email delivery may have failed — check SMTP)") . ".", ['link' => $link, 'email' => $user->user_email, 'sent' => $sent]);
+
+        case 'list_media':
+        case 'list_images':
+        case 'media_library':
+            $type = sanitize_text_field($params['type'] ?? 'image');
+            $limit = intval($params['limit'] ?? 20);
+            $search = sanitize_text_field($params['search'] ?? '');
+            $args = ['post_type' => 'attachment', 'post_status' => 'inherit', 'posts_per_page' => $limit, 'orderby' => 'date', 'order' => 'DESC'];
+            if ($type === 'image') $args['post_mime_type'] = 'image';
+            elseif ($type === 'video') $args['post_mime_type'] = 'video';
+            elseif ($type !== 'all') $args['post_mime_type'] = $type;
+            if ($search) $args['s'] = $search;
+            $media = get_posts($args);
+            $items = [];
+            foreach ($media as $m) {
+                $url = wp_get_attachment_url($m->ID);
+                $meta = wp_get_attachment_metadata($m->ID);
+                $items[] = [
+                    'id' => $m->ID,
+                    'title' => $m->post_title,
+                    'url' => $url,
+                    'alt' => get_post_meta($m->ID, '_wp_attachment_image_alt', true),
+                    'mime' => $m->post_mime_type,
+                    'width' => $meta['width'] ?? 0,
+                    'height' => $meta['height'] ?? 0,
+                    'filesize' => size_format(filesize(get_attached_file($m->ID)) ?: 0),
+                    'date' => $m->post_date,
+                    'used_as_featured' => (bool) get_posts(['post_type' => 'any', 'meta_key' => '_thumbnail_id', 'meta_value' => $m->ID, 'fields' => 'ids', 'numberposts' => 1]),
+                ];
+            }
+            $summary = count($items) . " {$type} files found";
+            if ($search) $summary .= " matching \"{$search}\"";
+            $summary .= ". ";
+            foreach (array_slice($items, 0, 5) as $item) {
+                $summary .= "\n- {$item['title']} ({$item['width']}x{$item['height']}, {$item['filesize']}) ID:{$item['id']}";
+            }
+            return wpilot_ok($summary, ['items' => $items, 'total' => count($items)]);
+
+        case 'assign_image_to_product':
+        case 'set_product_image':
+            $product_id = intval($params['product_id'] ?? 0);
+            $image_id = intval($params['image_id'] ?? 0);
+            $image_url = esc_url_raw($params['image_url'] ?? '');
+            if (!$product_id) return wpilot_err('product_id required.');
+            if (!$image_id && !$image_url) return wpilot_err('image_id or image_url required.');
+            // If URL given, sideload it
+            if ($image_url && !$image_id) {
+                require_once ABSPATH . 'wp-admin/includes/media.php';
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+                require_once ABSPATH . 'wp-admin/includes/image.php';
+                $tmp = download_url($image_url);
+                if (is_wp_error($tmp)) return wpilot_err('Could not download image: ' . $tmp->get_error_message());
+                $file = ['name' => basename(parse_url($image_url, PHP_URL_PATH)), 'tmp_name' => $tmp];
+                $image_id = media_handle_sideload($file, $product_id);
+                if (is_wp_error($image_id)) return wpilot_err('Upload failed: ' . $image_id->get_error_message());
+            }
+            set_post_thumbnail($product_id, $image_id);
+            return wpilot_ok("Image #{$image_id} set as featured image for product #{$product_id}.", ['product_id' => $product_id, 'image_id' => $image_id]);
+
         case 'delete_user':
             $uid = intval($params['user_id'] ?? 0);
             if (!$uid) return wpilot_err('user_id required.');
