@@ -66,7 +66,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
             $mu_code = wpilot_build_popup_mu_code($popups);
             wpilot_mu_register('popups', $mu_code);
 
-            wpilot_log_activity('create_popup', "Created {$type} popup: {$title}", $popup_id);
+            function_exists("wpilot_log_activity") && wpilot_log_activity('create_popup', "Created {$type} popup: {$title}", $popup_id);
             return wpilot_ok("Popup \"{$title}\" created ({$type}, trigger: {$trigger}).", [
                 'popup_id' => $popup_id,
                 'type'     => $type,
@@ -117,7 +117,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
             $mu_code = wpilot_build_popup_mu_code($popups);
             wpilot_mu_register('popups', $mu_code);
 
-            wpilot_log_activity('create_banner', "Created {$position} banner", $banner_id);
+            function_exists("wpilot_log_activity") && wpilot_log_activity('create_banner', "Created {$position} banner", $banner_id);
             return wpilot_ok("Banner created at {$position} of page.", [
                 'banner_id' => $banner_id,
                 'position'  => $position,
@@ -161,7 +161,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
                 wpilot_mu_register('popups', wpilot_build_popup_mu_code($popups));
             }
 
-            wpilot_log_activity('delete_popup', "Deleted popup/banner: {$label}", $id);
+            function_exists("wpilot_log_activity") && wpilot_log_activity('delete_popup', "Deleted popup/banner: {$label}", $id);
             return wpilot_ok("Popup/banner \"{$label}\" deleted.");
 
         // ── schedule_popup ───────────────────────────────────────
@@ -274,7 +274,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
             $result = wpilot_call_claude($prompt, 'chat', [], []);
             if (is_wp_error($result)) return wpilot_err('AI generation failed: ' . $result->get_error_message());
 
-            wpilot_log_activity('ai_write_content', "Generated {$type}: {$topic}");
+            function_exists("wpilot_log_activity") && wpilot_log_activity('ai_write_content', "Generated {$type}: {$topic}");
             return wpilot_ok("Content generated ({$type}, {$length}).", [
                 'content'  => $result,
                 'type'     => $type,
@@ -319,7 +319,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
             $result = wpilot_call_claude($prompt, 'chat', [], []);
             if (is_wp_error($result)) return wpilot_err('Rewrite failed: ' . $result->get_error_message());
 
-            wpilot_log_activity('ai_rewrite', "Rewrote content ({$goal})");
+            function_exists("wpilot_log_activity") && wpilot_log_activity('ai_rewrite', "Rewrote content ({$goal})");
             return wpilot_ok("Content rewritten ({$goal}).", [
                 'content'  => $result,
                 'goal'     => $goal,
@@ -363,7 +363,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
                 ]);
             }
 
-            wpilot_log_activity('ai_generate_blog_series', "Generated {$count}-post series on: {$topic}");
+            function_exists("wpilot_log_activity") && wpilot_log_activity('ai_generate_blog_series', "Generated {$count}-post series on: {$topic}");
             return wpilot_ok("{$count} blog post outlines generated. Use ai_write_content to write each one.", [
                 'series' => $series,
                 'count'  => count($series),
@@ -436,7 +436,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
             }
 
             $generated = count(array_filter($results, function($r) { return !isset($r['error']); }));
-            wpilot_log_activity('ai_product_descriptions', "Generated descriptions for {$generated} product(s)");
+            function_exists("wpilot_log_activity") && wpilot_log_activity('ai_product_descriptions', "Generated descriptions for {$generated} product(s)");
             return wpilot_ok("{$generated} product description(s) generated.", [
                 'results'    => $results,
                 'auto_saved' => $auto_save,
@@ -496,7 +496,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
             $total = 0;
             foreach ($posts as $plat => $items) $total += count($items);
 
-            wpilot_log_activity('ai_social_posts', "Generated {$total} social post(s) across " . count($platforms) . " platform(s)");
+            function_exists("wpilot_log_activity") && wpilot_log_activity('ai_social_posts', "Generated {$total} social post(s) across " . count($platforms) . " platform(s)");
             return wpilot_ok("{$total} social media post(s) generated.", [
                 'posts'     => $posts,
                 'platforms' => $platforms,
@@ -548,7 +548,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
                 $extra['attachment_url'] = wp_get_attachment_url($attachment_id);
             }
 
-            wpilot_log_activity('create_qr_code', 'QR code generated', mb_substr($data, 0, 100));
+            function_exists("wpilot_log_activity") && wpilot_log_activity('create_qr_code', 'QR code generated', mb_substr($data, 0, 100));
             return wpilot_ok('QR code generated.', $extra);
 
         // ── create_qr_page ───────────────────────────────────────
@@ -581,7 +581,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
 
             if (is_wp_error($post_id)) return wpilot_err('Failed to create QR page: ' . $post_id->get_error_message());
 
-            wpilot_log_activity('create_qr_page', "QR page created: {$page_title}", get_permalink($post_id));
+            function_exists("wpilot_log_activity") && wpilot_log_activity('create_qr_page', "QR page created: {$page_title}", get_permalink($post_id));
             return wpilot_ok("QR code page \"{$page_title}\" created.", [
                 'page_id'  => $post_id,
                 'page_url' => get_permalink($post_id),
@@ -643,7 +643,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
                 }
             }
 
-            wpilot_log_activity('schedule_content', "Scheduled {$action} at {$schedule_at}", $schedule_id);
+            function_exists("wpilot_log_activity") && wpilot_log_activity('schedule_content', "Scheduled {$action} at {$schedule_at}", $schedule_id);
             $msg = "Action \"{$action}\" scheduled for {$schedule_at}";
             if ($end_at) $msg .= ", ends at {$end_at}";
             return wpilot_ok($msg . '.', ['schedule_id' => $schedule_id]);
@@ -1069,7 +1069,7 @@ function wpilot_execute_scheduled_action($schedule_id) {
     $scheduled[$schedule_id]['executed_at'] = current_time('mysql');
     update_option('wpilot_scheduled_actions', $scheduled, false);
 
-    wpilot_log_activity('scheduled_action', "Executed: {$action}", $schedule_id);
+    function_exists("wpilot_log_activity") && wpilot_log_activity('scheduled_action', "Executed: {$action}", $schedule_id);
 }
 
 function wpilot_execute_scheduled_end($schedule_id) {
