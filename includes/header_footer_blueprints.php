@@ -157,16 +157,17 @@ function wpilot_render_header_blueprint( $style, $params = [] ) {
     // ── Mobile menu JS (shared) ────────────────────────────────
     $mobile_js = '
 <script>
-(function(){
-    var btn=document.querySelector(".wpilot-hamburger"),
-        menu=document.getElementById("wpilot-mobile-menu"),
-        close=document.querySelector(".wpilot-mobile-close");
-    if(btn&&menu){
-        btn.addEventListener("click",function(){menu.classList.add("open")});
-        if(close)close.addEventListener("click",function(){menu.classList.remove("open")});
-        menu.addEventListener("click",function(e){if(e.target===menu)menu.classList.remove("open")});
-    }
-})();
+document.addEventListener("DOMContentLoaded",function(){
+    var btn=document.querySelector(".wpilot-hamburger");
+    var menu=document.getElementById("wpilot-mobile-menu");
+    var close=document.querySelector(".wpilot-mobile-close");
+    if(!btn||!menu){console.log("WPilot: hamburger or menu not found");return;}
+    btn.addEventListener("click",function(e){e.preventDefault();e.stopPropagation();menu.classList.add("open");});
+    if(close)close.addEventListener("click",function(){menu.classList.remove("open");});
+    menu.addEventListener("click",function(e){if(e.target===menu)menu.classList.remove("open");});
+    var links=menu.querySelectorAll("a");
+    for(var i=0;i<links.length;i++)links[i].addEventListener("click",function(){menu.classList.remove("open");});
+});
 </script>';
 
     // ── Shared base CSS (mobile menu + hamburger) ──────────────
