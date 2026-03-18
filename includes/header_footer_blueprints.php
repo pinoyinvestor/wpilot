@@ -191,18 +191,17 @@ body #wpilot-header nav ul li a {
 }
 body #wpilot-header nav ul li a:hover { color: var(--wp-primary) !important; }
 
-/* Hamburger */
+/* Hamburger — clean 3-line icon */
 body #wpilot-header .wpilot-hamburger {
     display: none; background: none; border: none; cursor: pointer;
-    width: 28px; height: 20px; position: relative; z-index: 10;
+    width: 26px; height: 18px; padding: 0; z-index: 10;
+    flex-direction: column; justify-content: space-between; align-items: stretch;
+    -webkit-tap-highlight-color: transparent;
 }
 body #wpilot-header .wpilot-hamburger span {
-    display: block; width: 100%; height: 2px; background: var(--wp-text);
-    position: absolute; left: 0; transition: all 0.3s ease;
+    display: block; width: 100%; height: 2px; background: var(--wp-heading, #333);
+    border-radius: 1px; transition: all 0.3s ease; flex-shrink: 0;
 }
-body #wpilot-header .wpilot-hamburger span:nth-child(1) { top: 0; }
-body #wpilot-header .wpilot-hamburger span:nth-child(2) { top: 9px; }
-body #wpilot-header .wpilot-hamburger span:nth-child(3) { top: 18px; }
 
 /* Mobile overlay */
 .wpilot-mobile-menu {
@@ -234,10 +233,15 @@ body #wpilot-header .wpilot-hamburger span:nth-child(3) { top: 18px; }
 }
 
 @media (max-width: 768px) {
-    body #wpilot-header .wpilot-hamburger { display: block; }
+    body #wpilot-header .wpilot-hamburger { display: flex !important; }
     body #wpilot-header nav.wpilot-desktop-nav { display: none !important; }
     body #wpilot-header .wpilot-header-cta { display: none !important; }
-}';
+}
+
+/* Disable mobile_nav.php hamburger when header blueprint is active */
+body.has-wpilot-header .wpilot-mn-trigger,
+body.has-wpilot-header #wpilotMnHeader { display: none !important; }
+';
 
     // ── Style-specific CSS + HTML ──────────────────────────────
     $style_css = '';
@@ -765,6 +769,11 @@ function wpilot_apply_header_blueprint( $params = [] ) {
     $mu_php .= "    \$header = get_option('wpilot_custom_header', '');\n";
     $mu_php .= "    if (\$header) echo \$header;\n";
     $mu_php .= "}, 1);\n\n";
+    $mu_php .= "// Add body class to disable mobile_nav hamburger conflict\n";
+    $mu_php .= "add_filter('body_class', function(\$classes) {\n";
+    $mu_php .= "    \$classes[] = 'has-wpilot-header';\n";
+    $mu_php .= "    return \$classes;\n";
+    $mu_php .= "});\n\n";
     $mu_php .= "// Hide ALL theme headers/navs — only wpilot-header should show\n";
     $mu_php .= "add_action('wp_head', function() {\n";
     $mu_php .= "    echo '<style id=\"wpilot-hide-theme-header\">\n';\n";
