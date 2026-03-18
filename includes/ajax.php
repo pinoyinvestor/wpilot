@@ -96,9 +96,13 @@ add_action( 'wp_ajax_ca_chat', function () {
     // Only count against prompt limit if Claude was used
     if ( $source === 'claude' ) wpilot_bump_prompts();
 
-    $actions = wpilot_parse_actions( $response );
-    if (empty($actions) && function_exists("wpilot_parse_compact_actions")) $actions = wpilot_parse_compact_actions($response);
-    if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($actions, $response);
+    // Primary parser: wpilot_parse_ai_actions extracts actions + code block params
+    $actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($response) : [];
+    // Fallback to legacy parser if new one found nothing
+    if (empty($actions)) {
+        $actions = wpilot_parse_actions($response);
+        if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($actions, $response);
+    }
 
     // Collect training data (before history — uses $actions early)
     $pair_id = null;
@@ -113,54 +117,39 @@ add_action( 'wp_ajax_ca_chat', function () {
         ]);
     }
 
-    // ── Auto-approve: execute all actions, collect results, append summary ──
+    // ── Auto-approve: execute all actions via standalone executor ──
     $auto_summary = '';
+    $ok_count = 0;
     if ( wpilot_user_can_admin() && wpilot_auto_approve() && ! empty( $actions ) ) {
-        $total      = count( $actions );
-        $ok_count   = 0;
-        $result_lines = [];
+        $exec_result = function_exists('wpilot_auto_execute_actions')
+            ? wpilot_auto_execute_actions($actions)
+            : null;
 
-        foreach ( $actions as &$a ) {
-            $tool   = $a['tool'];
-            $params = $a['params'] ?? [];
-            $label  = $a['label'] ?? $tool;
+        if ($exec_result) {
+            $ok_count     = $exec_result['ok_count'];
+            $total        = $exec_result['total'];
+            $result_lines = [];
 
-            // Log backup before execution
-            $backup_id = function_exists('wpilot_backup_log') ? wpilot_backup_log( $tool, $params ) : null;
-
-            // Execute
-            $r = wpilot_safe_run_tool( $tool, $params );
-
-            if ( ! empty( $r['success'] ) ) {
-                $ok_count++;
-                $result_lines[] = $label . ': OK';
-                $a['auto_status']    = 'done';
-                $a['auto_backup_id'] = $backup_id;
-
-                // Activity log
-                if ( function_exists('wpilot_log_activity') ) {
-                    wpilot_log_activity( $tool, '[Auto] ' . $label, $r['message'] ?? '', $backup_id, 'ok' );
+            // Map execution results back onto $actions for status tracking
+            foreach ($exec_result['results'] as $ri => $res) {
+                if (isset($actions[$ri])) {
+                    $actions[$ri]['auto_status']    = $res['status'];
+                    $actions[$ri]['auto_backup_id'] = $res['backup_id'];
+                    if ($res['status'] === 'failed') {
+                        $actions[$ri]['auto_error'] = $res['message'];
+                    }
                 }
-            } else {
-                $err_msg        = $r['message'] ?? 'Failed';
-                $result_lines[] = $label . ': ✕ ' . $err_msg;
-                $a['auto_status'] = 'failed';
-                $a['auto_error']  = $err_msg;
-
-                if ( function_exists('wpilot_log_activity') ) {
-                    wpilot_log_activity( $tool, '[Auto] ' . $label, $err_msg, $backup_id, 'error' );
-                }
+                $status_label = ($res['status'] === 'done') ? 'OK' : ('✕ ' . $res['message']);
+                $result_lines[] = $res['label'] . ': ' . $status_label;
             }
-        }
-        unset( $a );
 
-        // Build summary line appended to AI response
-        $summary_emoji  = ( $ok_count === $total ) ? '✅' : '⚠️';
-        $auto_summary   = "\n\n" . $summary_emoji . ' Auto-approved: ' . $ok_count . '/' . $total . ' actions completed';
-        if ( ! empty( $result_lines ) ) {
-            $auto_summary .= ' — ' . implode( ', ', $result_lines );
+            $summary_emoji = ($ok_count === $total) ? '✅' : '⚠️';
+            $auto_summary  = "\n\n" . $summary_emoji . ' Auto-approved: ' . $ok_count . '/' . $total . ' actions completed';
+            if (!empty($result_lines)) {
+                $auto_summary .= ' — ' . implode(', ', $result_lines);
+            }
+            $response .= $auto_summary;
         }
-        $response .= $auto_summary;
     }
 
     // ── Auto-verify: after design changes, send a follow-up to check & fix ──
@@ -204,13 +193,19 @@ add_action( 'wp_ajax_ca_chat', function () {
         ]));
         if (!is_wp_error($retry_result)) {
             $retry_text = is_array($retry_result) ? $retry_result['text'] : $retry_result;
-            $retry_actions = wpilot_parse_actions($retry_text);
-            if (empty($retry_actions) && function_exists("wpilot_parse_compact_actions")) $retry_actions = wpilot_parse_compact_actions($retry_text);
-            if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($retry_actions, $retry_text);
-            foreach ($retry_actions as &$ra) {
-                $rr = wpilot_safe_run_tool($ra['tool'], $ra['params'] ?? []);
-                $ra['auto_status'] = !empty($rr['success']) ? 'done' : 'failed';
-                if (!empty($rr['success'])) $ok_count++;
+            $retry_actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($retry_text) : [];
+            if (empty($retry_actions)) {
+                $retry_actions = wpilot_parse_actions($retry_text);
+                if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($retry_actions, $retry_text);
+            }
+            $retry_exec = function_exists('wpilot_auto_execute_actions') ? wpilot_auto_execute_actions($retry_actions) : null;
+            if ($retry_exec) {
+                foreach ($retry_exec['results'] as $ri => $res) {
+                    if (isset($retry_actions[$ri])) {
+                        $retry_actions[$ri]['auto_status'] = $res['status'];
+                    }
+                }
+                $ok_count += $retry_exec['ok_count'];
             }
             $actions = array_merge($actions, $retry_actions);
             $response .= "\n\n🔄 Auto-retry: " . count($retry_actions) . " actions attempted.";
@@ -232,12 +227,18 @@ add_action( 'wp_ajax_ca_chat', function () {
             ]));
             if (!is_wp_error($cont_result)) {
                 $cont_text = is_array($cont_result) ? $cont_result['text'] : $cont_result;
-                $cont_actions = wpilot_parse_actions($cont_text);
-                if (empty($cont_actions) && function_exists("wpilot_parse_compact_actions")) $cont_actions = wpilot_parse_compact_actions($cont_text);
-                if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($cont_actions, $cont_text);
-                foreach ($cont_actions as &$ca) {
-                    $cr = wpilot_safe_run_tool($ca['tool'], $ca['params'] ?? []);
-                    $ca['auto_status'] = !empty($cr['success']) ? 'done' : 'failed';
+                $cont_actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($cont_text) : [];
+                if (empty($cont_actions)) {
+                    $cont_actions = wpilot_parse_actions($cont_text);
+                    if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($cont_actions, $cont_text);
+                }
+                $cont_exec = function_exists('wpilot_auto_execute_actions') ? wpilot_auto_execute_actions($cont_actions) : null;
+                if ($cont_exec) {
+                    foreach ($cont_exec['results'] as $ri => $res) {
+                        if (isset($cont_actions[$ri])) {
+                            $cont_actions[$ri]['auto_status'] = $res['status'];
+                        }
+                    }
                 }
                 $actions = array_merge($actions, $cont_actions);
                 $response .= "\n\n➡️ Auto-continued to next phase:\n" . $cont_text;

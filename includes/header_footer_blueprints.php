@@ -177,7 +177,7 @@ body #wpilot-header {
     position: fixed !important; top: 0 !important; left: 0 !important;
     width: 100% !important; z-index: 999999 !important;
 }
-body.has-wpilot-header { padding-top: 70px !important; }
+/* body padding-top handled via PHP wp_head hook in mu-plugin */
 body #wpilot-header * { box-sizing: border-box; margin: 0; padding: 0; }
 body #wpilot-header ul { list-style: none; }
 body #wpilot-header a { text-decoration: none; }
@@ -770,34 +770,61 @@ function wpilot_apply_header_blueprint( $params = [] ) {
     $mu_php .= "// WPilot Custom Header — Injected via mu-plugin\n";
     $mu_php .= "// Style: {$style} | Generated: " . current_time('Y-m-d H:i') . "\n";
     $mu_php .= "if (!defined('ABSPATH')) exit;\n\n";
+
+    // ── 1. Remove Storefront header/footer/handheld via PHP hooks ──
+    $mu_php .= "// Remove Storefront header components via PHP (no DOM, no CSS wars)\n";
+    $mu_php .= "add_action('after_setup_theme', function() {\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_header_container', 0);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_skip_links', 5);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_social_icons', 10);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_site_branding', 20);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_secondary_navigation', 30);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_product_search', 40);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_primary_navigation_wrapper', 42);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_primary_navigation', 50);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_header_container_close', 41);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_primary_navigation_wrapper_close', 68);\n";
+    $mu_php .= "    remove_action('storefront_header', 'storefront_header_cart', 60);\n";
+    $mu_php .= "    // Remove Storefront footer\n";
+    $mu_php .= "    remove_action('storefront_footer', 'storefront_footer_widgets', 10);\n";
+    $mu_php .= "    remove_action('storefront_footer', 'storefront_credit', 20);\n";
+    $mu_php .= "    // Remove handheld footer bar\n";
+    $mu_php .= "    remove_action('storefront_after_footer', 'storefront_handheld_footer_bar', 999);\n";
+    $mu_php .= "}, 99);\n\n";
+
+    // ── 2. Inject custom header right after <body> ──
     $mu_php .= "// Inject custom header right after <body>\n";
     $mu_php .= "add_action('wp_body_open', function() {\n";
     $mu_php .= "    \$header = get_option('wpilot_custom_header', '');\n";
     $mu_php .= "    if (\$header) echo \$header;\n";
     $mu_php .= "}, 1);\n\n";
+
+    // ── 3. Body class for conflict prevention ──
     $mu_php .= "// Add body class to disable mobile_nav hamburger conflict\n";
     $mu_php .= "add_filter('body_class', function(\$classes) {\n";
     $mu_php .= "    \$classes[] = 'has-wpilot-header';\n";
     $mu_php .= "    return \$classes;\n";
     $mu_php .= "});\n\n";
-    $mu_php .= "// Hide ALL theme headers/navs — only wpilot-header should show\n";
+
+    // ── 4. Body padding-top via PHP (not CSS class) ──
+    $mu_php .= "// Body padding-top via PHP filter\n";
     $mu_php .= "add_action('wp_head', function() {\n";
-    $mu_php .= "    echo '<style id=\"wpilot-hide-theme-header\">\n';\n";
-    $mu_php .= "    echo '/* Kill ALL theme headers */\n';\n";
-    $mu_php .= "    echo '#masthead, #masthead.site-header,\n';\n";
-    $mu_php .= "    echo '.site-header:not(#wpilot-header),\n';\n";
-    $mu_php .= "    echo '#site-header:not(#wpilot-header),\n';\n";
-    $mu_php .= "    echo 'header.site-header:not(#wpilot-header),\n';\n";
-    $mu_php .= "    echo '.storefront-primary-navigation,\n';\n";
-    $mu_php .= "    echo '.storefront-secondary-navigation,\n';\n";
-    $mu_php .= "    echo '.storefront-handheld-footer-bar,\n';\n";
-    $mu_php .= "    echo '.elementor-location-header,\n';\n";
-    $mu_php .= "    echo '#et-main-area .et-l--header,\n';\n";
-    $mu_php .= "    echo '.flavor-header,\n';\n";
-    $mu_php .= "    echo '.menu-toggle,\n';\n";
-    $mu_php .= "    echo '.storefront-sticky-add-to-cart\n';\n";
-    $mu_php .= "    echo '{ display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }\n';\n";
-    $mu_php .= "    echo '#wpilot-header { display: flex !important; }\n';\n";
+    $mu_php .= "    echo '<style>body{padding-top:72px}@media(max-width:768px){body{padding-top:64px}}</style>';\n";
+    $mu_php .= "}, 1);\n\n";
+
+    // ── 5. CSS fallback for non-Storefront themes (Elementor, Divi, Astra, etc) ──
+    $mu_php .= "// CSS fallback — hides theme headers on non-Storefront themes\n";
+    $mu_php .= "add_action('wp_head', function() {\n";
+    $mu_php .= "    echo '<style id=\"wpilot-hide-theme-header\">';\n";
+    $mu_php .= "    echo '.site-header:not(#wpilot-header),';\n";
+    $mu_php .= "    echo '#site-header:not(#wpilot-header),';\n";
+    $mu_php .= "    echo 'header.site-header:not(#wpilot-header),';\n";
+    $mu_php .= "    echo '#masthead,';\n";
+    $mu_php .= "    echo '.elementor-location-header,';\n";
+    $mu_php .= "    echo '#et-main-area .et-l--header,';\n";
+    $mu_php .= "    echo '.flavor-header,';\n";
+    $mu_php .= "    echo '.menu-toggle';\n";
+    $mu_php .= "    echo '{display:none!important}';\n";
     $mu_php .= "    echo '</style>';\n";
     $mu_php .= "}, 999999);\n";
 
@@ -860,25 +887,35 @@ function wpilot_apply_footer_blueprint( $params = [] ) {
     $mu_php .= "// WPilot Custom Footer — Injected via mu-plugin\n";
     $mu_php .= "// Style: {$style} | Generated: " . current_time('Y-m-d H:i') . "\n";
     $mu_php .= "if (!defined('ABSPATH')) exit;\n\n";
+
+    // ── 1. Remove Storefront footer via PHP hooks ──
+    $mu_php .= "// Remove Storefront footer components via PHP (no DOM, no CSS wars)\n";
+    $mu_php .= "add_action('after_setup_theme', function() {\n";
+    $mu_php .= "    remove_action('storefront_footer', 'storefront_footer_widgets', 10);\n";
+    $mu_php .= "    remove_action('storefront_footer', 'storefront_credit', 20);\n";
+    $mu_php .= "    remove_action('storefront_after_footer', 'storefront_handheld_footer_bar', 999);\n";
+    $mu_php .= "}, 99);\n\n";
+
+    // ── 2. Inject custom footer before </body> ──
     $mu_php .= "// Inject custom footer before </body>\n";
     $mu_php .= "add_action('wp_footer', function() {\n";
     $mu_php .= "    \$footer = get_option('wpilot_custom_footer', '');\n";
     $mu_php .= "    if (\$footer) echo \$footer;\n";
     $mu_php .= "}, 5);\n\n";
-    $mu_php .= "// Hide ALL theme footers — only wpilot-footer should show\n";
+
+    // ── 3. CSS fallback for non-Storefront themes ──
+    $mu_php .= "// CSS fallback — hides theme footers on non-Storefront themes\n";
     $mu_php .= "add_action('wp_head', function() {\n";
-    $mu_php .= "    echo '<style id=\"wpilot-hide-theme-footer\">\n';\n";
-    $mu_php .= "    echo '#colophon, #colophon.site-footer,\n';\n";
-    $mu_php .= "    echo '.site-footer:not(#wpilot-footer),\n';\n";
-    $mu_php .= "    echo 'footer.site-footer:not(#wpilot-footer),\n';\n";
-    $mu_php .= "    echo '#site-footer:not(#wpilot-footer),\n';\n";
-    $mu_php .= "    echo '.elementor-location-footer,\n';\n";
-    $mu_php .= "    echo '#et-main-area .et-l--footer,\n';\n";
-    $mu_php .= "    echo '.storefront-footer-bar,\n';\n";
-    $mu_php .= "    echo '.site-info,\n';\n";
-    $mu_php .= "    echo '.flavor-footer\n';\n";
-    $mu_php .= "    echo '{ display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }\n';\n";
-    $mu_php .= "    echo '#wpilot-footer { display: block !important; }\n';\n";
+    $mu_php .= "    echo '<style id=\"wpilot-hide-theme-footer\">';\n";
+    $mu_php .= "    echo '.site-footer:not(#wpilot-footer),';\n";
+    $mu_php .= "    echo '#site-footer:not(#wpilot-footer),';\n";
+    $mu_php .= "    echo 'footer.site-footer:not(#wpilot-footer),';\n";
+    $mu_php .= "    echo '#colophon,';\n";
+    $mu_php .= "    echo '.elementor-location-footer,';\n";
+    $mu_php .= "    echo '#et-main-area .et-l--footer,';\n";
+    $mu_php .= "    echo '.flavor-footer,';\n";
+    $mu_php .= "    echo '.site-info';\n";
+    $mu_php .= "    echo '{display:none!important}';\n";
     $mu_php .= "    echo '</style>';\n";
     $mu_php .= "}, 999999);\n";
 

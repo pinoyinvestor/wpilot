@@ -202,6 +202,8 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
         'create_menu', 'add_menu_item', 'list_menus',
         // Comments
         'comment_stats', 'bulk_delete_spam',
+        // Verify
+        'verify_site', 'fix_all_issues',
     ];
     $tools['core'] = $core;
 
@@ -218,6 +220,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
                          'create_custom_footer', 'build_mobile_menu'],
             'vision' => ['responsive_check', 'check_visual_bugs', 'compare_before_after'],
             'templates' => ['list_templates', 'apply_template', 'use_template'],
+            'verify' => ['verify_site', 'fix_all_issues'],
         ],
         'analyze' => [
             'seo' => ['seo_audit', 'bulk_fix_seo', 'update_meta_desc', 'add_schema_markup', 'seo_check_page',
@@ -229,6 +232,7 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
             'design' => ['update_custom_css', 'append_custom_css', 'responsive_fix'],
             'plugins' => ['plugin_install', 'activate_plugin', 'deactivate_plugin', 'list_plugins', 'update_plugins'],
             'vision' => ['responsive_check', 'check_visual_bugs', 'compare_before_after'],
+            'verify' => ['verify_site', 'fix_all_issues'],
         ],
         'seo' => [
             'seo' => ['seo_audit', 'bulk_fix_seo', 'update_meta_desc', 'update_seo_title', 'update_focus_keyword',
@@ -335,11 +339,12 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
                 'add_open_graph', 'setup_social_sharing'],
         '/karta|map|location|plats|butik.?lokal|store.?locat/u'
             => ['create_store_locator', 'connect_google_maps', 'add_map', 'embed_map'],
-        '/visa|show|kolla|look|screenshot|how does it|hur ser|granska|review/u'
+        '/visa|show|kolla|look|screenshot|how does it|hur ser|granska|review|verify|verif|kontroll|check|kvalit|quality/u'
             => ['screenshot', 'analyze_design', 'responsive_check', 'check_visual_bugs',
-                'compare_before_after', 'multi_device_screenshot'],
-        '/error|fel|broken|trasig|vit\s?sida|white\s?screen|debug|log|problem/u'
-            => ['check_frontend', 'view_debug_log', 'site_health_check', 'list_snippets', 'read_log', 'error_log'],
+                'compare_before_after', 'multi_device_screenshot', 'verify_site', 'fix_all_issues'],
+        '/error|fel|broken|trasig|vit\s?sida|white\s?screen|debug|log|problem|fix|fixa|issue|problem/u'
+            => ['check_frontend', 'view_debug_log', 'site_health_check', 'list_snippets', 'read_log', 'error_log',
+                'verify_site', 'fix_all_issues'],
         '/meny|menu|navigat/u'
             => ['create_menu', 'add_menu_item', 'edit_menu_item', 'remove_menu_item', 'reorder_menu',
                 'rename_menu', 'delete_menu', 'list_menus', 'set_menu_location', 'create_mega_menu'],

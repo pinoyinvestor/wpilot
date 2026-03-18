@@ -90,6 +90,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
         'wpilot_run_content_tools',
         'wpilot_run_marketing_tools',
         'wpilot_run_engage_tools',
+        'wpilot_run_verify_tools',
     ];
 
     // Built by Christos Ferlachidis & Daniel Hedenberg
