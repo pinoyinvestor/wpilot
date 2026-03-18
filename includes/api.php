@@ -57,7 +57,7 @@ function wpilot_call_claude( $message, $mode = 'chat', $context = [], $history =
             ],
             'body' => wp_json_encode( [
                 'model'      => CA_MODEL,
-                'max_tokens' => 2048,
+                'max_tokens' => 4096,
                 'system'     => wpilot_system_prompt( $mode, $message ),
                 'messages'   => $continue_messages,
             ] ),
@@ -84,15 +84,33 @@ function wpilot_build_messages( $message, $context = [], $history = [] ) {
     // knows the current state of the site — even mid-conversation.
     // This replaces the old logic that only sent context on the first message.
     if ( ! empty( $context ) ) {
-        // Use compact JSON (no pretty print) to save tokens — structure is still readable by Claude
-        $ctx_json = json_encode( $context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        // Compress context to save tokens — strip large arrays, keep essentials
+        $compressed = $context;
+        if ( isset( $compressed['blueprint'] ) ) {
+            $bp = &$compressed['blueprint'];
+            // Truncate large fields
+            if ( isset($bp['header_html']) && strlen($bp['header_html']) > 200 ) $bp['header_html'] = substr($bp['header_html'], 0, 200) . '...';
+            if ( isset($bp['footer_html']) && strlen($bp['footer_html']) > 200 ) $bp['footer_html'] = substr($bp['footer_html'], 0, 200) . '...';
+            if ( isset($bp['css_head']) && strlen($bp['css_head']) > 150 ) $bp['css_head'] = substr($bp['css_head'], 0, 150) . '...';
+            // Limit products to first 10
+            if ( isset($bp['products']) && count($bp['products']) > 10 ) $bp['products'] = array_slice($bp['products'], 0, 10);
+            // Limit pages to first 15
+            if ( isset($bp['pages']) && count($bp['pages']) > 15 ) $bp['pages'] = array_slice($bp['pages'], 0, 15);
+            // Remove theme_files (not needed for AI)
+            unset($bp['theme_files'], $bp['php_ext'], $bp['wp_const'], $bp['db_custom']);
+        }
+        $ctx_json = json_encode( $compressed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        // Hard limit: if still > 8000 chars, truncate
+        if ( strlen($ctx_json) > 8000 ) {
+            $ctx_json = substr($ctx_json, 0, 8000) . '...[truncated]';
+        }
         $messages[] = [
             'role'    => 'user',
-            'content' => "SITE CONTEXT:\n" . $ctx_json,
+            'content' => "SITE STATE:\n" . $ctx_json,
         ];
         $messages[] = [
             'role'    => 'assistant',
-            'content' => 'Understood. I have the site context.',
+            'content' => 'Got it.',
         ];
     }
 
@@ -125,11 +143,34 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
     $msg = strtolower( $message );
     $tools = [];
 
-    // Core tools — always available
-    $core = ['check_frontend', 'list_pages', 'get_page', 'create_page', 'create_html_page',
-             'update_page_content', 'append_page_content', 'edit_page_css', 'replace_in_page',
-             'delete_post', 'set_page_template', 'add_head_code', 'add_footer_code', 'add_php_snippet',
-             'save_design_profile', 'reset_design_profile', 'screenshot', 'analyze_design'];
+    // Core tools — ALWAYS available regardless of mode or keywords
+    $core = [
+        // Pages
+        'check_frontend', 'list_pages', 'get_page', 'create_page', 'create_html_page',
+        'update_page_content', 'append_page_content', 'delete_post', 'set_page_template',
+        'add_head_code', 'add_footer_code', 'add_php_snippet',
+        // Design system
+        'save_design_profile', 'reset_design_profile', 'apply_blueprint', 'list_blueprints',
+        'suggest_blueprint', 'build_site', 'list_recipes',
+        // Header/Footer
+        'apply_header_blueprint', 'apply_footer_blueprint',
+        // CSS
+        'update_custom_css', 'append_custom_css',
+        // Vision
+        'screenshot', 'analyze_design', 'check_frontend',
+        // Mobile + PWA
+        'enable_mobile_nav', 'enable_pwa',
+        // Forms
+        'create_contact_form', 'create_newsletter_form',
+        // GDPR
+        'gdpr_audit', 'gdpr_cookie_banner',
+        // Content
+        'blog_publish_workflow', 'stock_photo_search',
+        // Menus
+        'create_menu', 'add_menu_item', 'list_menus',
+        // Comments
+        'comment_stats', 'bulk_delete_spam',
+    ];
     $tools['core'] = $core;
 
     // Mode-specific tool sets
@@ -210,12 +251,14 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
         '/säkerhet|secur|hack|ssl|firewall|block|virus|malware|lösenord|password|xmlrpc|brute|vulnerab/u'
             => ['security_audit', 'security_scan', 'add_security_headers', 'disable_xmlrpc', 'block_ip',
                 'configure_wordfence', 'failed_logins', 'full_security_check', 'security_enable_2fa'],
-        '/design|css|style|färg|color|font|animation|hover|glass|3d|responsive|mobil|tablet|header|footer|meny|menu|snygg|pretty|layout|makeover/u'
+        '/design|css|style|färg|color|font|animation|hover|glass|3d|responsive|mobil|tablet|header|footer|meny|menu|snygg|pretty|layout|makeover|bygg|build|sajt|site|hemsida|website|landning|landing/u'
             => ['update_custom_css', 'append_custom_css', 'edit_text', 'edit_button', 'edit_colors',
                 'edit_font', 'add_animation', 'hover_effects', 'glassmorphism', 'gradient_text',
                 'premium_buttons', 'responsive_fix', 'build_header', 'build_footer', 'build_mobile_menu',
                 'design_all', 'premium_makeover', 'responsive_check', 'check_visual_bugs',
-                'hide_admin_menu', 'simplify_admin', 'create_client_dashboard'],
+                'apply_blueprint', 'list_blueprints', 'build_site', 'list_recipes',
+                'apply_header_blueprint', 'apply_footer_blueprint', 'enable_mobile_nav',
+                'enable_pwa', 'create_contact_form'],
         '/bild|image|media|foto|photo|upload|logo|webp|compress|favicon/u'
             => ['upload_image', 'set_featured_image', 'compress_images', 'convert_all_images_webp',
                 'upload_logo', 'set_favicon', 'update_image_alt', 'bulk_fix_alt_text'],
@@ -247,11 +290,14 @@ function wpilot_relevant_tools( $message, $mode = 'chat' ) {
                 'list_events', 'create_calendar_page'],
         '/kupong|coupon|rabatt|discount|erbjudande|offer/u'
             => ['create_advanced_coupon', 'list_coupons', 'coupon_usage', 'bulk_create_coupons', 'create_discount_popup'],
-        '/blogg|blog|artikel|article|skriv|write|translate|översätt|content|inlägg|post(?!nord)/u'
+        '/blogg|blog|artikel|article|skriv|write|translate|översätt|content|inlägg|post(?!nord)|kalender|calendar|redirect|omdirig|stock.?photo|bild.?bank/u'
             => ['write_blog_post', 'rewrite_content', 'translate_content', 'create_post', 'update_post',
-                'schedule_post', 'create_category', 'create_tag'],
-        '/integritet|privacy|gdpr|villkor|terms|legal|cookie/u'
-            => ['privacy_policy_generate', 'terms_generate'],
+                'schedule_post', 'create_category', 'create_tag', 'blog_publish_workflow',
+                'content_calendar', 'bulk_update_posts', 'content_stats', 'create_redirect',
+                'list_redirects', 'bulk_import_posts', 'stock_photo_search', 'stock_photo_insert'],
+        '/integritet|privacy|gdpr|villkor|terms|legal|cookie|samtycke|consent|personuppgift/u'
+            => ['privacy_policy_generate', 'terms_generate', 'gdpr_audit', 'gdpr_cookie_banner',
+                'gdpr_export_user_data', 'gdpr_delete_user_data', 'gdpr_configure', 'gdpr_status'],
         '/social|facebook|instagram|twitter|linkedin|dela|share/u'
             => ['add_social_links', 'add_social_share_buttons', 'add_social_feed', 'embed_social',
                 'add_open_graph', 'setup_social_sharing'],
