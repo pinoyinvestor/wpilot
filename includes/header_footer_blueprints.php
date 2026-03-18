@@ -152,7 +152,7 @@ function wpilot_render_header_blueprint( $style, $params = [] ) {
 </div>';
 
     // ── Hamburger button (shared) — SVG icon, no CSS dependency ──
-    $hamburger = '<button class="wpilot-hamburger" aria-label="Open menu" style="display:none;background:none;border:none;cursor:pointer;padding:8px;-webkit-tap-highlight-color:transparent"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>';
+    $hamburger = '<button class="wpilot-hamburger" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>';
 
     // ── Mobile menu JS (shared) ────────────────────────────────
     $mobile_js = '
