@@ -312,9 +312,15 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 
 // ── Frontend: bubble on all public pages for logged-in users ──
 add_action( 'wp_enqueue_scripts', function () {
+    // Framework CSS — loads on ALL pages for ALL visitors (not just logged in)
+    // This is the site's design system. Priority 999 = loads AFTER theme CSS.
+    if ( file_exists( CA_PATH . 'assets/wpilot-framework.css' ) ) {
+        wp_enqueue_style( 'wpilot-framework', CA_URL . 'assets/wpilot-framework.css', [], CA_VERSION );
+    }
+    // Bubble only for logged-in users
     if ( ! is_user_logged_in() ) return;
     wpilot_enqueue_bubble();
-} );
+}, 999 );
 // Execute scheduled WPilot actions
 add_action('wpilot_run_scheduled', function($id) {
     $scheduled = get_option('wpilot_scheduled_actions', []);
