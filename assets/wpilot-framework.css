@@ -79,7 +79,7 @@ body.has-wpilot-header { padding-top: 72px !important; }
 #wpilot-header nav ul li a:hover { color: var(--c-pri) !important; }
 #wpilot-header .wpilot-header-cta { background: var(--c-pri) !important; color: var(--c-white) !important; border-radius: var(--r-pill) !important; padding: 10px 24px !important; font-size: 0.85rem !important; font-weight: 600; }
 #wpilot-header .wpilot-right-group { display: flex; align-items: center; gap: 24px; margin-left: auto; }
-#wpilot-header .wpilot-hamburger { display: none; align-items: center; color: var(--c-text, #333); }
+#wpilot-header .wpilot-hamburger { display: flex; align-items: center; color: var(--c-text, #333); background:none; border:none; cursor:pointer; padding:8px; }
 
 /* ─── FOOTER ─── */
 #wpilot-footer { background: var(--c-bg-alt) !important; color: var(--c-muted) !important; border-top: 1px solid var(--c-border) !important; }
@@ -99,7 +99,13 @@ body.has-wpilot-header { padding-top: 72px !important; }
 body:has(#wpilot-top-banner) #wpilot-header { top: 42px !important; }
 body:has(#wpilot-top-banner).has-wpilot-header { padding-top: 114px !important; }
 
-/* ─── RESPONSIVE ─── */
+/* ─── DESKTOP (>768px) ─── */
+@media (min-width: 769px) {
+  #wpilot-header .wpilot-hamburger { display: none !important; }
+  #wpilot-header nav.wpilot-desktop-nav { display: flex !important; }
+}
+
+/* ─── MOBILE (<=768px) ─── */
 @media (max-width: 768px) {
   html:root { --section-pad: 48px 16px; }
   #wpilot-header .wpilot-hamburger { display: flex !important; }
@@ -113,6 +119,7 @@ body:has(#wpilot-top-banner).has-wpilot-header { padding-top: 114px !important; 
   html body .wp-block-button__link { display: block !important; text-align: center !important; width: 100% !important; }
 }
 
+/* ─── SMALL MOBILE (<=480px) ─── */
 @media (max-width: 480px) {
   html:root { --section-pad: 40px 12px; }
   html body h1 { font-size: 2rem !important; }
