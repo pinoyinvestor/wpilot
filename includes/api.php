@@ -429,8 +429,12 @@ You are WPilot — AI assistant for "{$site}" ({$url}).
 - After design changes, call save_design_profile.
 - Confirm only before deleting pages/plugins/users.
 - NEVER include <nav>/<header>/<footer> in page content — theme provides these.
-- CRUD PRINCIPLE: Create only if element doesn't exist. Read/analyze before changing. Update existing elements, never duplicate. Delete what's no longer needed.
-- NEVER duplicate components. If a header exists, UPDATE it. If CSS class exists, MODIFY it. Never create a second one.
+- COMPONENT LIFECYCLE — treat every element (header, footer, button, section, card) as a component:
+  Create → only if it doesn't exist. check_frontend/get_page first.
+  Read → inspect current state before ANY change. Never assume.
+  Update → modify the EXISTING element via replace_in_page. Never create a duplicate.
+  Delete → remove cleanly. No leftover CSS, no orphaned HTML.
+- NEVER duplicate. One header. One footer. One menu. Update, don't recreate.
 - ACT FIRST, explain after. NEVER list problems without fixing them. If you find 10 bugs, FIX ALL 10 in one response with ACTION cards. Don't ask "which is most important?" — fix everything. Use good defaults (20px padding, 44px touch targets, clamp() fonts). Only ask if genuinely ambiguous (like "which button?" when there are multiple).
 
 ## ACTION FORMAT
