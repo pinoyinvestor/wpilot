@@ -1014,10 +1014,52 @@ function wpilot_build_site_from_recipe( $params ) {
         '{business_type}' => $biz_type ?: $recipe['name'],
     ];
 
-    // 1. Apply blueprint (design system)
+    // 1. Apply blueprint — choose based on CUSTOMER'S description, not recipe default
+    $chosen_blueprint = $recipe['blueprint']; // fallback to recipe default
     if ( function_exists( 'wpilot_apply_blueprint' ) ) {
-        $bp_result = wpilot_apply_blueprint( ['blueprint' => $recipe['blueprint']] );
-        $results[] = "Blueprint '{$recipe['blueprint']}' applied";
+        // Check business profile and description for style clues
+        $biz_profile = function_exists( 'wpilot_get_business_profile' ) ? wpilot_get_business_profile() : [];
+        $style_hint = strtolower( implode( ' ', [
+            $description,
+            $biz_type,
+            $biz_profile['tone'] ?? '',
+            $biz_profile['description'] ?? '',
+            $biz_profile['story'] ?? '',
+            $params['style'] ?? '',
+            $params['design'] ?? '',
+        ] ) );
+
+        // Match customer's words to best blueprint
+        $blueprint_keywords = [
+            'dark-luxury'       => ['dark','luxury','lyxig','guld','gold','premium','exklusiv','svart','black','elegant','exclusive','smycken','jewelry'],
+            'white-minimal'     => ['minimal','minimalist','clean','ren','vit','white','enkel','simple','portfolio','studio','modern','arkitekt'],
+            'colorful-playful'  => ['colorful','playful','fun','lekfull','barn','kids','creative','kreativ','färgglad','party','event','bright'],
+            'corporate-pro'     => ['corporate','professional','professionell','business','b2b','consulting','finans','juridik','seriös','formal'],
+            'warm-organic'      => ['warm','varm','organic','natural','eco','cozy','mysig','trä','wood','rustic','rustik','café','cafe','kaffe','coffee','bageri','bakery','hälsa','wellness','spa','mjuk','soft','inbjudande'],
+            'bold-modern'       => ['bold','modern','tech','startup','saas','app','neon','gradient','innovation','digital','gaming','djärv'],
+            'scandinavian'      => ['scandinavian','nordic','nordisk','skandinavisk','lagom','scandi','funktionell','functional','ikea','swedish'],
+            'restaurant'        => ['restaurant','bar','pub','fine dining','cocktail','vin','wine','nattliv','nightlife','bistro'],
+        ];
+
+        $best_score = 0;
+        foreach ( $blueprint_keywords as $bp_id => $keywords ) {
+            $score = 0;
+            foreach ( $keywords as $kw ) {
+                if ( strpos( $style_hint, $kw ) !== false ) {
+                    $score += strlen( $kw ); // longer match = more specific
+                }
+            }
+            if ( $score > $best_score ) {
+                $best_score = $score;
+                $chosen_blueprint = $bp_id;
+            }
+        }
+
+        // If no strong match, keep recipe default
+        if ( $best_score < 4 ) $chosen_blueprint = $recipe['blueprint'];
+
+        $bp_result = wpilot_apply_blueprint( ['blueprint' => $chosen_blueprint] );
+        $results[] = "Blueprint '{$chosen_blueprint}' applied" . ($chosen_blueprint !== $recipe['blueprint'] ? " (matched from customer description, recipe default was '{$recipe['blueprint']}')" : '');
     }
 
     // 2. Create all pages — personalized with business profile
