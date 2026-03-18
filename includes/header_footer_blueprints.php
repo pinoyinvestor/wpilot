@@ -151,8 +151,8 @@ function wpilot_render_header_blueprint( $style, $params = [] ) {
     </nav>
 </div>';
 
-    // ── Hamburger button (shared) ──────────────────────────────
-    $hamburger = '<button class="wpilot-hamburger" aria-label="Open menu"><span></span><span></span><span></span></button>';
+    // ── Hamburger button (shared) — SVG icon, no CSS dependency ──
+    $hamburger = '<button class="wpilot-hamburger" aria-label="Open menu" style="display:none;background:none;border:none;cursor:pointer;padding:8px;-webkit-tap-highlight-color:transparent"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>';
 
     // ── Mobile menu JS (shared) ────────────────────────────────
     $mobile_js = '
@@ -196,16 +196,10 @@ body #wpilot-header nav ul li a {
 }
 body #wpilot-header nav ul li a:hover { color: var(--wp-primary) !important; }
 
-/* Hamburger — clean 3-line icon */
+/* Hamburger — SVG icon, shown only on mobile */
 body #wpilot-header .wpilot-hamburger {
-    display: none; background: none; border: none; cursor: pointer;
-    width: 26px; height: 18px; padding: 0; z-index: 10;
-    flex-direction: column; justify-content: space-between; align-items: stretch;
-    -webkit-tap-highlight-color: transparent;
-}
-body #wpilot-header .wpilot-hamburger span {
-    display: block; width: 100%; height: 2px; background: var(--wp-heading, #333);
-    border-radius: 1px; transition: all 0.3s ease; flex-shrink: 0;
+    display: none; align-items: center; justify-content: center;
+    color: var(--wp-heading, var(--c-text, #333));
 }
 
 /* Mobile overlay */
@@ -238,9 +232,10 @@ body #wpilot-header .wpilot-hamburger span {
 }
 
 @media (max-width: 768px) {
-    body #wpilot-header .wpilot-hamburger { display: flex !important; }
+    body #wpilot-header .wpilot-hamburger { display: flex !important; align-items: center; }
     body #wpilot-header nav.wpilot-desktop-nav { display: none !important; }
     body #wpilot-header .wpilot-header-cta { display: none !important; }
+    body #wpilot-header .wpilot-header-inner { padding: 0 16px; }
 }
 
 /* Disable mobile_nav.php hamburger when header blueprint is active */

@@ -79,8 +79,7 @@ body.has-wpilot-header { padding-top: 72px !important; }
 #wpilot-header nav ul li a:hover { color: var(--c-pri) !important; }
 #wpilot-header .wpilot-header-cta { background: var(--c-pri) !important; color: var(--c-white) !important; border-radius: var(--r-pill) !important; padding: 10px 24px !important; font-size: 0.85rem !important; font-weight: 600; }
 #wpilot-header .wpilot-right-group { display: flex; align-items: center; gap: 24px; margin-left: auto; }
-#wpilot-header .wpilot-hamburger { background: var(--c-pri) !important; border: none !important; border-radius: 8px !important; width: 40px !important; height: 36px !important; display: none; flex-direction: column; justify-content: center; align-items: center; gap: 4px; cursor: pointer; }
-#wpilot-header .wpilot-hamburger span { background: var(--c-white) !important; width: 18px !important; height: 2px !important; display: block !important; position: static !important; border-radius: 1px; }
+#wpilot-header .wpilot-hamburger { display: none; align-items: center; color: var(--c-text, #333); }
 
 /* ─── FOOTER ─── */
 #wpilot-footer { background: var(--c-bg-alt) !important; color: var(--c-muted) !important; border-top: 1px solid var(--c-border) !important; }
