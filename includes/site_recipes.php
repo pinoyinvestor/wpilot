@@ -1027,8 +1027,9 @@ function wpilot_build_site_from_recipe( $params ) {
             $html .= wpilot_render_section( $section, $site_vars );
         }
 
-        // Wrap in wp:html block for Gutenberg compatibility
-        $wrapped = "<!-- wp:html -->\n{$html}\n<!-- /wp:html -->";
+        // Convert to builder-native format based on active builder
+        $builder = function_exists('wpilot_detect_builder') ? wpilot_detect_builder() : 'gutenberg';
+        $wrapped = wpilot_wrap_for_builder( $html, $builder, $page_def['sections'] ?? [] );
 
         $page_params = [
             'title'   => $page_def['title'],
@@ -1154,4 +1155,136 @@ function wpilot_list_site_recipes( $params = [] ) {
     }
 
     return wpilot_ok( $summary, ['recipes' => $list] );
+}
+
+// ── Convert HTML to builder-native format ─────────────────────
+// Gutenberg: wp:group + wp:heading + wp:paragraph + wp:buttons (editable)
+// Elementor: stores as wp:html but clears _elementor_data so Elementor can adopt it
+// Divi: keeps as HTML (Divi reads HTML fine in its visual builder)
+function wpilot_wrap_for_builder( $html, $builder = 'gutenberg', $sections = [] ) {
+
+    switch ( $builder ) {
+
+        case 'elementor':
+            // Elementor can import raw HTML — wrap each section as a separate wp:html
+            // so Elementor's "Convert to Elementor" button can process them individually
+            $parts = preg_split( '/(?=<section\s)/', $html, -1, PREG_SPLIT_NO_EMPTY );
+            $wrapped = '';
+            foreach ( $parts as $part ) {
+                $part = trim( $part );
+                if ( $part ) $wrapped .= "<!-- wp:html -->\n{$part}\n<!-- /wp:html -->\n\n";
+            }
+            return $wrapped ?: "<!-- wp:html -->\n{$html}\n<!-- /wp:html -->";
+
+        case 'divi':
+            // Divi can use its Code Module to render HTML — wrap in a single block
+            return "<!-- wp:html -->\n{$html}\n<!-- /wp:html -->";
+
+        case 'gutenberg':
+        case 'block':
+        default:
+            // Convert sections to native Gutenberg blocks where possible
+            $blocks = '';
+            foreach ( $sections as $section ) {
+                $type = $section['type'] ?? '';
+                switch ( $type ) {
+
+                    case 'hero':
+                    case 'hero-small':
+                        $h   = esc_html( $section['heading'] ?? '' );
+                        $sub = esc_html( $section['subheading'] ?? '' );
+                        $cta1 = $section['cta_primary'] ?? '';
+                        $link1 = $section['cta_link'] ?? '#';
+                        $cta2 = $section['cta_secondary'] ?? '';
+                        $link2 = $section['cta_link2'] ?? '#';
+                        $pad = $type === 'hero' ? '120px' : '80px';
+
+                        $blocks .= "<!-- wp:group {\"style\":{\"spacing\":{\"padding\":{\"top\":\"{$pad}\",\"bottom\":\"{$pad}\",\"left\":\"40px\",\"right\":\"40px\"}},\"color\":{\"background\":\"var(--wp-bg)\"}},\"layout\":{\"type\":\"constrained\",\"contentSize\":\"800px\"}} -->\n";
+                        $blocks .= "<div class=\"wp-block-group\" style=\"background:var(--wp-bg);padding-top:{$pad};padding-bottom:{$pad};padding-left:40px;padding-right:40px;text-align:center\">\n";
+                        $blocks .= "<!-- wp:heading {\"textAlign\":\"center\",\"level\":1,\"style\":{\"typography\":{\"fontFamily\":\"var(--wp-heading-font)\"}}} -->\n";
+                        $blocks .= "<h1 class=\"wp-block-heading has-text-align-center\" style=\"font-family:var(--wp-heading-font)\">{$h}</h1>\n";
+                        $blocks .= "<!-- /wp:heading -->\n\n";
+                        if ( $sub ) {
+                            $blocks .= "<!-- wp:paragraph {\"align\":\"center\"} -->\n";
+                            $blocks .= "<p class=\"has-text-align-center\" style=\"color:var(--wp-text-muted);font-size:1.25rem\">{$sub}</p>\n";
+                            $blocks .= "<!-- /wp:paragraph -->\n\n";
+                        }
+                        if ( $cta1 ) {
+                            $blocks .= "<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n";
+                            $blocks .= "<div class=\"wp-block-buttons\">\n";
+                            $blocks .= "<!-- wp:button {\"style\":{\"border\":{\"radius\":\"var(--wp-radius)\"}}} -->\n";
+                            $blocks .= "<div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\" href=\"" . esc_url($link1) . "\" style=\"border-radius:var(--wp-radius);background:var(--wp-primary);color:var(--wp-bg)\">" . esc_html($cta1) . "</a></div>\n";
+                            $blocks .= "<!-- /wp:button -->\n";
+                            if ( $cta2 ) {
+                                $blocks .= "<!-- wp:button {\"className\":\"is-style-outline\"} -->\n";
+                                $blocks .= "<div class=\"wp-block-button is-style-outline\"><a class=\"wp-block-button__link wp-element-button\" href=\"" . esc_url($link2) . "\" style=\"border-radius:var(--wp-radius);color:var(--wp-primary)\">" . esc_html($cta2) . "</a></div>\n";
+                                $blocks .= "<!-- /wp:button -->\n";
+                            }
+                            $blocks .= "</div>\n<!-- /wp:buttons -->\n\n";
+                        }
+                        $blocks .= "</div>\n<!-- /wp:group -->\n\n";
+                        break;
+
+                    case 'text-block':
+                        $content = wp_kses_post( $section['content'] ?? '' );
+                        $blocks .= "<!-- wp:group {\"style\":{\"spacing\":{\"padding\":{\"top\":\"60px\",\"bottom\":\"60px\"}}},\"layout\":{\"type\":\"constrained\",\"contentSize\":\"700px\"}} -->\n";
+                        $blocks .= "<div class=\"wp-block-group\" style=\"padding-top:60px;padding-bottom:60px\">\n";
+                        $blocks .= "<!-- wp:paragraph -->\n<p style=\"line-height:1.8;font-size:1.1rem\">{$content}</p>\n<!-- /wp:paragraph -->\n";
+                        $blocks .= "</div>\n<!-- /wp:group -->\n\n";
+                        break;
+
+                    case 'features':
+                        $h = esc_html( $section['heading'] ?? '' );
+                        $items = $section['items'] ?? [];
+                        $cols = min( count($items), 4 );
+                        $blocks .= "<!-- wp:group {\"style\":{\"spacing\":{\"padding\":{\"top\":\"80px\",\"bottom\":\"80px\"}}},\"layout\":{\"type\":\"constrained\"}} -->\n";
+                        $blocks .= "<div class=\"wp-block-group\" style=\"padding-top:80px;padding-bottom:80px\">\n";
+                        if ( $h ) {
+                            $blocks .= "<!-- wp:heading {\"textAlign\":\"center\",\"level\":2} -->\n";
+                            $blocks .= "<h2 class=\"wp-block-heading has-text-align-center\">{$h}</h2>\n";
+                            $blocks .= "<!-- /wp:heading -->\n\n";
+                            $blocks .= "<!-- wp:spacer {\"height\":\"40px\"} -->\n<div style=\"height:40px\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n";
+                        }
+                        $blocks .= "<!-- wp:columns -->\n<div class=\"wp-block-columns\">\n";
+                        foreach ( $items as $item ) {
+                            $blocks .= "<!-- wp:column -->\n<div class=\"wp-block-column\" style=\"text-align:center;padding:24px\">\n";
+                            $blocks .= "<!-- wp:paragraph {\"align\":\"center\",\"style\":{\"typography\":{\"fontSize\":\"2.5rem\"}}} -->\n";
+                            $blocks .= "<p class=\"has-text-align-center\" style=\"font-size:2.5rem\">" . ($item['icon'] ?? '✦') . "</p>\n<!-- /wp:paragraph -->\n";
+                            $blocks .= "<!-- wp:heading {\"textAlign\":\"center\",\"level\":3} -->\n";
+                            $blocks .= "<h3 class=\"wp-block-heading has-text-align-center\">" . esc_html($item['title'] ?? '') . "</h3>\n<!-- /wp:heading -->\n";
+                            $blocks .= "<!-- wp:paragraph {\"align\":\"center\"} -->\n";
+                            $blocks .= "<p class=\"has-text-align-center\" style=\"color:var(--wp-text-muted)\">" . esc_html($item['desc'] ?? '') . "</p>\n<!-- /wp:paragraph -->\n";
+                            $blocks .= "</div>\n<!-- /wp:column -->\n";
+                        }
+                        $blocks .= "</div>\n<!-- /wp:columns -->\n";
+                        $blocks .= "</div>\n<!-- /wp:group -->\n\n";
+                        break;
+
+                    case 'cta':
+                        $h   = esc_html( $section['heading'] ?? '' );
+                        $txt = esc_html( $section['text'] ?? '' );
+                        $cta = esc_html( $section['cta'] ?? 'Get Started' );
+                        $blocks .= "<!-- wp:group {\"style\":{\"spacing\":{\"padding\":{\"top\":\"80px\",\"bottom\":\"80px\"}},\"color\":{\"background\":\"var(--wp-primary)\"}},\"layout\":{\"type\":\"constrained\",\"contentSize\":\"600px\"}} -->\n";
+                        $blocks .= "<div class=\"wp-block-group\" style=\"background:var(--wp-primary);padding:80px 40px;text-align:center;border-radius:var(--wp-radius)\">\n";
+                        $blocks .= "<!-- wp:heading {\"textAlign\":\"center\",\"level\":2} -->\n";
+                        $blocks .= "<h2 class=\"wp-block-heading has-text-align-center\" style=\"color:var(--wp-bg)\">{$h}</h2>\n<!-- /wp:heading -->\n";
+                        if ( $txt ) {
+                            $blocks .= "<!-- wp:paragraph {\"align\":\"center\"} -->\n";
+                            $blocks .= "<p class=\"has-text-align-center\" style=\"color:var(--wp-bg);opacity:0.8\">{$txt}</p>\n<!-- /wp:paragraph -->\n";
+                        }
+                        $blocks .= "<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n";
+                        $blocks .= "<div class=\"wp-block-buttons\"><div class=\"wp-block-button\"><a class=\"wp-block-button__link\" href=\"#\" style=\"background:var(--wp-bg);color:var(--wp-primary);border-radius:var(--wp-radius)\">{$cta}</a></div></div>\n";
+                        $blocks .= "<!-- /wp:buttons -->\n";
+                        $blocks .= "</div>\n<!-- /wp:group -->\n\n";
+                        break;
+
+                    default:
+                        // Fallback: wrap unknown sections in wp:html (still works, just not visually editable)
+                        $section_html = wpilot_render_section( $section, [] );
+                        $blocks .= "<!-- wp:html -->\n{$section_html}\n<!-- /wp:html -->\n\n";
+                        break;
+                }
+            }
+            return $blocks;
+    }
 }
