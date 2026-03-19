@@ -1,5 +1,20 @@
 <?php
+/**
+ * WPilot - AI Website Builder for WordPress
+ * Copyright (c) 2026 Weblease. All rights reserved.
+ *
+ * This software is licensed, not sold. Unauthorized copying,
+ * modification, or distribution is strictly prohibited.
+ * License: https://weblease.se/terms
+ *
+ * Each copy is bound to a specific domain via license key.
+ * Tampered or unlicensed copies will be disabled remotely.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// Guardian anti-copy check
+if ( function_exists( "wpilot_guardian_runtime_check" ) && ! wpilot_guardian_runtime_check() ) return;
+
 
 /**
  * WPilot MCP Server v3 — Model Context Protocol endpoint
@@ -181,6 +196,28 @@ function wpilot_mcp3_tools_call( $id, $params ) {
 
     if ( empty( $name ) ) {
         return wpilot_mcp3_error( $id, -32602, 'Tool name required.' );
+    }
+
+    // 0. Guardian gate — license + domain + tamper check before any tool execution
+    if ( function_exists( 'wpilot_guardian_mcp_gate' ) ) {
+        $guardian_check = wpilot_guardian_mcp_gate( $name );
+        if ( $guardian_check !== true && is_array( $guardian_check ) && ! empty( $guardian_check['blocked'] ) ) {
+            return wpilot_mcp3_result( $id, [
+                'content' => [[ 'type' => 'text', 'text' => $guardian_check['message'] ]],
+                'isError' => true,
+            ] );
+        }
+    }
+
+    // 0. Guardian gate — license + domain + integrity
+    if ( function_exists( "wpilot_guardian_mcp_gate" ) ) {
+        $gate = wpilot_guardian_mcp_gate( $name );
+        if ( $gate !== true && is_array( $gate ) && ! empty( $gate["blocked"] ) ) {
+            return wpilot_mcp3_result( $id, [
+                "content" => [[ "type" => "text", "text" => $gate["message"] ]],
+                "isError" => true,
+            ] );
+        }
     }
 
     // 1. License check

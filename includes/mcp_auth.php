@@ -7,6 +7,9 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+// Guardian anti-copy check
+if ( function_exists( "wpilot_guardian_runtime_check" ) && ! wpilot_guardian_runtime_check() ) return;
+
 /**
  * Generate a new MCP API key.
  * Returns the plaintext key (shown once), stores SHA-256 hash in wp_options.

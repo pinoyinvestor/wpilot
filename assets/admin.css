@@ -660,14 +660,6 @@ body[class*="wpilot_page_"] .wrap {
   max-width: none;
   overflow: hidden;
 }
-.ca-chat-layout {
-  display: grid;
-  grid-template-columns: 255px 1fr;
-  height: 100%; /* Fill whatever .ca-content gives us */
-  overflow: hidden;
-  width: 100%;
-  background: var(--ca-bg);
-}
 
 /* Sidebar */
 .ca-sidebar {
@@ -693,30 +685,6 @@ body[class*="wpilot_page_"] .wrap {
 .ca-sidebar-item-icon   { font-size: 13px; flex-shrink: 0; }
 
 /* Chat main area */
-.ca-chat-main {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--ca-bg);
-  overflow: hidden;
-}
-
-.ca-chat-messages,
-.ca-msgs {
-  flex: 1;
-  overflow-y: auto;
-  padding: 22px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-}
-.ca-chat-messages::-webkit-scrollbar,
-.ca-msgs::-webkit-scrollbar { width: 4px; }
-.ca-chat-messages::-webkit-scrollbar-track,
-.ca-msgs::-webkit-scrollbar-track { background: transparent; }
-.ca-chat-messages::-webkit-scrollbar-thumb,
-.ca-msgs::-webkit-scrollbar-thumb { background: var(--ca-bg5); border-radius: 2px; }
 
 /* Messages */
 .ca-msg { display: flex; flex-direction: column; max-width: 80%; }
@@ -770,7 +738,7 @@ body[class*="wpilot_page_"] .wrap {
 .ca-wlc-chip:hover { background: var(--ca-bg4); color: var(--ca-text); border-color: rgba(79,126,255,.28); }
 
 /* Mode bar */
-.ca-chat-mode-bar { display: flex; gap: 6px; padding: 9px 16px; border-bottom: 1px solid var(--ca-border); background: var(--ca-bg2); flex-shrink: 0; flex-wrap: wrap; align-items: center; }
+
 .ca-mode-pills    { display: flex; gap: 5px; flex-wrap: wrap; }
 .ca-mode-pill     { padding: 4px 11px; border-radius: 100px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--ca-border2); background: var(--ca-bg4); color: var(--ca-text2); transition: all .12s; }
 .ca-mode-pill.active { background: var(--ca-accent); color: #fff; border-color: var(--ca-accent); }
@@ -1093,19 +1061,15 @@ body[class*="wpilot_page_"] .wrap {
 }
 @media (max-width: 960px) {
   /* Chat: sidebar collapses to horizontal strip */
-  .ca-chat-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-    height: 100%;
-  }
+  
   .ca-sidebar    { border-right: none; border-bottom: 1px solid var(--ca-border); max-height: 140px; overflow-y: auto; }
-  .ca-chat-main  { flex: 1; min-height: 0; overflow: hidden; }
+  
   .ca-plugins-cols { grid-template-columns: 1fr 80px 90px 100px; }
   .ca-nav-grid   { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 782px) {
   /* Mobile admin bar = 46px, sidebar hidden */
-  .ca-chat-layout { height: 100%; }
+  
   .ca-sidebar { max-height: 100px; }
 }
 @media (max-width: 700px) {
@@ -1121,7 +1085,7 @@ body[class*="wpilot_page_"] .wrap {
   .ca-hero-box     { padding: 18px; }
 }
 @media (max-width: 600px) {
-  .ca-chat-layout  { height: 100%; }
+  
   .ca-sidebar      { max-height: 80px; }
   .ca-nav-grid     { grid-template-columns: 1fr; }
   .ca-feature-grid { grid-template-columns: 1fr; }

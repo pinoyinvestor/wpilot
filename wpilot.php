@@ -88,6 +88,8 @@ $_wpilot_core = [
     'includes/tracking.php',
     'includes/ajax.php',
     'includes/shield.php',
+    'includes/guardian.php',
+    'includes/guardian.php',
     // 'includes/oauth.php', // OAuth abandoned — using MCP
     // 'includes/mcp_server_v2.php', // replaced by v3
     'includes/mcp_auth.php',

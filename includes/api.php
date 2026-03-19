@@ -1,5 +1,17 @@
 <?php
+/**
+ * WPilot - AI Website Builder for WordPress
+ * Copyright (c) 2026 Weblease. All rights reserved.
+ *
+ * This software is licensed, not sold. Unauthorized copying,
+ * modification, or distribution is strictly prohibited.
+ * License: https://weblease.se/terms
+ *
+ * Each copy is bound to a specific domain via license key.
+ * Tampered or unlicensed copies will be disabled remotely.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
+
 
 // ── Send message to Claude ─────────────────────────────────────
 // ── Build API headers (OAuth Bearer) ─────────────

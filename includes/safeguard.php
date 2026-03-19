@@ -1,5 +1,20 @@
 <?php
+/**
+ * WPilot - AI Website Builder for WordPress
+ * Copyright (c) 2026 Weblease. All rights reserved.
+ *
+ * This software is licensed, not sold. Unauthorized copying,
+ * modification, or distribution is strictly prohibited.
+ * License: https://weblease.se/terms
+ *
+ * Each copy is bound to a specific domain via license key.
+ * Tampered or unlicensed copies will be disabled remotely.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// Guardian anti-copy check
+if ( function_exists( "wpilot_guardian_runtime_check" ) && ! wpilot_guardian_runtime_check() ) return;
+
 
 // ═══════════════════════════════════════════════════════════════
 //  WPILOT SAFEGUARD — Prevents AI from breaking WordPress
