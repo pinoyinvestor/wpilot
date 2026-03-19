@@ -1193,8 +1193,8 @@ add_action("wp_footer", function(){
     $pos_css = "' . $position_css . '";
     ?>
     <style>
-    .wpi-chat-bubble{position:fixed;bottom:20px;<?php echo $pos_css; ?>:20px;width:56px;height:56px;border-radius:50%;background:var(--wp-primary,#5B8DEF);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:99999;transition:transform .2s;font-size:24px}
-    .wpi-chat-bubble:hover{transform:scale(1.08)}
+    .wpi-chat-widget{position:fixed;bottom:20px;<?php echo $pos_css; ?>:20px;width:56px;height:56px;border-radius:50%;background:var(--wp-primary,#5B8DEF);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:99999;transition:transform .2s;font-size:24px}
+    .wpi-chat-widget:hover{transform:scale(1.08)}
     .wpi-chat-dot{position:absolute;bottom:2px;right:2px;width:12px;height:12px;border-radius:50%;border:2px solid #fff}
     .wpi-chat-dot--online{background:#10b981}
     .wpi-chat-dot--offline{background:#9ca3af}
@@ -1215,7 +1215,7 @@ add_action("wp_footer", function(){
     .wpi-chat-sent{text-align:center;color:#15803d;padding:20px;font-size:.95em}
     @media(max-width:400px){.wpi-chat-panel{width:calc(100vw - 20px);bottom:80px;<?php echo $pos_css; ?>:10px}}
     </style>
-    <div class="wpi-chat-bubble" id="wpi-chat-toggle">
+    <div class="wpi-chat-widget" id="wpi-chat-toggle">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         <span class="wpi-chat-dot" id="wpi-chat-dot"></span>
     </div>
