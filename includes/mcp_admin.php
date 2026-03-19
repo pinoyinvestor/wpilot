@@ -130,6 +130,13 @@ function wpilot_page_mcp() {
 
     <!-- Built by Weblease -->
 
+    <?php if ( ! is_ssl() ): ?>
+    <div class="ca-alert ca-alert-warn" style="padding:14px 18px;margin-bottom:18px">
+        <span class="ca-alert-icon">⚠️</span>
+        <div><strong>Your site is not using HTTPS.</strong> Claude Code and Claude Desktop require a secure connection. Please enable SSL on your site before connecting.</div>
+    </div>
+    <?php endif; ?>
+
     <!-- Get Claude Code Guide -->
     <div class="ca-card ca-card-glow" style="border-color:rgba(79,126,255,.25)">
         <h3>📥 <?php echo esc_html(wpilot_t('mcp_get_claude_code')); ?></h3>
