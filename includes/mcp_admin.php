@@ -47,7 +47,7 @@ function wpilot_page_mcp() {
     $created     = get_option('wpilot_mcp_key_created', '');
     $site_url    = get_site_url();
     $endpoint    = $site_url . '/wp-json/wpilot/v1/mcp';
-    $tool_count  = count(wpilot_mcp_get_tool_registry());
+    $tool_count  = count(wpilot_mcp_grouped_tool_definitions());
     $total_reqs  = intval($stats['total_requests'] ?? 0);
     $last_req    = $stats['last_request'] ?? null;
 
