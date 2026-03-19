@@ -203,35 +203,52 @@ function wpilot_woo_update_shipping_zone( $params ) {
 // ── Plugin Install ─────────────────────────────────────────────
 function wpilot_plugin_install_from_repo( $params ) {
     $slug = sanitize_text_field( $params['slug'] ?? '' );
-    if ( empty( $slug ) ) return wpilot_err( 'Plugin slug required (e.g. "wordfence", "yoast-seo").' );
+    if ( empty( $slug ) ) return wpilot_err( 'Plugin slug required.' );
+    if ( ! preg_match( '/^[a-z0-9\-]+$/', $slug ) ) return wpilot_err( 'Invalid slug.' );
 
-    // Security: only allow WordPress.org plugins
-    if ( ! preg_match( '/^[a-z0-9\-]+$/', $slug ) ) return wpilot_err( 'Invalid plugin slug.' );
+    // Set admin user for permissions
+    $admins = get_users(['role' => 'administrator', 'number' => 1, 'fields' => 'ID']);
+    if (!empty($admins)) wp_set_current_user($admins[0]);
 
-    include_once ABSPATH . 'wp-admin/includes/plugin-install.php';
-    include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
-    include_once ABSPATH . 'wp-admin/includes/file.php';
-
-    $api = plugins_api( 'plugin_information', [ 'slug' => $slug, 'fields' => [ 'sections' => false ] ] );
-    if ( is_wp_error( $api ) ) return wpilot_err( "Plugin '{$slug}' not found on WordPress.org." );
-
-    $upgrader = new Plugin_Upgrader( new WP_Ajax_Upgrader_Skin() );
-    $result = $upgrader->install( $api->download_link );
-
-    if ( is_wp_error( $result ) ) return wpilot_err( 'Install failed: ' . $result->get_error_message() );
-    if ( ! $result ) return wpilot_err( 'Install failed.' );
-
-    // Activate if requested
-    if ( ! empty( $params['activate'] ) ) {
-        $plugin_file = $upgrader->plugin_info();
-        if ( $plugin_file ) activate_plugin( $plugin_file );
+    // Check if already installed
+    $all = get_plugins();
+    foreach ($all as $pfile => $data) {
+        if (strpos($pfile, $slug . '/') === 0 || strpos($pfile, $slug . '.php') === 0) {
+            if (!empty($params['activate'])) activate_plugin($pfile);
+            return wpilot_ok("Plugin '{$data['Name']}' already installed" . (!empty($params['activate']) ? ' and activated' : '') . '.', ['name' => $data['Name']]);
+        }
     }
 
-    return wpilot_ok( "Plugin '{$api->name}' installed" . ( ! empty( $params['activate'] ) ? ' and activated' : '' ) . '.', [
-        'name'    => $api->name,
-        'version' => $api->version,
-        'slug'    => $slug,
-    ] );
+    // Get info from WordPress.org
+    include_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+    include_once ABSPATH . 'wp-admin/includes/file.php';
+    $api = plugins_api('plugin_information', ['slug' => $slug, 'fields' => ['sections' => false]]);
+    if (is_wp_error($api)) return wpilot_err("Plugin '{$slug}' not found on WordPress.org.");
+
+    // Download
+    $tmp = download_url($api->download_link);
+    if (is_wp_error($tmp)) return wpilot_err('Download failed: ' . $tmp->get_error_message());
+
+    // Unzip to plugins directory
+    WP_Filesystem();
+    $result = unzip_file($tmp, WP_PLUGIN_DIR);
+    @unlink($tmp);
+    if (is_wp_error($result)) return wpilot_err('Unzip failed: ' . $result->get_error_message());
+
+    // Find and activate
+    if (!empty($params['activate'])) {
+        // Re-scan plugins
+        wp_cache_delete('plugins', 'plugins');
+        $all = get_plugins();
+        foreach ($all as $pfile => $data) {
+            if (strpos($pfile, $slug . '/') === 0 || strpos($pfile, $slug . '.php') === 0) {
+                activate_plugin($pfile);
+                break;
+            }
+        }
+    }
+
+    return wpilot_ok("Plugin '{$api->name}' v{$api->version} installed" . (!empty($params['activate']) ? ' and activated' : '') . '.', ['name' => $api->name, 'version' => $api->version, 'slug' => $slug]);
 }
 
 // ── Cache/Performance Tools ────────────────────────────────────

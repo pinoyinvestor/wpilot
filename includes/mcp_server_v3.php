@@ -413,7 +413,8 @@ function wpilot_mcp3_tools_call( $id, $params ) {
         'deactivate', 'update', 'create_admin', 'bulk_delete' ];
     $tool_action = $args['action'] ?? '';
     if ( in_array( $name, $destructive_tools, true ) && in_array( $tool_action, $destructive_actions, true ) ) {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        $is_mcp_admin = ( $wpilot_current_key && ($wpilot_current_key['role'] ?? '') === 'admin' );
+        if ( ! $is_mcp_admin && ! current_user_can( 'manage_options' ) ) {
             return wpilot_mcp3_result( $id, [
                 'content' => [[ 'type' => 'text', 'text' => 'This operation requires WordPress administrator privileges.' ]],
                 'isError' => true,

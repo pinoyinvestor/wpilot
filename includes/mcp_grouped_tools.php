@@ -881,11 +881,32 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
     // (We need to check after the route map resolves the action)
 
     // Direct handlers for power tools
+    // Direct handler for plugins tool (needs admin user for install/activate)
+    if ($tool_name === 'plugins') {
+        $plugin_action = $args['action'] ?? '';
+        if (in_array($plugin_action, ['install'], true)) {
+            $admins = get_users(['role' => 'administrator', 'number' => 1, 'fields' => 'ID']);
+            if (!empty($admins)) wp_set_current_user($admins[0]);
+            if (function_exists('wpilot_plugin_install_from_repo')) {
+                return wpilot_plugin_install_from_repo($args);
+            }
+        }
+    }
     if ($tool_name === 'wordpress' && function_exists('wpilot_tool_wordpress')) {
         return wpilot_tool_wordpress($args);
     }
     if ($tool_name === 'woocommerce' && function_exists('wpilot_tool_woocommerce')) {
         return wpilot_tool_woocommerce($args);
+    }
+
+    // Direct handler for plugin install/activate (needs admin user)
+    if ($tool_name === 'plugins') {
+        $pa = $args['action'] ?? '';
+        if (in_array($pa, ['install','activate','deactivate','delete'], true) && function_exists('wpilot_plugin_install_from_repo')) {
+            // Set admin user for filesystem access
+            $admins = get_users(['role' => 'administrator', 'number' => 1, 'fields' => 'ID']);
+            if (!empty($admins)) wp_set_current_user($admins[0]);
+        }
     }
 
     // Direct handler for debug tool
