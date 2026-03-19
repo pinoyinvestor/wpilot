@@ -276,7 +276,7 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
     if ( strpos( $hook, CA_SLUG ) !== false ) {
         $sfx = wpilot_asset_suffix();
         wp_enqueue_style(  'aib-admin', CA_URL . "assets/admin{$sfx}.css", [], CA_VERSION );
-        wp_enqueue_script( 'aib-admin', CA_URL . "assets/admin{$sfx}.js",  ['jquery','aib-bubble'], CA_VERSION, true );
+        wp_enqueue_script( 'aib-admin', CA_URL . "assets/admin{$sfx}.js",  ['jquery'], CA_VERSION, true );
         // ── Localize CA object for admin.js ──────────────────
         wp_localize_script( 'aib-admin', 'CA', [
             'ajax_url'    => admin_url('admin-ajax.php'),
