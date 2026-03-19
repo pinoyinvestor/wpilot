@@ -154,7 +154,7 @@ add_action( 'admin_footer', function() {
 
     <script>
     (function($){
-      var nonce = (typeof CA !== 'undefined') ? CA.nonce : '';
+      var nonce = '<?php echo wp_create_nonce("ca_nonce"); ?>';
       var step = <?= $step ?>;
 
       function go(n) {
