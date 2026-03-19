@@ -57,7 +57,7 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
 if ( ! defined( 'CA_VERSION' ) ) define( "CA_VERSION", "3.0.0" );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
-define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
+define( 'CA_FREE_LIMIT',        10   );  // Free prompts before upgrade required
 define( 'CA_LIFETIME_SLOTS',   20   );  // First 20 buyers get lifetime access
 define( 'CA_PRICE_PRO',        9    );  // USD/month — Pro
 define( 'CA_PRICE_TEAM',       25   );  // USD/month — Team (3 licenses)
