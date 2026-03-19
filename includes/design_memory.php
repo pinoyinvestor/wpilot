@@ -69,9 +69,9 @@ function wpilot_save_design_profile( $params ) {
 
     // Also store in Brain preferences for cross-reference
     if ( function_exists( 'wpilot_brain_learn_preference' ) ) {
-        if ( ! empty( $params['style'] ) ) wpilot_brain_learn_preference( 'design_style', $params['style'] );
-        if ( ! empty( $params['primary_color'] ) ) wpilot_brain_learn_preference( 'primary_color', $params['primary_color'] );
-        if ( ! empty( $params['heading_font'] ) ) wpilot_brain_learn_preference( 'heading_font', $params['heading_font'] );
+        // Removed: if ( ! empty( $params['style'] ) ) wpilot_brain_learn_preference( 'design_style', $params['style'] ); (module deleted)
+        // Removed: if ( ! empty( $params['primary_color'] ) ) wpilot_brain_learn_preference( 'primary_color', $params['primary_color'] ); (module deleted)
+        // Removed: if ( ! empty( $params['heading_font'] ) ) wpilot_brain_learn_preference( 'heading_font', $params['heading_font'] ); (module deleted)
     }
 
     // Build readable summary

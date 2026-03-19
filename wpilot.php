@@ -147,7 +147,6 @@ function wpilot_register_lazy_modules() {
         'blueprint'      => ['wpilot_build_site_snapshot', 'wpilot_get_blueprint'],
         'screenshot'     => ['screenshot', 'take_screenshot', 'analyze_design', 'visual_review', 'design_review', 'check_visual_bugs', 'visual_debug', 'compare_before_after', 'screenshot_before', 'screenshot_history', 'responsive_check', 'multi_device_screenshot'],
         'templates'      => ['list_templates', 'apply_template', 'use_template'],
-        'brain'          => ['wpilot_brain_', 'wpilot_smart_answer'],
         'weblease_ai'     => ['wpilot_check_license'],
         'data_prep'      => ['wpilot_export_training', 'wpilot_classify_intent', 'training_stats', 'export_training_data'],
         'site_types'     => ['wpilot_detect_site_type', 'wpilot_default_pages'],
@@ -246,7 +245,7 @@ register_activation_hook( __FILE__, function () {
     add_option( 'ca_onboarded',           'no' );
     add_option( 'wpi_data_consent',        'no' );   // GDPR: default to no consent
     wpilot_backup_create_table();
-    wpilot_brain_install();
+    // Removed: wpilot_brain_install (module deleted)
     wpilot_create_sessions_table();
     if ( function_exists("wpilot_mcp_create_audit_table") ) wpilot_mcp_create_audit_table();
     // Track activation on weblease.se

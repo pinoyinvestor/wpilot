@@ -2544,7 +2544,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             ];
             $results = [];
             foreach ($tests as $test) {
-                $r = wpilot_smart_answer($test['msg'], 'chat', wpilot_build_context('general'), []);
+                $r = function_exists('wpilot_smart_answer') ? wpilot_smart_answer($test['msg'], 'chat', wpilot_build_context('general'), []) : null;
                 $resp = is_array($r) ? $r['text'] : (is_wp_error($r) ? $r->get_error_message() : $r);
                 $actions = wpilot_parse_actions($resp);
                 if (empty($actions) && function_exists('wpilot_parse_compact_actions')) $actions = wpilot_parse_compact_actions($resp);

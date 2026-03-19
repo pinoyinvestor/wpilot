@@ -36,7 +36,7 @@ function wpilot_smart_answer( $message, $mode = 'chat', $context = [], $history 
 
     // ── Route 1: Local Brain (site-specific, instant) ─────────
     if ( get_option('wpi_brain_active','yes') === 'yes' ) {
-        $memory = wpilot_brain_recall( $message );
+        $memory = function_exists('wpilot_brain_recall') ? wpilot_brain_recall( $message ) : null;
         if ( $memory && $memory->match_score >= WPI_CONFIDENCE_MIN ) {
             wpilot_log_route( 'brain', $memory->match_score );
             return [
@@ -58,7 +58,7 @@ function wpilot_smart_answer( $message, $mode = 'chat', $context = [], $history 
             wpilot_log_route( 'webleas', $wai['confidence'] );
 
             // Store in local Brain too so it improves locally
-            wpilot_brain_learn_from_exchange( $message, $wai['text'], $mode, false );
+            // Removed: wpilot_brain_learn_from_exchange (module deleted)
 
             return [
                 'text'       => $wai['text'],
@@ -83,7 +83,7 @@ function wpilot_smart_answer( $message, $mode = 'chat', $context = [], $history 
     $topic = wpilot_classify_topic( $message . ' ' . $reply );
 
     // Store in Brain for future use
-    $memory_id = wpilot_brain_learn_from_exchange( $message, $reply, $mode, false );
+    $memory_id = function_exists('wpilot_brain_learn_from_exchange') ? wpilot_brain_learn_from_exchange( $message, $reply, $mode, false ) : null;
 
     // Queue for WPilot AI training
     wpilot_collect_exchange( $message, $reply, $mode, 3 );

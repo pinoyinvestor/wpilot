@@ -468,7 +468,7 @@ function wpilot_system_prompt( $mode = 'chat', $message = '' ) {
                 $server_prompt .= wpilot_site_state_block( class_exists( 'WooCommerce' ) );
                 if ( function_exists( 'wpilot_business_context_block' ) ) $server_prompt .= wpilot_business_context_block();
                 if ( function_exists( 'wpilot_design_context_block' ) ) $server_prompt .= wpilot_design_context_block();
-                $brain_ctx = wpilot_brain_context_block();
+                $brain_ctx = function_exists("wpilot_brain_context_block") ? wpilot_brain_context_block() : "";
                 if ( $brain_ctx ) $server_prompt .= $brain_ctx;
                 $custom = trim( get_option( 'ca_custom_instructions', '' ) );
                 if ( $custom ) $server_prompt .= "
@@ -641,7 +641,7 @@ COT;
     }
 
     // ── 7. BRAIN MEMORY ───────────────────────────────────────
-    $brain_ctx = wpilot_brain_context_block();
+    $brain_ctx = function_exists("wpilot_brain_context_block") ? wpilot_brain_context_block() : "";
     if ( $brain_ctx ) $prompt .= $brain_ctx;
 
     // ── 7. CUSTOM INSTRUCTIONS ────────────────────────────────

@@ -243,7 +243,7 @@ function wpilot_update_tool_chain($session_id, $tool, $is_error, $duration_ms, $
  * Flush tool usage data
  * Runs every 2 hours via WP cron.
  */
-add_action('wpi_flush_tool_queue', 'wpilot_flush_tool_queue');
+if (function_exists('wpilot_flush_tool_queue')) add_action('wpi_flush_tool_queue', 'wpilot_flush_tool_queue');
 
 function wpilot_flush_tool_queue() {
     // Consent required

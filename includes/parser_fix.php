@@ -272,7 +272,7 @@ function wpilot_auto_execute_actions($actions) {
 
         // Collect usage data
         if (function_exists('wpilot_collect_tool_usage')) {
-            wpilot_collect_tool_usage($tool, $params, empty($r['success']), $_tool_ms, 'chat', $r['message'] ?? '');
+            // Removed: wpilot_collect_tool_usage (module deleted)
         }
 
         $entry = [

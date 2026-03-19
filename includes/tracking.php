@@ -65,7 +65,7 @@ function wpilot_track_heartbeat() {
 
     $brain_count = 0;
     if ( function_exists('wpilot_brain_stats') ) {
-        $stats = wpilot_brain_stats();
+        $stats = function_exists('wpilot_brain_stats') ? wpilot_brain_stats() : null;
         $brain_count = $stats['total'] ?? 0;
     }
 

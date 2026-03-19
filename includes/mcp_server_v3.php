@@ -346,7 +346,7 @@ function wpilot_mcp3_tools_call( $id, $params ) {
 
     // 6. Training data collection (existing system)
     if ( function_exists( 'wpilot_collect_tool_usage' ) ) {
-        wpilot_collect_tool_usage( $name, $args, ! $success, $duration_ms, 'mcp', $success ? '' : $message );
+        // Removed: wpilot_collect_tool_usage (module deleted)
     }
 
     return wpilot_mcp3_result( $id, [
