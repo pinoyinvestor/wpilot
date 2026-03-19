@@ -6,331 +6,268 @@
  * This software is licensed, not sold. Unauthorized copying,
  * modification, or distribution is strictly prohibited.
  * License: https://weblease.se/terms
- *
- * Each copy is bound to a specific domain via license key.
- * Tampered or unlicensed copies will be disabled remotely.
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-
-function wpilot_onboarding_active() {
-    return get_option('wpi_onboarding_done','no') !== 'yes';
-}
-
 // Built by Weblease
 
-add_action('admin_footer', function() {
-    if ( !current_user_can('manage_options') ) return;
-    if ( !wpilot_onboarding_active() ) return;
-    if ( strpos($_GET['page'] ?? '', CA_SLUG) === false ) return;
-    $step = (int) get_option('wpi_onboarding_step', 1);
-    $site = get_bloginfo('name');
-    $url  = get_site_url();
-    $saved_email = get_option('wpilot_user_email', '');
-    $server_check = function_exists('wpilot_server_can_install') ? wpilot_server_can_install() : ['exec'=>false];
-    $has_claude = !empty($server_check['claude_code']);
-    $has_node = !empty($server_check['node']);
-    $can_exec = !empty($server_check['exec']);
+function wpilot_onboarding_active() {
+    return get_option( 'wpi_onboarding_done', 'no' ) !== 'yes';
+}
+
+// ── Redirect to WPilot on first activation ─────────────────────
+add_action( 'admin_init', function() {
+    if ( get_transient( 'wpilot_activation_redirect' ) ) {
+        delete_transient( 'wpilot_activation_redirect' );
+        if ( ! wp_doing_ajax() && ! isset( $_GET['activate-multi'] ) ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=' . CA_SLUG ) );
+            exit;
+        }
+    }
+} );
+
+// ── Onboarding wizard ──────────────────────────────────────────
+add_action( 'admin_footer', function() {
+    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! wpilot_onboarding_active() ) return;
+    if ( strpos( $_GET['page'] ?? '', CA_SLUG ) === false ) return;
+
+    $step = (int) get_option( 'wpi_onboarding_step', 1 );
+    $saved_email = get_option( 'wpilot_user_email', '' );
+    $site_url = get_site_url();
+    $endpoint = $site_url . '/wp-json/wpilot/v1/mcp';
     ?>
 
     <style>
-    .aib-wiz-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
-    .aib-wiz-box{background:#07090F;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:36px 40px;max-width:540px;width:calc(100% - 32px);position:relative;box-shadow:0 24px 80px rgba(0,0,0,.6)}
-    .aib-wiz-progress{display:flex;align-items:center;justify-content:center;margin-bottom:28px;gap:0}
-    .aib-wiz-dot{width:28px;height:28px;border-radius:50%;background:#0F1320;border:2px solid #1A2035;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#2A3550;transition:all .3s}
-    .aib-wiz-dot.active{background:#4F7EFF;border-color:#4F7EFF;color:#fff;box-shadow:0 0 12px rgba(79,126,255,.4)}
-    .aib-wiz-dot.done{background:#0FBD81;border-color:#0FBD81;color:#fff}
-    .aib-wiz-line{width:28px;height:2px;background:#1A2035;transition:background .3s}
-    .aib-wiz-line.active{background:#0FBD81}
-    .aib-wiz-step{display:none}.aib-wiz-step.active{display:block;animation:aibFadeIn .25s ease}
-    @keyframes aibFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-    .aib-wiz-icon{margin-bottom:12px}
-    .aib-wiz-box h2{font-size:22px;font-weight:800;color:#EEF2FF;margin:0 0 8px}
-    .aib-wiz-box p{font-size:13.5px;color:#5E6E91;margin:0 0 18px;line-height:1.65}
-    .aib-wiz-features{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:22px}
-    .aib-wiz-feat{display:flex;gap:10px;align-items:flex-start;background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:9px;padding:12px}
-    .aib-wiz-feat span{font-size:18px;flex-shrink:0}
-    .aib-wiz-feat strong{font-size:12.5px;color:#C8D0E8;display:block;margin-bottom:2px}
-    .aib-wiz-feat small{font-size:11.5px;color:#3A4A68}
-    .aib-wiz-btn{width:100%;padding:13px;background:linear-gradient(135deg,#4F7EFF,#6B4FFC);color:#fff;font-weight:800;font-size:14.5px;border:none;border-radius:10px;cursor:pointer;transition:opacity .2s;font-family:inherit}
-    .aib-wiz-btn:hover{opacity:.88}
-    .aib-wiz-btn:disabled{opacity:.4;cursor:not-allowed}
-    .aib-wiz-btn-back{width:100%;padding:10px;background:transparent;border:1px solid rgba(255,255,255,.08);color:#5E6E91;font-weight:600;font-size:13px;border-radius:10px;cursor:pointer;margin-top:8px;font-family:inherit}
-    .aib-wiz-btn-back:hover{border-color:rgba(255,255,255,.15);color:#8898B9}
-    .aib-wiz-steps-box{background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px 16px;margin-bottom:14px}
-    .aib-wiz-steps-title{font-size:10.5px;font-weight:800;color:#2A3550;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px}
-    .aib-wiz-step-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px;color:#5E6E91;border-bottom:1px solid rgba(255,255,255,.04)}
-    .aib-wiz-step-row:last-child{border-bottom:none}
-    .aib-wiz-label{font-size:11.5px;font-weight:700;color:#2A3550;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
-    .aib-wiz-input{width:100%;background:#0B0E18;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px 14px;color:#EEF2FF;font-size:13.5px;font-family:monospace;box-sizing:border-box;outline:none}
-    .aib-wiz-input:focus{border-color:#4F7EFF;box-shadow:0 0 0 3px rgba(79,126,255,.1)}
-    .aib-wiz-tips{background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:16px;margin-bottom:16px;display:flex;flex-direction:column;gap:9px;font-size:13px;color:#5E6E91}
-    .aib-wiz-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#2A3550;font-size:18px;cursor:pointer}
-    .aib-wiz-close:hover{color:#5E6E91}
-    @media(max-width:480px){
-      .aib-wiz-box{padding:24px 20px}
-      .aib-wiz-features{grid-template-columns:1fr}
-      .aib-wiz-box h2{font-size:18px}
-    }
+    .wpi-onb{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+    .wpi-onb-box{background:#07090F;border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:40px 44px;max-width:520px;width:calc(100% - 32px);position:relative;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+    .wpi-onb-step{display:none}.wpi-onb-step.active{display:block;animation:wpiIn .3s ease}
+    @keyframes wpiIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .wpi-onb h2{font-size:24px;font-weight:800;color:#EEF2FF;margin:0 0 10px}
+    .wpi-onb p{font-size:14px;color:#5E6E91;margin:0 0 20px;line-height:1.7}
+    .wpi-onb-btn{width:100%;padding:14px;background:linear-gradient(135deg,#4F7EFF,#6B4FFC);color:#fff;font-weight:700;font-size:15px;border:none;border-radius:12px;cursor:pointer;font-family:inherit;transition:opacity .2s}
+    .wpi-onb-btn:hover{opacity:.9}
+    .wpi-onb-btn:disabled{opacity:.4;cursor:not-allowed}
+    .wpi-onb-btn-ghost{width:100%;padding:11px;background:transparent;border:1px solid rgba(255,255,255,.1);color:#5E6E91;font-weight:600;font-size:13px;border-radius:12px;cursor:pointer;margin-top:8px;font-family:inherit}
+    .wpi-onb-btn-ghost:hover{border-color:rgba(255,255,255,.2);color:#8898B9}
+    .wpi-onb-input{width:100%;background:#0B0E18;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 16px;color:#EEF2FF;font-size:14px;box-sizing:border-box;outline:none;font-family:inherit}
+    .wpi-onb-input:focus{border-color:#4F7EFF;box-shadow:0 0 0 3px rgba(79,126,255,.15)}
+    .wpi-onb-label{font-size:12px;font-weight:700;color:#3A4A68;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+    .wpi-onb-msg{margin-top:10px;font-size:13px;text-align:center;min-height:20px}
+    .wpi-onb-close{position:absolute;top:16px;right:18px;background:none;border:none;color:#2A3550;font-size:20px;cursor:pointer;padding:4px}
+    .wpi-onb-close:hover{color:#5E6E91}
+    .wpi-onb-dots{display:flex;justify-content:center;gap:8px;margin-bottom:24px}
+    .wpi-onb-dot{width:8px;height:8px;border-radius:50%;background:#1A2035;transition:all .3s}
+    .wpi-onb-dot.active{background:#4F7EFF;width:24px;border-radius:4px}
+    .wpi-onb-card{background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:16px;margin-bottom:12px}
+    .wpi-onb-code{background:#050608;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#93B4FF;word-break:break-all;position:relative;line-height:1.6}
+    .wpi-onb-copy{position:absolute;right:8px;top:8px;padding:4px 12px;background:rgba(79,126,255,.15);border:none;border-radius:6px;color:#4F7EFF;font-size:11px;font-weight:600;cursor:pointer}
+    .wpi-onb-copy:hover{background:rgba(79,126,255,.25)}
+    @media(max-width:480px){.wpi-onb-box{padding:28px 24px}.wpi-onb h2{font-size:20px}}
     </style>
 
-    <div id="aibWizard" class="aib-wiz-overlay">
-      <div class="aib-wiz-box">
-
-        <div class="aib-wiz-progress">
-          <?php for($i=1;$i<=5;$i++): ?>
-          <div class="aib-wiz-dot <?= $i<=$step?'active':'' ?> <?= $i<$step?'done':'' ?>">
-            <?= $i < $step ? '&#10003;' : $i ?>
-          </div>
-          <?php if($i<5): ?><div class="aib-wiz-line <?= $i<$step?'active':'' ?>"></div><?php endif; ?>
+    <div class="wpi-onb" id="wpiOnboard">
+      <div class="wpi-onb-box">
+        <div class="wpi-onb-dots">
+          <?php for($i=1;$i<=3;$i++): ?>
+          <div class="wpi-onb-dot <?= $i<=$step?'active':'' ?>" data-dot="<?=$i?>"></div>
           <?php endfor; ?>
         </div>
 
-        <!-- Step 1: Welcome -->
-        <div class="aib-wiz-step <?= $step===1?'active':'' ?>" data-step="1">
-          <div class="aib-wiz-icon" style="font-size:48px">&#9889;</div>
+        <!-- STEP 1: Welcome -->
+        <div class="wpi-onb-step <?= $step===1?'active':'' ?>" data-step="1">
+          <div style="font-size:48px;margin-bottom:16px">&#9889;</div>
           <h2>Welcome to WPilot</h2>
-          <p>Your AI-powered WordPress assistant. Save hours on design, SEO, WooCommerce, and content — no coding needed.</p>
-          <div class="aib-wiz-features">
-            <?php foreach([
-              ['&#128640;','Save hours','Design pages, fix SEO, set up WooCommerce in minutes'],
-              ['&#128172;','Natural language','Just describe what you want — the AI builds it'],
-              ['&#129504;','Learns your site','Remembers your style, brand colors, and preferences'],
-              ['&#128274;','Always safe','Every change is reversible with one-click undo'],
-            ] as [$i,$t,$d]): ?>
-            <div class="aib-wiz-feat">
-              <span><?=$i?></span>
-              <div><strong><?=esc_html($t)?></strong><br><small><?=esc_html($d)?></small></div>
+          <p>WPilot lets you build and manage your entire WordPress site using AI.<br><br>
+          Just talk to Claude — describe what you want, and it builds it. Pages, design, SEO, WooCommerce, everything.</p>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
+            <div class="wpi-onb-card" style="text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">&#128172;</div>
+              <div style="font-size:12px;color:#C8D0E8;font-weight:600">Just talk</div>
+              <div style="font-size:11px;color:#3A4A68;margin-top:2px">Describe what you want</div>
             </div>
-            <?php endforeach; ?>
+            <div class="wpi-onb-card" style="text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">&#128274;</div>
+              <div style="font-size:12px;color:#C8D0E8;font-weight:600">Always safe</div>
+              <div style="font-size:11px;color:#3A4A68;margin-top:2px">Every change is undoable</div>
+            </div>
           </div>
-          <button class="aib-wiz-btn" data-next="2">Get started</button>
+
+          <button class="wpi-onb-btn" id="wpiNext1">Get started</button>
         </div>
 
-        <!-- Step 2: Email -->
-        <div class="aib-wiz-step <?= $step===2?'active':'' ?>" data-step="2">
-          <div class="aib-wiz-icon" style="font-size:48px">&#128231;</div>
-          <h2>Your email</h2>
-          <p>We'll use this for your free WPilot license, support, and important updates.</p>
-          <label class="aib-wiz-label">Email address</label>
-          <input type="email" id="aibUserEmail" placeholder="you@example.com" value="<?= esc_attr($saved_email) ?>" class="aib-wiz-input">
-          <button class="aib-wiz-btn" id="aibConnectEmail" style="margin-top:12px">Continue</button>
-          <button class="aib-wiz-btn-back" data-back="1">Back</button>
-          <div id="aibEmailMsg" style="margin-top:10px;font-size:13px;min-height:20px;text-align:center"></div>
+        <!-- STEP 2: Email + License -->
+        <div class="wpi-onb-step <?= $step===2?'active':'' ?>" data-step="2">
+          <div style="font-size:48px;margin-bottom:16px">&#128231;</div>
+          <h2>Create your free account</h2>
+          <p>Enter your email to get a free WPilot license with 20 AI prompts. No credit card needed.</p>
+
+          <label class="wpi-onb-label">Email</label>
+          <input type="email" id="wpiEmail" class="wpi-onb-input" placeholder="you@example.com" value="<?= esc_attr($saved_email) ?>">
+          <button class="wpi-onb-btn" id="wpiSaveEmail" style="margin-top:14px">Create free account</button>
+          <button class="wpi-onb-btn-ghost" id="wpiBack1">Back</button>
+          <div class="wpi-onb-msg" id="wpiEmailMsg"></div>
         </div>
 
-        <!-- Step 3: Connect Claude -->
-        <div class="aib-wiz-step <?= $step===3?'active':'' ?>" data-step="3">
-          <div class="aib-wiz-icon" style="font-size:48px">&#128279;</div>
-          <h2>Connect Claude AI</h2>
-          <p>WPilot uses Claude AI from Anthropic. You'll need an API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#4F7EFF">console.anthropic.com</a>.</p>
+        <!-- STEP 3: Connect + Done -->
+        <div class="wpi-onb-step <?= $step===3?'active':'' ?>" data-step="3">
+          <div style="font-size:48px;margin-bottom:16px">&#127881;</div>
+          <h2>Connect Claude</h2>
+          <p>WPilot works with <strong>Claude Code</strong> or <strong>Claude Desktop</strong>. Pick one and follow the steps.</p>
 
-          <?php if ($has_claude): ?>
-          <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
-            <div style="font-size:24px;margin-bottom:8px">&#10003;</div>
-            <strong style="color:#10B981">Claude is already set up!</strong>
-            <p style="font-size:12px;color:#5E6E91;margin-top:6px">Your server has Claude Code installed. You're good to go.</p>
+          <div class="wpi-onb-card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+              <span style="font-size:20px">&#128187;</span>
+              <strong style="font-size:14px;color:#EEF2FF">Option A: Claude Code (terminal)</strong>
+            </div>
+            <p style="font-size:12px;color:#5E6E91;margin:0 0 10px">Install Claude Code, then run this command:</p>
+            <div class="wpi-onb-code" id="wpiTermCmd">
+              claude mcp add --transport http wpilot <?= esc_html($endpoint) ?>
+            </div>
+            <p style="font-size:11px;color:#3A4A68;margin:8px 0 0">Don't have Claude Code? Run: <code style="color:#93B4FF">npm install -g @anthropic-ai/claude-code</code></p>
           </div>
-          <button class="aib-wiz-btn" id="aibSkipToConsent">Continue</button>
-          <?php elseif ($can_exec && $has_node): ?>
-          <div style="background:rgba(79,126,255,.08);border:1px solid rgba(79,126,255,.15);border-radius:10px;padding:16px;margin-bottom:16px">
-            <strong style="color:#4F7EFF">Automatic setup available</strong>
-            <p style="font-size:12px;color:#5E6E91;margin-top:6px">Your server supports automatic installation. We'll set everything up for you.</p>
-          </div>
-          <button class="aib-wiz-btn" id="aibAutoInstall">Set up automatically</button>
-          <div id="aibInstallStatus" style="margin-top:12px;font-size:13px;text-align:center;min-height:20px"></div>
-          <div style="margin-top:12px;text-align:center">
-            <button class="aib-wiz-btn-back" id="aibUseApiKey">Or enter an API key manually</button>
-          </div>
-          <?php elseif ($can_exec): ?>
-          <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:16px;margin-bottom:16px">
-            <strong style="color:#FCD34D">Node.js needed</strong>
-            <p style="font-size:12px;color:#5E6E91;margin-top:6px">We'll install everything for you. This takes about 1 minute.</p>
-          </div>
-          <button class="aib-wiz-btn" id="aibInstallAll">Install everything automatically</button>
-          <div id="aibInstallStatus" style="margin-top:12px;font-size:13px;text-align:center;min-height:20px"></div>
-          <?php else: ?>
-          <div style="margin-bottom:16px">
-            <p style="font-size:13px;color:#5E6E91">Get your API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#4F7EFF">console.anthropic.com</a>, then paste it below.</p>
-          </div>
-          <label class="aib-wiz-label">API Key</label>
-          <input type="password" id="aibApiKeyInput" placeholder="sk-ant-api03-..." class="aib-wiz-input" autocomplete="off">
-          <button class="aib-wiz-btn" id="aibTestKey" style="margin-top:12px">Connect</button>
-          <div id="aibKeyMsg" style="margin-top:10px;font-size:13px;min-height:20px;text-align:center"></div>
-          <?php endif; ?>
 
-          <div id="aibApiKeyFallback" style="display:none;margin-top:16px">
-            <label class="aib-wiz-label">API Key</label>
-            <input type="password" id="aibApiKeyInput2" placeholder="sk-ant-api03-..." class="aib-wiz-input" autocomplete="off">
-            <button class="aib-wiz-btn" id="aibTestKey2" style="margin-top:12px">Connect</button>
-            <div id="aibKeyMsg2" style="margin-top:10px;font-size:13px;min-height:20px;text-align:center"></div>
+          <div class="wpi-onb-card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+              <span style="font-size:20px">&#128421;</span>
+              <strong style="font-size:14px;color:#EEF2FF">Option B: Claude Desktop</strong>
+            </div>
+            <ol style="font-size:12px;color:#5E6E91;margin:0;padding-left:20px;line-height:2">
+              <li>Download <a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> (free)</li>
+              <li>Open Settings &#8594; Connectors &#8594; Add custom connector</li>
+              <li>Name: <strong style="color:#EEF2FF">WPilot</strong></li>
+              <li>URL: <strong style="color:#93B4FF;word-break:break-all"><?= esc_html($endpoint) ?></strong></li>
+            </ol>
           </div>
-          <button class="aib-wiz-btn-back" data-back="2">Back</button>
+
+          <p style="font-size:12px;color:#3A4A68;text-align:center;margin:16px 0 8px">
+            Need an API key? Go to <strong>WPilot &#8594; Claude Code</strong> after setup.
+          </p>
+
+          <button class="wpi-onb-btn" id="wpiFinish">Done — go to dashboard</button>
+          <button class="wpi-onb-btn-ghost" id="wpiBack2">Back</button>
         </div>
 
-        <!-- Step 4: GDPR -->
-        <div class="aib-wiz-step <?= $step===4?'active':'' ?>" data-step="4">
-          <div class="aib-wiz-icon" style="font-size:48px">&#128737;</div>
-          <h2>Privacy &amp; data</h2>
-          <p>Help improve WPilot by sharing anonymous usage data. Completely optional — the plugin works the same either way.</p>
-
-          <div class="aib-wiz-steps-box" style="margin-bottom:10px">
-            <div class="aib-wiz-steps-title">Shared (if you agree):</div>
-            <div class="aib-wiz-step-row"><span style="color:#0FBD81">&#10003;</span> <span>Which tools are used (e.g. "page edited", "CSS changed")</span></div>
-            <div class="aib-wiz-step-row"><span style="color:#0FBD81">&#10003;</span> <span>WordPress &amp; PHP version</span></div>
-          </div>
-          <div class="aib-wiz-steps-box" style="margin-bottom:16px">
-            <div class="aib-wiz-steps-title">Never shared:</div>
-            <div class="aib-wiz-step-row"><span style="color:#EF4444">&#10007;</span> <span>Your site URL, email, page content, or API keys</span></div>
-          </div>
-
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="aib-wiz-btn" id="aibConsentYes">I agree — help improve WPilot</button>
-            <button class="aib-wiz-btn-back" id="aibConsentSkip">No thanks, skip</button>
-          </div>
-          <button class="aib-wiz-btn-back" data-back="3" style="margin-top:4px">Back</button>
-        </div>
-
-        <!-- Step 5: Done -->
-        <div class="aib-wiz-step <?= $step===5?'active':'' ?>" data-step="5">
-          <div class="aib-wiz-icon" style="font-size:48px">&#127881;</div>
-          <h2>You're all set!</h2>
-          <p>WPilot is ready. Connect it to Claude Code or any MCP-compatible AI client to start building.</p>
-          <div class="aib-wiz-tips">
-            <div>&#128268; Go to <strong>WPilot &gt; Claude Code</strong> to get your MCP connection URL</div>
-            <div>&#128640; Add the URL to Claude Code, Cursor, or any MCP client</div>
-            <div>&#128269; Ask the AI to analyze your site, redesign pages, or set up WooCommerce</div>
-            <div>&#128274; Every change can be undone — check the <strong>History</strong> tab anytime</div>
-          </div>
-          <button class="aib-wiz-btn" id="aibWizDone">Go to dashboard</button>
-        </div>
-
-        <button class="aib-wiz-close" id="aibWizClose" title="Close">&#10005;</button>
+        <button class="wpi-onb-close" id="wpiClose" title="Close">&#10005;</button>
       </div>
     </div>
 
     <script>
-    jQuery(function($){
-      var nonce = (typeof CA!=='undefined') ? CA.nonce : '';
+    (function($){
+      var nonce = (typeof CA !== 'undefined') ? CA.nonce : '';
       var step = <?= $step ?>;
-      var dashUrl = '<?= esc_url(admin_url('admin.php?page='.CA_SLUG)) ?>';
 
-      function goStep(n){
+      function go(n) {
         step = n;
-        $('.aib-wiz-step').removeClass('active');
+        $('.wpi-onb-step').removeClass('active');
         $('[data-step="'+n+'"]').addClass('active');
-        $('.aib-wiz-dot').each(function(i){ $(this).toggleClass('active',i+1<=n).toggleClass('done',i+1<n).html(i+1<n?'&#10003;':i+1); });
-        $('.aib-wiz-line').each(function(i){ $(this).toggleClass('active',i+1<n); });
-        $.post(ajaxurl,{action:'wpi_set_onboarding_step',nonce:nonce,step:n});
+        $('.wpi-onb-dot').each(function(i){ $(this).toggleClass('active', i+1 === n); });
+        $.post(ajaxurl, {action:'wpi_set_onboarding_step', nonce:nonce, step:n});
       }
 
-      // Next/Back buttons
-      $('[data-next]').on('click',function(){ goStep(parseInt($(this).data('next'))); });
-      $('[data-back]').on('click',function(){ goStep(parseInt($(this).data('back'))); });
+      // Step 1 → 2
+      $('#wpiNext1').on('click', function(){ go(2); });
 
-      // Step 2: Email
-      $('#aibConnectEmail').on('click', function(){
-        var email = $('#aibUserEmail').val().trim();
-        if(!email || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)){ $('#aibEmailMsg').html('<span style="color:#F87171">Please enter a valid email address</span>'); return; }
-        $(this).text('Saving...').prop('disabled',true);
-        $.post(ajaxurl,{action:'wpi_save_user_email',nonce:nonce,email:email},function(r){
-          if(r.success){
-            $.ajax({url:'https://weblease.se/plugin/activate',method:'POST',contentType:'application/json',
-              data:JSON.stringify({email:email,site_url:'<?= esc_js($url) ?>',plugin_version:typeof CA!=='undefined'?CA.version:'3.0.0',wp_version:'<?= esc_js(get_bloginfo("version")) ?>'}),
-              success:function(resp){ if(resp&&resp.license_key) $.post(ajaxurl,{action:'wpi_save_license_from_server',nonce:nonce,key:resp.license_key}); },
-              complete:function(){ goStep(3); }
-            });
-          } else { $('#aibEmailMsg').html('<span style="color:#F87171">Could not save email. Please try again.</span>'); $('#aibConnectEmail').text('Continue').prop('disabled',false); }
-        });
-      });
-
-      // Step 3: Auto-install
-      $('#aibAutoInstall, #aibInstallAll').on('click', function(){
-        var $btn = $(this); var $status = $('#aibInstallStatus');
-        $btn.text('Installing...').prop('disabled',true);
-        var needsNode = $(this).attr('id') === 'aibInstallAll';
-        function doStep(s,msg,next){
-          $status.html('<span style="color:#93B4FF">'+msg+'</span>');
-          $.post(ajaxurl,{action:'wpilot_auto_install',nonce:nonce,step:s},function(r){
-            if(r.success) next();
-            else { $status.html('<span style="color:#F87171">Setup failed at: '+s+'. <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#4F7EFF">Enter API key manually instead</a></span>'); $btn.text('Retry').prop('disabled',false); }
-          }).fail(function(){ $status.html('<span style="color:#F87171">Connection error. Please try again.</span>'); $btn.text('Retry').prop('disabled',false); });
+      // Step 2: Save email
+      $('#wpiSaveEmail').on('click', function(){
+        var email = $('#wpiEmail').val().trim();
+        if (!email || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/)) {
+          $('#wpiEmailMsg').html('<span style="color:#F87171">Please enter a valid email</span>');
+          return;
         }
-        if(needsNode){
-          doStep('install_node','Installing Node.js...',function(){ doStep('install_claude','Setting up Claude...',function(){ doStep('setup_mcp','Connecting to your site...',function(){ $status.html('<span style="color:#10B981">Setup complete!</span>'); setTimeout(function(){ goStep(4); },1000); }); }); });
-        } else {
-          doStep('install_claude','Setting up Claude...',function(){ doStep('setup_mcp','Connecting to your site...',function(){ $status.html('<span style="color:#10B981">Setup complete!</span>'); setTimeout(function(){ goStep(4); },1000); }); });
-        }
-      });
-
-      $('#aibSkipToConsent').on('click', function(){ goStep(4); });
-      $('#aibUseApiKey').on('click', function(){ $('#aibApiKeyFallback').show(); $(this).hide(); });
-
-      // Test API key
-      $('#aibTestKey, #aibTestKey2').on('click', function(){
-        var $input = $(this).siblings('input[type=password]');
-        var $msg = $(this).siblings('[id^=aibKeyMsg]');
-        var key = $input.val().trim();
-        if(!key){ $msg.html('<span style="color:#F87171">Please paste your API key from console.anthropic.com</span>'); return; }
-        $(this).text('Connecting...').prop('disabled',true);
         var $btn = $(this);
-        $.post(ajaxurl,{action:'ca_test_connection',nonce:nonce,key:key},function(r){
-          if(r.success){ $msg.html('<span style="color:#10B981">Connected!</span>'); setTimeout(function(){ goStep(4); },700); }
-          else { $msg.html('<span style="color:#F87171">'+(r.data||'Invalid API key. Check that you copied the full key.')+'</span>'); $btn.text('Try again').prop('disabled',false); }
+        $btn.text('Creating account...').prop('disabled', true);
+        $.post(ajaxurl, {action:'wpi_save_user_email', nonce:nonce, email:email}, function(r){
+          if (r.success) {
+            // Activate license silently
+            $.ajax({
+              url: 'https://weblease.se/plugin/activate',
+              method: 'POST',
+              contentType: 'application/json',
+              data: JSON.stringify({
+                email: email,
+                site_url: '<?= esc_js($site_url) ?>',
+                plugin_version: typeof CA !== 'undefined' ? CA.version : '3.0.0',
+                wp_version: '<?= esc_js(get_bloginfo("version")) ?>'
+              }),
+              success: function(resp) {
+                if (resp && resp.license_key) {
+                  $.post(ajaxurl, {action:'wpi_save_license_from_server', nonce:nonce, key:resp.license_key});
+                }
+              },
+              complete: function(){ go(3); }
+            });
+          } else {
+            $('#wpiEmailMsg').html('<span style="color:#F87171">Something went wrong. Try again.</span>');
+            $btn.text('Create free account').prop('disabled', false);
+          }
         });
       });
 
-      // Step 4: Consent
-      $('#aibConsentYes').on('click', function(){ $.post(ajaxurl,{action:'wpi_set_consent',nonce:nonce,consent:'yes'},function(){ goStep(5); }); });
-      $('#aibConsentSkip').on('click', function(){ $.post(ajaxurl,{action:'wpi_set_consent',nonce:nonce,consent:'no'},function(){ goStep(5); }); });
+      // Back buttons
+      $('#wpiBack1').on('click', function(){ go(1); });
+      $('#wpiBack2').on('click', function(){ go(2); });
 
-      // Step 5: Done
-      $('#aibWizDone').on('click', function(){
-        $.post(ajaxurl,{action:'wpi_complete_onboarding',nonce:nonce});
-        $('#aibWizard').fadeOut(300,function(){$(this).remove();});
+      // Finish
+      $('#wpiFinish').on('click', function(){
+        $.post(ajaxurl, {action:'wpi_complete_onboarding', nonce:nonce});
+        $('#wpiOnboard').fadeOut(300, function(){ $(this).remove(); });
       });
 
-      // Close = dismiss this session only (not permanent)
-      $('#aibWizClose').on('click', function(){
-        $('#aibWizard').fadeOut(200,function(){$(this).remove();});
+      // Close = dismiss this session only
+      $('#wpiClose').on('click', function(){
+        $('#wpiOnboard').fadeOut(200, function(){ $(this).remove(); });
       });
-    });
+
+      // Enter key on email input
+      $('#wpiEmail').on('keydown', function(e){
+        if (e.key === 'Enter') { e.preventDefault(); $('#wpiSaveEmail').click(); }
+      });
+    })(jQuery);
     </script>
     <?php
 });
 
-// AJAX handlers
+// ── AJAX handlers ──────────────────────────────────────────────
 add_action('wp_ajax_wpi_set_onboarding_step', function(){
     check_ajax_referer('ca_nonce','nonce');
-    if(!current_user_can('manage_options')) wp_send_json_error();
+    if (!current_user_can('manage_options')) wp_send_json_error();
     update_option('wpi_onboarding_step', (int)($_POST['step'] ?? 1));
     wp_send_json_success();
 });
 
 add_action('wp_ajax_wpi_save_user_email', function(){
     check_ajax_referer('ca_nonce','nonce');
-    if(!current_user_can('manage_options')) wp_send_json_error();
+    if (!current_user_can('manage_options')) wp_send_json_error();
     $email = sanitize_email($_POST['email'] ?? '');
-    if(!is_email($email)) wp_send_json_error('Invalid email');
+    if (!is_email($email)) wp_send_json_error('Invalid email');
     update_option('wpilot_user_email', $email);
     wp_send_json_success();
 });
 
 add_action('wp_ajax_wpi_save_license_from_server', function(){
     check_ajax_referer('ca_nonce','nonce');
-    if(!current_user_can('manage_options')) wp_send_json_error();
+    if (!current_user_can('manage_options')) wp_send_json_error();
     $key = sanitize_text_field($_POST['key'] ?? '');
-    if(!$key) wp_send_json_error('No key');
+    if (!$key) wp_send_json_error('No key');
     update_option('ca_license_key', $key);
     update_option('ca_license_status', 'active');
-    if(!wpilot_license_type()) update_option('wpilot_license_type', 'free');
+    if (!function_exists('wpilot_license_type') || !wpilot_license_type()) update_option('wpilot_license_type', 'free');
     wp_send_json_success();
 });
 
 add_action('wp_ajax_wpi_complete_onboarding', function(){
     check_ajax_referer('ca_nonce','nonce');
-    if(!current_user_can('manage_options')) wp_send_json_error();
-    update_option('wpi_onboarding_done','yes');
-    update_option('ca_onboarded','yes');
+    if (!current_user_can('manage_options')) wp_send_json_error();
+    update_option('wpi_onboarding_done', 'yes');
+    update_option('ca_onboarded', 'yes');
+    wp_send_json_success();
+});
+
+add_action('wp_ajax_wpi_set_consent', function(){
+    check_ajax_referer('ca_nonce','nonce');
+    if (!current_user_can('manage_options')) wp_send_json_error();
+    update_option('wpi_data_consent', sanitize_text_field($_POST['consent'] ?? 'no'));
     wp_send_json_success();
 });

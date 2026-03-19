@@ -243,10 +243,11 @@ register_activation_hook( __FILE__, function () {
     add_option( 'wpilot_prompts_used',        0 );
     add_option( 'ca_custom_instructions', '' );
     add_option( 'ca_onboarded',           'no' );
+    set_transient( "wpilot_activation_redirect", true, 30 );
     add_option( 'wpi_data_consent',        'no' );   // GDPR: default to no consent
     wpilot_backup_create_table();
     // Removed: wpilot_brain_install (module deleted)
-    wpilot_create_sessions_table();
+    if (function_exists("wpilot_create_sessions_table")) wpilot_create_sessions_table();
     if ( function_exists("wpilot_mcp_create_audit_table") ) wpilot_mcp_create_audit_table();
     // Track activation on weblease.se
     if ( function_exists('wpilot_track_activation') ) wpilot_track_activation();
