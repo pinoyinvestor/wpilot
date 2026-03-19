@@ -109,7 +109,7 @@ function wpilot_run_seo_tools($tool, $params = []) {
         case 'bulk_fix_seo':
             return wpilot_bulk_fix_seo();
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
         case 'set_open_graph':
             $id    = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             $title = sanitize_text_field($params['og_title'] ?? '');

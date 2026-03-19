@@ -340,7 +340,7 @@ function wpilot_generate_default_sections( $params ) {
 function wpilot_divi_installed() {
     return defined('ET_BUILDER_VERSION') || defined('ET_DB_VERSION') || class_exists('ET_Builder_Module');
 }
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 function wpilot_divi_create_page( $params ) {
     if (!wpilot_divi_installed()) return wpilot_err('Divi is not installed or activated. Make sure the Divi theme or Divi Builder plugin is active.');

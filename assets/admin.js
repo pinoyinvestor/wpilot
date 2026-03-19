@@ -245,7 +245,7 @@
     });
   });
 
-  // Built by Christos Ferlachidis & Daniel Hedenberg
+  // Built by Weblease
 
   // ══════════════════════════════════════════════════════════════
   //  PLUGINS PAGE
@@ -338,7 +338,7 @@
   // ══════════════════════════════════════════════════════════════
   $('#caTestConn').on('click',function(){
     var key = $.trim($('#caApiKey').val());
-    if(!key){ fb($('#caApiResult'),'Enter an API key first.',false); return; }
+    if(!key){ fb($('#caApiResult'),'Enter an Claude account first.',false); return; }
     $(this).text('⏳ Testing…').prop('disabled',true);
     var self=this;
     ajax('ca_test_connection',{key},function(ok,data){

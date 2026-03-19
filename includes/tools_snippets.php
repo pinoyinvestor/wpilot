@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 //  Each snippet stored as its own mu-plugin file so it can be
 //  individually removed without touching functions.php.
 // ═══════════════════════════════════════════════════════════════
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // Dangerous function names that must not appear in snippets.
 // Stored split so this file itself does not trigger security scanners.

@@ -1,21 +1,8 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// ═══════════════════════════════════════════════════════════════
-//  WPILOT COLLECTOR v2.0 — Training Data Pipeline
 //
-//  Passive signal collection:
-//  • Every Claude exchange is queued with WordPress context
-//  • User actions (Apply/Undo/Follow-up) auto-rate quality
-//  • Only high-rated pairs (4-5★) sent to VPS for training
-//  • GDPR: consent required, fully anonymized, no personal data
 //
-//  Training pipeline on VPS:
-//  1. Pairs accumulate in MySQL on weblease.se
-//  2. At 50k pairs → fine-tune Llama 3.3 (run_training.py)
-//  3. Deploy trained model → weblease.se/ai-query
-//  4. WPilot routes to own model instead of Claude
-// ═══════════════════════════════════════════════════════════════
 
 define( 'WPI_COLLECTOR_ENDPOINT', 'https://weblease.se/ai-training/ingest' );
 define( 'WPI_COLLECTOR_VERSION',  '2' );
@@ -32,7 +19,7 @@ function wpilot_anonymize( $text ) {
     $text = preg_replace( '/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/', '[IP]', $text );
     // Phone numbers (international formats)
     $text = preg_replace( '/(\+?\d{1,4}[\s\-]?)?\(?\d{2,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{2,4}/', '[PHONE]', $text );
-    // API keys and secrets
+    // Sensitive data
     $text = preg_replace( '/\b(sk_live_|sk_test_|pk_live_|pk_test_|ghp_|gho_|Bearer\s+)[a-zA-Z0-9_\-]+/', '[API_KEY]', $text );
     $text = preg_replace( '/\b(api[_\-]?key|secret[_\-]?key|access[_\-]?token|password)\s*[:=]\s*[\'"]?[^\s\'"<>]+/i', '[SECRET]', $text );
     $site = get_bloginfo('name');
@@ -139,7 +126,7 @@ function wpilot_collect_context() {
     ];
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Classify WordPress topic ──────────────────────────────────
 function wpilot_classify_topic( $text ) {

@@ -1,19 +1,16 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// ═══════════════════════════════════════════════════════════════
 //  HEADER & FOOTER BLUEPRINTS — Pre-built layout templates
 //
 //  Uses CSS variables from the design blueprint system so
 //  every header/footer automatically matches the active design.
 //
-//  Flow:
 //  1. AI picks header/footer style based on site type
 //  2. render function generates full HTML + CSS + JS
 //  3. apply function stores in wp_options + creates mu-plugin
 //  4. mu-plugin injects at wp_body_open / wp_footer hooks
 //     and hides the theme's default header/footer
-// ═══════════════════════════════════════════════════════════════
 
 
 // ── Header blueprint definitions ───────────────────────────────
@@ -127,9 +124,7 @@ function wpilot_get_logo_html( $class = '' ) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
 //  RENDER HEADER BLUEPRINT
-// ═══════════════════════════════════════════════════════════════
 function wpilot_render_header_blueprint( $style, $params = [] ) {
     $blueprints = wpilot_get_header_blueprints();
     if ( ! isset( $blueprints[ $style ] ) ) {
@@ -171,7 +166,7 @@ document.addEventListener("DOMContentLoaded",function(){
 </script>';
 
     // ── Shared base CSS (mobile menu + hamburger) ──────────────
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $base_css = '
 /* WPilot Header — Shared Base */
 body #wpilot-header {
@@ -412,9 +407,7 @@ body #wpilot-header.wpilot-header-centered .wpilot-hamburger { position: absolut
 }
 
 
-// ═══════════════════════════════════════════════════════════════
 //  RENDER FOOTER BLUEPRINT
-// ═══════════════════════════════════════════════════════════════
 function wpilot_render_footer_blueprint( $style, $params = [] ) {
     $blueprints = wpilot_get_footer_blueprints();
     if ( ! isset( $blueprints[ $style ] ) ) {
@@ -581,7 +574,7 @@ body #wpilot-footer.wpilot-footer-minimal .wpilot-copyright { color: var(--wp-te
             break;
 
         case 'centered':
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             $style_css = '
 body #wpilot-footer.wpilot-footer-centered {
     background: var(--wp-bg-alt) !important; padding: 60px 40px 30px;
@@ -731,9 +724,7 @@ body #wpilot-footer.wpilot-footer-rich .wpilot-footer-bottom-row {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
 //  APPLY HEADER BLUEPRINT — store + create mu-plugin
-// ═══════════════════════════════════════════════════════════════
 function wpilot_apply_header_blueprint( $params = [] ) {
     $style = sanitize_text_field( $params['style'] ?? $params['header'] ?? 'modern' );
 
@@ -869,9 +860,7 @@ function wpilot_apply_header_blueprint( $params = [] ) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
 //  APPLY FOOTER BLUEPRINT — store + create mu-plugin
-// ═══════════════════════════════════════════════════════════════
 function wpilot_apply_footer_blueprint( $params = [] ) {
     $style = sanitize_text_field( $params['style'] ?? $params['footer'] ?? 'columns' );
 
@@ -960,9 +949,7 @@ function wpilot_apply_footer_blueprint( $params = [] ) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
 //  LIST BLUEPRINTS — tool response format
-// ═══════════════════════════════════════════════════════════════
 function wpilot_list_header_blueprints( $params = [] ) {
     $blueprints = wpilot_get_header_blueprints();
     $current    = get_option( 'wpilot_header_style', '' );
@@ -1010,9 +997,7 @@ function wpilot_list_footer_blueprints( $params = [] ) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
 //  SOCIAL SVG HELPER — inline SVG icons for social links
-// ═══════════════════════════════════════════════════════════════
 function wpilot_social_svg( $platform ) {
     $icons = [
         'facebook'  => '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>',

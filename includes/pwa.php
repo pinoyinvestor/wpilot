@@ -326,7 +326,7 @@ HTML;
 // ═══════════════════════════════════════════════════════════════
 //  REGISTRATION JS — install prompt + SW registration
 // ═══════════════════════════════════════════════════════════════
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 function wpilot_pwa_registration_js() {
     $colors    = wpilot_pwa_get_colors();

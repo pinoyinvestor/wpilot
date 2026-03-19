@@ -4,7 +4,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) exit;
 
 global $wpdb;
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // Remove all WPilot options
 $options = [

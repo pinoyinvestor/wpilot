@@ -12,34 +12,37 @@ add_action('admin_footer', function() {
     $step = (int) get_option('wpi_onboarding_step', 1);
     $site = get_bloginfo('name');
     $url  = get_site_url();
-    // Built by Christos Ferlachidis & Daniel Hedenberg
     $saved_email = get_option('wpilot_user_email', '');
     $consent = get_option('wpi_data_consent', 'no');
+    // Built by Weblease
+    $server_check = function_exists('wpilot_server_can_install') ? wpilot_server_can_install() : ['exec'=>false];
+    $has_claude = !empty($server_check['claude_code']);
+    $has_node = !empty($server_check['node']);
+    $can_exec = !empty($server_check['exec']);
     ?>
     <div id="aibWizard" class="aib-wiz-overlay">
       <div class="aib-wiz-box">
 
-        <!-- Progress dots -->
         <div class="aib-wiz-progress">
-          <?php for($i=1;$i<=6;$i++): ?>
+          <?php for($i=1;$i<=5;$i++): ?>
           <div class="aib-wiz-dot <?= $i<=$step?'active':'' ?> <?= $i<$step?'done':'' ?>">
-            <?= $i < $step ? '✓' : $i ?>
+            <?= $i < $step ? '&#10003;' : $i ?>
           </div>
-          <?php if($i<6): ?><div class="aib-wiz-line <?= $i<$step?'active':'' ?>"></div><?php endif; ?>
+          <?php if($i<5): ?><div class="aib-wiz-line <?= $i<$step?'active':'' ?>"></div><?php endif; ?>
           <?php endfor; ?>
         </div>
 
-        <!-- ── Step 1: Welcome ──────────────────────────────── -->
+        <!-- Step 1: Welcome -->
         <div class="aib-wiz-step <?= $step===1?'active':'' ?>" data-step="1">
-          <div class="aib-wiz-icon">⚡</div>
+          <div class="aib-wiz-icon" style="font-size:48px">&#9889;</div>
           <h2>Welcome to WPilot</h2>
-          <p>Your AI WordPress co-developer. We'll connect Claude AI to your site and run a full analysis — takes 3 minutes.</p>
+          <p>AI assistant for your WordPress site. Design, build, fix SEO, manage WooCommerce — just chat.</p>
           <div class="aib-wiz-features">
             <?php foreach([
-              ['🔍','Instant site analysis','AI scans SEO, plugins, design & content'],
-              ['🏗️','Build & improve','Create pages, fix CSS, improve copy'],
-              ['🧠','Gets smarter','Learns your site over time'],
-              ['↩️','Always safe','Every change is reversible'],
+              ['&#128269;','Instant site scan','Full SEO, speed & design report'],
+              ['&#128483;','Just chat','Describe what you want, AI does it'],
+              ['&#129504;','Gets smarter','Learns your site preferences'],
+              ['&#8617;','Always safe','Every change is reversible'],
             ] as [$i,$t,$d]): ?>
             <div class="aib-wiz-feat">
               <span><?=$i?></span>
@@ -47,149 +50,215 @@ add_action('admin_footer', function() {
             </div>
             <?php endforeach; ?>
           </div>
-          <button class="aib-wiz-btn" data-next="2">Get Started →</button>
+          <button class="aib-wiz-btn" data-next="2">Get started</button>
         </div>
 
-        <!-- ── Step 2: Connect WPilot Account ─────────────── -->
+        <!-- Step 2: Email -->
         <div class="aib-wiz-step <?= $step===2?'active':'' ?>" data-step="2">
-          <div class="aib-wiz-icon">👤</div>
-          <h2>Connect your WPilot account</h2>
-          <p>Enter your email to connect your WPilot license. This is used for your license, support, and updates.</p>
-
-          <label class="aib-wiz-label">Your email address:</label>
-          <input type="email" id="aibUserEmail" placeholder="you@example.com"
-            value="<?= esc_attr($saved_email) ?>"
-            class="aib-wiz-input">
-          <button class="aib-wiz-btn" id="aibConnectEmail" style="margin-top:12px">Connect →</button>
+          <div class="aib-wiz-icon" style="font-size:48px">&#128231;</div>
+          <h2>Your email</h2>
+          <p>Used for your WPilot license, support, and updates.</p>
+          <label class="aib-wiz-label">Email address</label>
+          <input type="email" id="aibUserEmail" placeholder="you@example.com" value="<?= esc_attr($saved_email) ?>" class="aib-wiz-input">
+          <button class="aib-wiz-btn" id="aibConnectEmail" style="margin-top:12px">Continue</button>
           <div id="aibEmailMsg" style="margin-top:10px;font-size:13px;min-height:20px;text-align:center"></div>
         </div>
 
-        <!-- ── Step 3: API Key ──────────────────────────────── -->
+        <!-- Step 3: Connect Claude -->
         <div class="aib-wiz-step <?= $step===3?'active':'' ?>" data-step="3">
-          <div class="aib-wiz-icon">🔑</div>
-          <h2>Connect Claude AI</h2>
-          <p>Paste your Claude API key. It takes 3 minutes to get one — follow the steps below.</p>
+          <div class="aib-wiz-icon" style="font-size:48px">&#128279;</div>
+          <h2>Connect your Claude account</h2>
+          <p>WPilot needs Claude AI to work. You need a Claude account from Anthropic.</p>
 
-          <div class="aib-wiz-warn">
-            ⚠️ <strong>Have claude.ai?</strong> That's not enough. API keys are a separate system at <strong>console.anthropic.com</strong>
+          <?php if ($has_claude): ?>
+          <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
+            <div style="font-size:24px;margin-bottom:8px">&#10003;</div>
+            <strong style="color:#10B981">Claude already installed on your server!</strong>
+            <p style="font-size:12px;color:var(--ca-text2,#5E6E91);margin-top:6px">Just sign in with your Claude account to activate.</p>
           </div>
-
-          <div class="aib-wiz-steps-box">
-            <div class="aib-wiz-steps-title">How to get your key (3 min):</div>
-            <?php foreach([
-              ["1","Go to console.anthropic.com","https://console.anthropic.com"],
-              ["2","Create account with email + password",""],
-              ["3","Click API Keys → Create Key","https://console.anthropic.com/settings/keys"],
-              ["4","Name it \"WPilot\" and copy it",""],
-              ["5","Go to Billing → add $5 credit","https://console.anthropic.com/settings/billing"],
-            ] as [$n,$t,$u]): ?>
-            <div class="aib-wiz-step-row">
-              <span class="aib-wiz-num"><?= $n ?></span>
-              <span><?= $t ?></span>
-              <?php if($u): ?><a href="<?= $u ?>" target="_blank" rel="noopener" class="aib-wiz-link-sm">Open →</a><?php endif; ?>
-            </div>
-            <?php endforeach; ?>
+          <button class="aib-wiz-btn" id="aibSkipToConsent">Continue</button>
+          <?php elseif ($can_exec && $has_node): ?>
+          <div style="background:rgba(79,126,255,.08);border:1px solid rgba(79,126,255,.15);border-radius:10px;padding:16px;margin-bottom:16px">
+            <strong style="color:var(--ca-accent,#4F7EFF)">One-click setup available</strong>
+            <p style="font-size:12px;color:var(--ca-text2,#5E6E91);margin-top:6px">Your server supports automatic installation. We will set up Claude for you.</p>
           </div>
-
-          <label class="aib-wiz-label">Paste your API key:</label>
-          <input type="password" id="aibApiKeyInput" placeholder="sk-ant-api03-..."
-            class="aib-wiz-input">
-          <button class="aib-wiz-btn" id="aibTestKey" style="margin-top:12px">Test & Connect ⚡</button>
+          <button class="aib-wiz-btn" id="aibAutoInstall">Set up Claude automatically</button>
+          <div id="aibInstallStatus" style="margin-top:12px;font-size:13px;text-align:center;min-height:20px"></div>
+          <div style="margin-top:12px;text-align:center">
+            <button class="aib-wiz-btn" id="aibUseApiKey" style="background:transparent;border:1px solid rgba(255,255,255,.1);color:var(--ca-text2,#64748b);font-size:13px;padding:10px">Or connect with an API key instead</button>
+          </div>
+          <?php elseif ($can_exec): ?>
+          <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:16px;margin-bottom:16px">
+            <strong style="color:#FCD34D">Node.js needed</strong>
+            <p style="font-size:12px;color:var(--ca-text2,#5E6E91);margin-top:6px">We can install everything for you. This takes about 1 minute.</p>
+          </div>
+          <button class="aib-wiz-btn" id="aibInstallAll">Install everything automatically</button>
+          <div id="aibInstallStatus" style="margin-top:12px;font-size:13px;text-align:center;min-height:20px"></div>
+          <?php else: ?>
+          <div style="margin-bottom:16px">
+            <p style="font-size:13px;color:var(--ca-text2,#5E6E91)">Your hosting doesn't support automatic setup. Sign in with your Claude account from <a href="https://anthropic.com" target="_blank" style="color:var(--ca-accent,#4F7EFF)">console.anthropic.com</a> instead:</p>
+          </div>
+          <label class="aib-wiz-label">Claude Account</label>
+          <input type="password" id="aibApiKeyInput" placeholder="sk-ant-api03-..." class="aib-wiz-input">
+          <button class="aib-wiz-btn" id="aibTestKey" style="margin-top:12px">Connect</button>
           <div id="aibKeyMsg" style="margin-top:10px;font-size:13px;min-height:20px;text-align:center"></div>
-          <div style="margin-top:10px;font-size:12px;color:#64748b;text-align:center">🔒 Key stored on your server only — never shared with Weblease</div>
+          <?php endif; ?>
+
+          <div id="aibApiKeyFallback" style="display:none;margin-top:16px">
+            <label class="aib-wiz-label">Claude Account</label>
+            <input type="password" id="aibApiKeyInput2" placeholder="sk-ant-api03-..." class="aib-wiz-input">
+            <button class="aib-wiz-btn" id="aibTestKey2" style="margin-top:12px">Connect</button>
+            <div id="aibKeyMsg2" style="margin-top:10px;font-size:13px;min-height:20px;text-align:center"></div>
+          </div>
         </div>
 
-        <!-- ── Step 4: Data Consent (GDPR) ────────────────── -->
+        <!-- Step 4: GDPR -->
         <div class="aib-wiz-step <?= $step===4?'active':'' ?>" data-step="4">
-          <div class="aib-wiz-icon">🛡️</div>
-          <h2>Help improve WPilot</h2>
-          <p>WPilot can send anonymized usage data to help train our AI model. No personal data, URLs, emails, or site names are ever shared.</p>
+          <div class="aib-wiz-icon" style="font-size:48px">&#128737;</div>
+          <h2>Privacy (GDPR)</h2>
+          <p>WPilot can share anonymized data to improve the AI. Completely optional.</p>
 
           <div class="aib-wiz-steps-box" style="margin-bottom:10px">
-            <div class="aib-wiz-steps-title">What IS shared (only if you agree):</div>
-            <div class="aib-wiz-step-row"><span style="color:#0FBD81;flex-shrink:0">✓</span> <span>Anonymized question/answer pairs (rated 4-5 stars only)</span></div>
-            <div class="aib-wiz-step-row"><span style="color:#0FBD81;flex-shrink:0">✓</span> <span>WordPress version, active plugin slugs, theme name</span></div>
+            <div class="aib-wiz-steps-title">Shared (if you agree):</div>
+            <div class="aib-wiz-step-row"><span style="color:#0FBD81;flex-shrink:0">&#10003;</span> <span>Anonymized tool usage data</span></div>
+            <div class="aib-wiz-step-row"><span style="color:#0FBD81;flex-shrink:0">&#10003;</span> <span>WordPress/PHP version info</span></div>
           </div>
-
           <div class="aib-wiz-steps-box" style="margin-bottom:16px">
-            <div class="aib-wiz-steps-title">What is NOT shared:</div>
-            <div class="aib-wiz-step-row"><span style="color:#EF4444;flex-shrink:0">✕</span> <span>Your API key, site URL, email, IP, content, passwords</span></div>
-          </div>
-
-          <div class="aib-wiz-consent-toggle" style="display:flex;align-items:center;gap:12px;padding:14px;background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:10px;margin-bottom:12px;cursor:pointer" id="aibConsentRow">
-            <div class="aib-toggle <?= $consent==='yes'?'on':'' ?>" id="aibConsentToggle">
-              <div class="aib-toggle-knob"></div>
-            </div>
-            <span style="font-size:13.5px;color:#C8D0E8;font-weight:600">I agree to share anonymized data</span>
-          </div>
-
-          <div style="text-align:center;margin-bottom:16px">
-            <a href="https://weblease.se/privacy" target="_blank" rel="noopener" style="font-size:12px;color:#4F7EFF;text-decoration:none">Read our privacy policy →</a>
+            <div class="aib-wiz-steps-title">Never shared:</div>
+            <div class="aib-wiz-step-row"><span style="color:#EF4444;flex-shrink:0">&#10007;</span> <span>Your site URL, email, content, Claude accounts</span></div>
           </div>
 
           <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="aib-wiz-btn" id="aibConsentYes">Yes, help improve WPilot →</button>
-            <button class="aib-wiz-btn" id="aibConsentSkip" style="background:transparent;border:1px solid rgba(255,255,255,.1);color:#64748b">No thanks</button>
+            <button class="aib-wiz-btn" id="aibConsentYes">I agree</button>
+            <button class="aib-wiz-btn" id="aibConsentSkip" style="background:transparent;border:1px solid rgba(255,255,255,.1);color:var(--ca-text2,#64748b)">No thanks</button>
           </div>
         </div>
 
-        <!-- ── Step 5: Analyzing ────────────────────────────── -->
+        <!-- Step 5: Done -->
         <div class="aib-wiz-step <?= $step===5?'active':'' ?>" data-step="5">
-          <div class="aib-wiz-icon" id="aibAnalysisIcon">🔍</div>
-          <h2 id="aibAnalysisTitle">Analyzing <em><?= esc_html($site) ?></em>…</h2>
-          <p id="aibAnalysisSub">Claude is scanning your site — SEO, plugins, design, content. This takes about 30 seconds.</p>
-
-          <!-- Animated progress bar -->
-          <div class="aib-wiz-progress-bar">
-            <div class="aib-wiz-progress-fill" id="aibProgressFill"></div>
-          </div>
-          <div class="aib-wiz-scanning-steps" id="aibScanSteps">
-            <div class="aib-scan-step active" id="scan1">📊 Reading pages & posts…</div>
-            <div class="aib-scan-step" id="scan2">🔌 Checking plugins…</div>
-            <div class="aib-scan-step" id="scan3">📈 Analyzing SEO data…</div>
-            <div class="aib-scan-step" id="scan4">🎨 Reviewing design & structure…</div>
-            <div class="aib-scan-step" id="scan5">⚡ Generating action plan…</div>
-          </div>
-
-          <!-- Result box (hidden until done) -->
-          <div id="aibAnalysisResult" style="display:none">
-            <div class="aib-wiz-result-box" id="aibResultText"></div>
-            <button class="aib-wiz-btn" id="aibToStep6">Continue →</button>
-          </div>
-        </div>
-
-        <!-- ── Step 6: Done ─────────────────────────────────── -->
-        <div class="aib-wiz-step <?= $step===6?'active':'' ?>" data-step="6">
-          <div class="aib-wiz-icon">🎉</div>
-          <h2>You're set up!</h2>
-          <p>WPilot is ready. Your analysis is saved — open the Chat to start acting on the results.</p>
+          <div class="aib-wiz-icon" style="font-size:48px">&#127881;</div>
+          <h2>You're ready!</h2>
+          <p>WPilot is set up. Open the chat bubble and start building.</p>
           <div class="aib-wiz-tips">
-            <div>🔍 Your full site analysis is ready in <strong>Analyze</strong></div>
-            <div>💬 Chat with Claude about your site at any time</div>
-            <div>↩️ Every change Claude makes can be undone in <strong>Restore History</strong></div>
-            <div>⚡ AI bubble works on every page of your WordPress admin</div>
+            <div>&#128172; Click the chat bubble (bottom right) to talk to AI</div>
+            <div>&#128269; Go to Analyze for a full site report</div>
+            <div>&#8617; Every AI change can be undone in History</div>
           </div>
-          <div class="aib-wiz-license-info">
-            <?php
-            $tier = wpilot_get_license_tier();
-            $tier_labels = ['free'=>'Free plan — 20 prompts','pro'=>'Pro — unlimited','team'=>'Team — unlimited','lifetime'=>'Lifetime — unlimited forever'];
-            $tier_label = $tier_labels[$tier] ?? 'Free plan — 20 prompts';
-            ?>
-            Your license: <strong><?= esc_html($tier_label) ?></strong>. <a href="https://weblease.se/wpilot-account" target="_blank" rel="noopener">Manage at weblease.se/wpilot-account</a>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="aib-wiz-btn" id="aibGoToChat">💬 Open Chat →</button>
-            <button class="aib-wiz-btn" style="background:transparent;border:1px solid rgba(255,255,255,.1);color:#64748b" id="aibWizDone">Go to Dashboard</button>
-          </div>
+          <button class="aib-wiz-btn" id="aibWizDone">Start using WPilot</button>
         </div>
 
-        <button class="aib-wiz-close" id="aibWizClose" title="Skip setup">✕</button>
+        <button class="aib-wiz-close" id="aibWizClose" title="Skip">&#10005;</button>
       </div>
     </div>
 
+    <script>
+    jQuery(function($){
+      var nonce = (typeof CA!=='undefined') ? CA.nonce : '';
+      var step = <?= $step ?>;
+      var dashUrl = '<?= esc_url(admin_url('admin.php?page='.CA_SLUG)) ?>';
+
+      function goStep(n){
+        step = n;
+        $('.aib-wiz-step').removeClass('active');
+        $('[data-step="'+n+'"]').addClass('active');
+        $('.aib-wiz-dot').each(function(i){ $(this).toggleClass('active',i+1<=n).toggleClass('done',i+1<n); });
+        $('.aib-wiz-line').each(function(i){ $(this).toggleClass('active',i+1<n); });
+        $.post(ajaxurl,{action:'wpi_set_onboarding_step',nonce:nonce,step:n});
+      }
+
+      $('[data-next]').on('click',function(){ goStep(parseInt($(this).data('next'))); });
+
+      // Step 2: Email
+      $('#aibConnectEmail').on('click', function(){
+        var email = $('#aibUserEmail').val().trim();
+        if(!email || email.indexOf('@')===-1){ $('#aibEmailMsg').html('<span style="color:#F87171">Enter a valid email</span>'); return; }
+        $(this).text('Saving...').prop('disabled',true);
+        $.post(ajaxurl,{action:'wpi_save_user_email',nonce:nonce,email:email},function(r){
+          if(r.success){
+            $.ajax({url:'https://weblease.se/plugin/activate',method:'POST',contentType:'application/json',
+              data:JSON.stringify({email:email,site_url:'<?= esc_js($url) ?>',plugin_version:typeof CA!=='undefined'?CA.version:'2.6.1',wp_version:'<?= esc_js(get_bloginfo("version")) ?>'}),
+              success:function(resp){ if(resp&&resp.license_key) $.post(ajaxurl,{action:'wpi_save_license_from_server',nonce:nonce,key:resp.license_key}); },
+              complete:function(){ goStep(3); }
+            });
+          } else { $('#aibEmailMsg').html('<span style="color:#F87171">Error saving email</span>'); $('#aibConnectEmail').text('Continue').prop('disabled',false); }
+        });
+      });
+
+      // Step 3: Auto-install
+      $('#aibAutoInstall, #aibInstallAll').on('click', function(){
+        var $btn = $(this); var $status = $('#aibInstallStatus');
+        $btn.text('Installing...').prop('disabled',true);
+        var needsNode = $(this).attr('id') === 'aibInstallAll';
+
+        function doStep(step, msg, next) {
+          $status.html('<span style="color:#93B4FF">' + msg + '</span>');
+          $.post(ajaxurl,{action:'wpilot_auto_install',nonce:nonce,step:step},function(r){
+            if(r.success) { next(); }
+            else { $status.html('<span style="color:#F87171">Failed: '+step+'</span>'); $btn.text('Retry').prop('disabled',false); }
+          }).fail(function(){ $status.html('<span style="color:#F87171">Connection error</span>'); $btn.text('Retry').prop('disabled',false); });
+        }
+
+        if(needsNode) {
+          doStep('install_node','Installing Node.js...',function(){
+            doStep('install_claude','Setting up Claude...',function(){
+              doStep('setup_mcp','Connecting to your site...',function(){
+                $status.html('<span style="color:#10B981">Done! Claude connected.</span>');
+                setTimeout(function(){ goStep(4); },1000);
+              });
+            });
+          });
+        } else {
+          doStep('install_claude','Setting up Claude...',function(){
+            doStep('setup_mcp','Connecting to your site...',function(){
+              $status.html('<span style="color:#10B981">Done!</span>');
+              setTimeout(function(){ goStep(4); },1000);
+            });
+          });
+        }
+      });
+
+      // Skip to consent if already installed
+      $('#aibSkipToConsent').on('click', function(){ goStep(4); });
+
+      // Claude account fallback
+      $('#aibUseApiKey').on('click', function(){ $('#aibApiKeyFallback').show(); $(this).hide(); });
+
+      // Test Claude account (both inputs)
+      $('#aibTestKey, #aibTestKey2').on('click', function(){
+        var $input = $(this).siblings('input[type=password]');
+        var $msg = $(this).siblings('[id^=aibKeyMsg]');
+        var key = $input.val().trim();
+        if(!key){ $msg.html('<span style="color:#F87171">Sign in with your Claude account</span>'); return; }
+        $(this).text('Testing...').prop('disabled',true);
+        var $btn = $(this);
+        $.post(ajaxurl,{action:'ca_test_connection',nonce:nonce,key:key},function(r){
+          if(r.success){ $msg.html('<span style="color:#10B981">Connected!</span>'); setTimeout(function(){ goStep(4); },700); }
+          else { $msg.html('<span style="color:#F87171">'+(r.data||'Invalid key')+'</span>'); $btn.text('Try again').prop('disabled',false); }
+        });
+      });
+
+      // Step 4: Consent
+      $('#aibConsentYes').on('click', function(){
+        $.post(ajaxurl,{action:'wpi_set_consent',nonce:nonce,consent:'yes'},function(){ goStep(5); });
+      });
+      $('#aibConsentSkip').on('click', function(){
+        $.post(ajaxurl,{action:'wpi_set_consent',nonce:nonce,consent:'no'},function(){ goStep(5); });
+      });
+
+      // Step 5: Done
+      $('#aibWizDone').on('click', function(){
+        $.post(ajaxurl,{action:'wpi_complete_onboarding',nonce:nonce});
+        $('#aibWizard').fadeOut(300,function(){$(this).remove();});
+      });
+      $('#aibWizClose').on('click', function(){
+        $.post(ajaxurl,{action:'wpi_complete_onboarding',nonce:nonce});
+        $('#aibWizard').fadeOut(200,function(){$(this).remove();});
+      });
+    });
+
     <style>
     .aib-wiz-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
-    .aib-wiz-box{background:#07090F;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:36px 40px;max-width:540px;width:calc(100% - 32px);position:relative;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(79,126,255,.06)}
+    .aib-wiz-box{background:#07090F;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:36px 40px;max-width:540px;width:calc(100% - 32px);position:relative;box-shadow:0 24px 80px rgba(0,0,0,.6)}
     .aib-wiz-progress{display:flex;align-items:center;justify-content:center;margin-bottom:28px;gap:0}
     .aib-wiz-dot{width:28px;height:28px;border-radius:50%;background:#0F1320;border:2px solid #1A2035;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#2A3550;transition:all .3s}
     .aib-wiz-dot.active{background:#4F7EFF;border-color:#4F7EFF;color:#fff;box-shadow:0 0 12px rgba(79,126,255,.4)}
@@ -198,263 +267,40 @@ add_action('admin_footer', function() {
     .aib-wiz-line.active{background:#0FBD81}
     .aib-wiz-step{display:none}.aib-wiz-step.active{display:block;animation:aibFadeIn .25s ease}
     @keyframes aibFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-    .aib-wiz-icon{font-size:42px;margin-bottom:12px}
-    .aib-wiz-box h2{font-size:22px;font-weight:800;color:#EEF2FF;margin:0 0 8px;letter-spacing:-.02em}
-    .aib-wiz-box h2 em{font-style:normal;color:#4F7EFF}
+    .aib-wiz-icon{margin-bottom:12px}
+    .aib-wiz-box h2{font-size:22px;font-weight:800;color:#EEF2FF;margin:0 0 8px}
     .aib-wiz-box p{font-size:13.5px;color:#5E6E91;margin:0 0 18px;line-height:1.65}
     .aib-wiz-features{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:22px}
     .aib-wiz-feat{display:flex;gap:10px;align-items:flex-start;background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:9px;padding:12px}
-    .aib-wiz-feat span{font-size:18px;flex-shrink:0;margin-top:1px}
+    .aib-wiz-feat span{font-size:18px;flex-shrink:0}
     .aib-wiz-feat strong{font-size:12.5px;color:#C8D0E8;display:block;margin-bottom:2px}
     .aib-wiz-feat small{font-size:11.5px;color:#3A4A68}
     .aib-wiz-btn{width:100%;padding:13px;background:linear-gradient(135deg,#4F7EFF,#6B4FFC);color:#fff;font-weight:800;font-size:14.5px;border:none;border-radius:10px;cursor:pointer;transition:opacity .2s;font-family:inherit}
     .aib-wiz-btn:hover{opacity:.88}
     .aib-wiz-btn:disabled{opacity:.4;cursor:not-allowed}
-    .aib-wiz-warn{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:9px;padding:12px 14px;font-size:13px;color:#FCD34D;margin-bottom:14px;line-height:1.6}
     .aib-wiz-steps-box{background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px 16px;margin-bottom:14px}
     .aib-wiz-steps-title{font-size:10.5px;font-weight:800;color:#2A3550;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px}
     .aib-wiz-step-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px;color:#5E6E91;border-bottom:1px solid rgba(255,255,255,.04)}
     .aib-wiz-step-row:last-child{border-bottom:none}
-    .aib-wiz-num{flex-shrink:0;width:20px;height:20px;background:#4F7EFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff}
-    .aib-wiz-link-sm{font-size:11px;color:#4F7EFF;text-decoration:none;margin-left:auto;flex-shrink:0}
     .aib-wiz-label{font-size:11.5px;font-weight:700;color:#2A3550;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
-    .aib-wiz-input{width:100%;background:#0B0E18;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px 14px;color:#EEF2FF;font-size:13.5px;font-family:monospace;box-sizing:border-box;outline:none;transition:border-color .15s}
+    .aib-wiz-input{width:100%;background:#0B0E18;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px 14px;color:#EEF2FF;font-size:13.5px;font-family:monospace;box-sizing:border-box;outline:none}
     .aib-wiz-input:focus{border-color:#4F7EFF;box-shadow:0 0 0 3px rgba(79,126,255,.1)}
-    /* Toggle switch */
-    .aib-toggle{width:42px;height:24px;background:#1A2035;border-radius:12px;position:relative;transition:background .2s;flex-shrink:0;cursor:pointer}
-    .aib-toggle.on{background:#0FBD81}
-    .aib-toggle-knob{width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:3px;left:3px;transition:transform .2s}
-    .aib-toggle.on .aib-toggle-knob{transform:translateX(18px)}
-    /* Progress bar */
-    .aib-wiz-progress-bar{height:5px;background:#0F1320;border-radius:3px;overflow:hidden;margin:16px 0}
-    .aib-wiz-progress-fill{height:100%;background:linear-gradient(90deg,#4F7EFF,#6B4FFC);border-radius:3px;width:0%;transition:width .6s ease}
-    /* Scan steps */
-    .aib-wiz-scanning-steps{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
-    .aib-scan-step{font-size:13px;color:#2A3550;padding:8px 12px;border-radius:7px;border:1px solid transparent;transition:all .3s}
-    .aib-scan-step.active{color:#93B4FF;background:rgba(79,126,255,.08);border-color:rgba(79,126,255,.15)}
-    .aib-scan-step.done{color:#0FBD81}
-    .aib-scan-step.done::before{content:'✓ '}
-    /* Result box */
-    .aib-wiz-result-box{background:#0B0E18;border:1px solid rgba(79,126,255,.15);border-radius:10px;padding:16px;margin-bottom:14px;font-size:13px;color:#8899BB;line-height:1.75;max-height:220px;overflow-y:auto;white-space:pre-wrap}
-    /* Tips */
-    .aib-wiz-tips{background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:16px;margin-bottom:12px;display:flex;flex-direction:column;gap:9px;font-size:13px;color:#5E6E91;line-height:1.6}
-    .aib-wiz-tips strong{color:#93B4FF}
-    /* License info */
-    .aib-wiz-license-info{background:rgba(79,126,255,.06);border:1px solid rgba(79,126,255,.15);border-radius:9px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#5E6E91;text-align:center;line-height:1.6}
-    .aib-wiz-license-info strong{color:#EEF2FF}
-    .aib-wiz-license-info a{color:#4F7EFF;text-decoration:none}
-    .aib-wiz-license-info a:hover{text-decoration:underline}
-    .aib-wiz-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#2A3550;font-size:18px;cursor:pointer;line-height:1;transition:color .15s}
+    .aib-wiz-tips{background:#0B0E18;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:16px;margin-bottom:16px;display:flex;flex-direction:column;gap:9px;font-size:13px;color:#5E6E91}
+    .aib-wiz-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#2A3550;font-size:18px;cursor:pointer}
     .aib-wiz-close:hover{color:#5E6E91}
     </style>
-
-    <script>
-    jQuery(function($){
-      var nonce  = (typeof CA!=='undefined') ? CA.nonce : '';
-      var step   = <?= $step ?>;
-      var chatUrl = '<?= esc_url(admin_url('admin.php?page='.CA_SLUG.'-chat')) ?>';
-      var dashUrl = '<?= esc_url(admin_url('admin.php?page='.CA_SLUG)) ?>';
-      var siteUrl = '<?= esc_url($url) ?>';
-      var siteName = '<?= esc_js($site) ?>';
-
-      function goStep(n){
-        step = n;
-        $('.aib-wiz-step').removeClass('active');
-        $('[data-step="'+n+'"]').addClass('active');
-        $('.aib-wiz-dot').each(function(i){
-          $(this).toggleClass('active', i+1<=n).toggleClass('done', i+1<n);
-        });
-        $('.aib-wiz-line').each(function(i){ $(this).toggleClass('active', i+1<n); });
-        $.post(ajaxurl,{action:'wpi_set_onboarding_step',nonce:nonce,step:n});
-      }
-
-      $('[data-next]').on('click',function(){ goStep(parseInt($(this).data('next'))); });
-
-      // ── Step 2: Connect email ───────────────────────────────
-      $('#aibConnectEmail').on('click', function(){
-        var email = $('#aibUserEmail').val().trim();
-        var $msg = $('#aibEmailMsg');
-        if(!email || email.indexOf('@') === -1){
-          $msg.html('<span style="color:#F87171">Please enter a valid email address.</span>');
-          return;
-        }
-        $(this).text('Connecting…').prop('disabled',true);
-        $msg.html('<span style="color:#5E6E91">Saving your email…</span>');
-
-        // Save email to wp_option
-        $.post(ajaxurl, {action:'wpi_save_user_email',nonce:nonce,email:email}, function(r){
-          if(r.success){
-            // Send activation to weblease.se — auto-creates account + free license
-            $.ajax({
-              url: 'https://weblease.se/plugin/activate',
-              method: 'POST',
-              contentType: 'application/json',
-              data: JSON.stringify({
-                email: email,
-                site_url: siteUrl,
-                plugin_version: (typeof CA!=='undefined') ? CA.version : '1.1.0',
-                wp_version: '<?= esc_js(get_bloginfo("version")) ?>',
-                php_version: '<?= esc_js(PHP_VERSION) ?>'
-              }),
-              success: function(resp){
-                // Save license key if server returned one
-                if(resp && resp.license_key){
-                  $.post(ajaxurl, {action:'wpi_save_license_from_server', nonce:nonce, key:resp.license_key});
-                }
-                var newUser = (resp && resp.new_user) ? ' Account created — check your email!' : '';
-                $msg.text('✅ Connected!' + newUser + ' Moving to next step…');
-                $msg.css('color', '#2EE89B');
-                setTimeout(function(){ goStep(3); }, 1000);
-              },
-              error: function(){
-                // Still proceed even if remote call fails
-                $msg.text('✅ Email saved! Moving to next step…');
-                $msg.css('color', '#2EE89B');
-                setTimeout(function(){ goStep(3); }, 700);
-              }
-            });
-          } else {
-            $msg.html('<span style="color:#F87171">❌ Could not save email. Try again.</span>');
-            $('#aibConnectEmail').text('Connect →').prop('disabled',false);
-          }
-        }).fail(function(){
-          $msg.html('<span style="color:#F87171">❌ Network error. Try again.</span>');
-          $('#aibConnectEmail').text('Connect →').prop('disabled',false);
-        });
-      });
-
-      // ── Step 3: Test & save API key ─────────────────────────
-      $('#aibTestKey').on('click', function(){
-        var key = $('#aibApiKeyInput').val().trim();
-        var $msg = $('#aibKeyMsg');
-        if(!key){ $msg.html('<span style="color:#F87171">Please paste your API key first.</span>'); return; }
-        $(this).text('Testing…').prop('disabled',true);
-        $msg.html('<span style="color:#5E6E91">Connecting to Claude…</span>');
-        $.post(ajaxurl,{action:'ca_test_connection',nonce:nonce,key:key}, function(r){
-          if(r.success){
-            $msg.html('<span style="color:#2EE89B">✅ Connected! Next: privacy settings…</span>');
-            setTimeout(function(){ goStep(4); }, 700);
-          } else {
-            $msg.html('<span style="color:#F87171">❌ '+(r.data||'Invalid key — check console.anthropic.com')+'</span>');
-            $('#aibTestKey').text('Try Again').prop('disabled',false);
-          }
-        });
-      });
-
-      // ── Step 4: Data consent ────────────────────────────────
-      var consentOn = false;
-      $('#aibConsentRow, #aibConsentToggle').on('click', function(e){
-        e.stopPropagation();
-        consentOn = !consentOn;
-        $('#aibConsentToggle').toggleClass('on', consentOn);
-      });
-
-      $('#aibConsentYes').on('click', function(){
-        // Clicking Yes = turn on consent
-        consentOn = true;
-        $('#aibConsentToggle').addClass('on');
-        $.post(ajaxurl, {action:'wpi_set_consent', nonce:nonce, consent:'yes'}, function(){
-          goStep(5);
-          startAnalysis();
-        });
-      });
-
-      $('#aibConsentSkip').on('click', function(){
-        $.post(ajaxurl, {action:'wpi_set_consent', nonce:nonce, consent:'no'}, function(){
-          goStep(5);
-          startAnalysis();
-        });
-      });
-
-      // ── Auto-run site analysis on step 5 ───────────────────
-      function startAnalysis(){
-        var pct = 0;
-        var steps = ['scan1','scan2','scan3','scan4','scan5'];
-        var interval = setInterval(function(){
-          pct = Math.min(pct + (pct < 80 ? 3 : 1), 95);
-          $('#aibProgressFill').css('width', pct+'%');
-        }, 400);
-
-        // Animate scan steps
-        var si = 0;
-        function nextScanStep(){
-          if(si > 0) $('#'+steps[si-1]).removeClass('active').addClass('done');
-          if(si < steps.length) { $('#'+steps[si]).addClass('active'); si++; }
-        }
-        nextScanStep();
-        var scanTimer = setInterval(function(){
-          nextScanStep();
-          if(si >= steps.length) clearInterval(scanTimer);
-        }, 5000);
-
-        // Call the same analyze AJAX as the Analyze page
-        $.post(ajaxurl, {
-          action : 'wpi_smart_scan',
-          nonce  : nonce
-        }, function(r){
-          clearInterval(interval);
-          clearInterval(scanTimer);
-          // Mark all steps done
-          $.each(steps,function(i,s){ $('#'+s).removeClass('active').addClass('done'); });
-          $('#aibProgressFill').css('width','100%');
-
-          setTimeout(function(){
-            var text = r.success ? (r.data.scan || r.data.text || r.data.result || r.data || 'Analysis complete!') : 'Could not connect to Claude. Check your API key and credits, then try again from the Analyze page.';
-            if(typeof text === 'object') text = JSON.stringify(text);
-
-            $('#aibAnalysisIcon').text('✅');
-            $('#aibAnalysisTitle').html('Analysis complete!');
-            $('#aibAnalysisSub').text('Here\'s what Claude found on your site:');
-            $('#aibResultText').text(text);
-            $('#aibAnalysisResult').fadeIn(300);
-          }, 400);
-        }).fail(function(){
-          clearInterval(interval);
-          $('#aibProgressFill').css('width','100%');
-          $('#aibAnalysisIcon').text('✅');
-          $('#aibAnalysisTitle').text('Connected!');
-          $('#aibAnalysisSub').text('Claude is ready. Run a full analysis from the Analyze page anytime.');
-          $('#aibResultText').text('Analysis can be run from the Analyze page. Click Continue to get started.');
-          $('#aibAnalysisResult').fadeIn(300);
-        });
-      }
-
-      // If we reload on step 5 (e.g. page refresh), auto-start
-      if(step === 5){
-        setTimeout(startAnalysis, 500);
-      }
-
-      $('#aibToStep6').on('click', function(){ goStep(6); });
-
-      // Done buttons
-      $('#aibGoToChat').on('click', function(){
-        $.post(ajaxurl,{action:'wpi_complete_onboarding',nonce:nonce});
-        $('#aibWizard').fadeOut(300);
-        window.location.href = chatUrl;
-      });
-      $('#aibWizDone').on('click', function(){
-        $.post(ajaxurl,{action:'wpi_complete_onboarding',nonce:nonce});
-        $('#aibWizard').fadeOut(300, function(){$(this).remove();});
-      });
-      $('#aibWizClose').on('click', function(){
-        $.post(ajaxurl,{action:'wpi_complete_onboarding',nonce:nonce});
-        $('#aibWizard').fadeOut(200, function(){$(this).remove();});
-      });
-    });
     </script>
     <?php
 });
 
-// AJAX: save step
+// AJAX handlers
 add_action('wp_ajax_wpi_set_onboarding_step', function(){
     check_ajax_referer('ca_nonce','nonce');
     if(!current_user_can('manage_options')) wp_send_json_error();
     update_option('wpi_onboarding_step', (int)($_POST['step'] ?? 1));
-    if(!empty($_POST['first_action'])) update_option('wpi_first_action', sanitize_text_field($_POST['first_action']));
     wp_send_json_success();
 });
 
-// AJAX: save user email
 add_action('wp_ajax_wpi_save_user_email', function(){
     check_ajax_referer('ca_nonce','nonce');
     if(!current_user_can('manage_options')) wp_send_json_error();
@@ -464,7 +310,6 @@ add_action('wp_ajax_wpi_save_user_email', function(){
     wp_send_json_success();
 });
 
-// AJAX: save license key from server response
 add_action('wp_ajax_wpi_save_license_from_server', function(){
     check_ajax_referer('ca_nonce','nonce');
     if(!current_user_can('manage_options')) wp_send_json_error();
@@ -476,7 +321,6 @@ add_action('wp_ajax_wpi_save_license_from_server', function(){
     wp_send_json_success();
 });
 
-// AJAX: complete
 add_action('wp_ajax_wpi_complete_onboarding', function(){
     check_ajax_referer('ca_nonce','nonce');
     if(!current_user_can('manage_options')) wp_send_json_error();

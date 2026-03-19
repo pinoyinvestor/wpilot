@@ -368,7 +368,7 @@ function wpilot_run_content_tools($tool, $params = []) {
             }
 
             $total = $stats['posts']['total'];
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             return wpilot_ok("Content stats: {$total} posts total, {$stats['posts']['published']} published.", $stats);
 
         // ═════════════════════════════════════════════════════

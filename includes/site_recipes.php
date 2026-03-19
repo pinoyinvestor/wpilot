@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 //
 //  Each recipe = JSON instructions the AI executes step by step
 // ═══════════════════════════════════════════════════════════════
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Available site recipes ────────────────────────────────────
 function wpilot_get_site_recipes() {

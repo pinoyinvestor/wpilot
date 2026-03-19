@@ -40,7 +40,7 @@ add_filter('wpi_after_tool_run', function($result, $tool, $params, $backup_id) {
         'bulk_fix_alt_text'    => 'Bulk fixed alt text',
         'create_coupon'        => 'Created coupon',
         'update_product_price' => 'Updated product price',
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
         'create_user'          => 'Created user',
         'deactivate_plugin'    => 'Deactivated plugin',
         'update_blogname'      => 'Updated site name',

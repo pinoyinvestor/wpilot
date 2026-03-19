@@ -19,7 +19,7 @@ function wpilot_backup_create_table() {
     ) {$charset};" );
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Log every tool call ────────────────────────────────────────
 function wpilot_backup_log( $tool, $params = [] ) {

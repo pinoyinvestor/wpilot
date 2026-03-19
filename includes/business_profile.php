@@ -75,7 +75,7 @@ function wpilot_save_business_profile( $params ) {
     if ( ! empty( $profile['industry'] ) )    $parts[] = "Industry: {$profile['industry']}";
     if ( ! empty( $profile['tone'] ) )        $parts[] = "Tone: {$profile['tone']}";
     if ( ! empty( $profile['location'] ) )    $parts[] = "Location: {$profile['location']}";
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     if ( ! empty( $profile['services'] ) )    $parts[] = "Services: {$profile['services']}";
 
     return wpilot_ok(

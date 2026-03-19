@@ -122,7 +122,7 @@ function wpilot_run_api_tools($tool, $params = []) {
             return wpilot_err("Webhook not found: {$slug}");
 
         // ═══ PRE-BUILT INTEGRATIONS ═══
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         case 'connect_stripe':
             $key = $params['key'] ?? $params['secret_key'] ?? '';
             $pub = $params['publishable_key'] ?? $params['public_key'] ?? '';
@@ -243,7 +243,7 @@ function wpilot_run_api_tools($tool, $params = []) {
             $height = $params['height'] ?? '400px';
             if (empty($address)) return wpilot_err('address or location required.');
             $encoded = urlencode($address);
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             $keys = get_option('wpilot_api_keys', []);
             if (isset($keys['google_maps'])) {
                 $map_html = "<div style=\"border-radius:16px;overflow:hidden;margin:24px 0\"><iframe width=\"{$width}\" height=\"{$height}\" style=\"border:0;width:100%\" loading=\"lazy\" referrerpolicy=\"no-referrer-when-downgrade\" src=\"https://www.google.com/maps/embed/v1/place?key=" . $keys['google_maps']['key'] . "&q={$encoded}\"></iframe></div>";
@@ -349,7 +349,7 @@ function wpilot_run_api_tools($tool, $params = []) {
             if (empty($conversion_id)) return wpilot_err('Google Ads conversion_id required (AW-XXXXXXXXX).');
             $head = get_option('wpilot_head_code', '');
             if (strpos($head, $conversion_id) !== false) return wpilot_ok("Google Ads already installed.");
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             $head .= "\n<!-- Google Ads -->\n<script async src=\"https://www.googletagmanager.com/gtag/js?id={$conversion_id}\"></script>\n<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{$conversion_id}');</script>";
             update_option('wpilot_head_code', $head);
             // If WooCommerce, add purchase conversion tracking

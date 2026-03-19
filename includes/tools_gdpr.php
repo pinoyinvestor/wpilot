@@ -341,7 +341,7 @@ function wpilot_run_gdpr_tools($tool, $params = []) {
             ];
 
             update_option('wpilot_cookie_banner_config', $config, false);
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             // Build category checkboxes HTML
             $cat_labels = [
                 'necessary' => ['label' => 'Necessary', 'desc' => 'Required for the site to function. Cannot be disabled.', 'required' => true],

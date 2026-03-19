@@ -128,7 +128,7 @@ function wpilot_create_contact_form($params) {
     update_post_meta($post_id, '_wpi_form_success',   $success_message);
     update_post_meta($post_id, '_wpi_form_button',    $button_text);
 
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
 
     $shortcode = '[wpilot_form id="' . $post_id . '"]';
     return wpilot_ok("Contact form \"{$form_name}\" created (ID: {$post_id}). Use shortcode: {$shortcode}", [

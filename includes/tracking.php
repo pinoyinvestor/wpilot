@@ -1,19 +1,11 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// ═══════════════════════════════════════════════════════════════
-//  WPILOT TRACKING — Plugin activation, deactivation & heartbeat
 //
-//  Sends data to weblease.se so the admin panel shows:
-//  - How many installations are active
-//  - Which WordPress/PHP versions are used
-//  - Email collection for newsletters
-//  - Prompt usage and brain stats sync
-// ═══════════════════════════════════════════════════════════════
 
 define( 'WPI_TRACKING_ENDPOINT', 'https://weblease.se/plugin' );
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Send activation data when plugin is activated ────────────
 function wpilot_track_activation() {
@@ -99,7 +91,7 @@ add_filter( 'cron_schedules', function( $schedules ) {
     return $schedules;
 });
 
-// ── Also heartbeat when API key is saved (first connection) ──
+// ── Also heartbeat when connected (first connection) ──
 add_action( 'update_option_ca_api_key', function( $old, $new ) {
     if ( $new && $new !== $old ) {
         // Slight delay to let license check finish first

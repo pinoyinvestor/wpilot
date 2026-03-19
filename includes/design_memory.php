@@ -1,19 +1,16 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// ═══════════════════════════════════════════════════════════════
 //  DESIGN MEMORY — Per-site design DNA persistence
 //
 //  Solves: AI has no memory between prompts. Each customer's
 //  WordPress stores its own design profile in wp_options.
 //  Every prompt reads the profile → stays consistent.
 //
-//  Flow:
 //  1. User picks a style → AI builds it → save_design_profile
 //  2. Next prompt → system prompt includes design profile
 //  3. AI sees "this site uses white minimal with Playfair Display"
 //  4. Every subsequent change stays consistent
-// ═══════════════════════════════════════════════════════════════
 
 define( 'WPI_DESIGN_PROFILE_KEY', 'wpilot_design_profile' );
 
@@ -86,7 +83,7 @@ function wpilot_get_design_profile() {
 }
 
 // ── Build design context block for system prompt ──────────────
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 function wpilot_design_context_block() {
     $profile = wpilot_get_design_profile();
     if ( empty( $profile ) ) {

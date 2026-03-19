@@ -46,7 +46,7 @@ if (function_exists('wpilot_render_bubble')) {
 
 $r['active_plugins'] = implode(', ', array_map(function($p){return explode('/',$p)[0];}, get_option('active_plugins',[])));
 $nonce = wp_create_nonce('ca_nonce');
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 ?><!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WPilot Debug</title>

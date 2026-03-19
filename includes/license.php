@@ -5,16 +5,16 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 //  LICENSE + TIER SYSTEM
 //
 //  Tier 1 — LIFETIME (first 20 API connections)
-//    • Connect your Claude API key
+//    • Connect Claude
 //    • Server checks: are slots remaining?
 //    • If yes → mark as Lifetime, no monthly fee ever
-//    • Slot counter lives on weblease.se server
+
 //
-//  Tier 2 — FREE (slots full OR no API key yet)
-//    • 20 free prompts using own API key
+//  Tier 2 — FREE
+//    • 20 free prompts
 //    • After 20 → must upgrade to Pro
 //
-//  Tier 3 — PRO ($10/month, own API key)
+//  Tier 3 — PRO ($9/month)
 //    • Unlimited prompts
 //    • All features unlocked
 //
@@ -55,7 +55,7 @@ function wpilot_lifetime_slots_remaining() {
     return $remaining;
 }
 
-// ── When API key is first connected → check for lifetime slot ──
+// ── When Claude is first connected → check for lifetime slot ──
 function wpilot_check_lifetime_on_connect( $api_key ) {
     if ( wpilot_is_pro() ) return; // already licensed
 
@@ -86,14 +86,14 @@ function wpilot_check_lifetime_on_connect( $api_key ) {
 
         // Log it
         wpilot_log_activity('lifetime_granted',
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             '🎉 Lifetime access granted',
             'Slot #' . ($data['slot_number'] ?? '?') . ' of ' . CA_LIFETIME_SLOTS
         );
     }
 }
 
-// ── Hook: whenever API key is saved → check lifetime ───────────
+// ── Hook: whenever Claude is connected → check lifetime ───────────
 add_action('update_option_ca_api_key', function($old, $new) {
     if ( $new && $new !== $old ) {
         wpilot_check_lifetime_on_connect($new);

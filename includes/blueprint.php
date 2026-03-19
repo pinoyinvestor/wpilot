@@ -183,7 +183,7 @@ function wpilot_build_blueprint() {
         $bp['menus'][] = $menu->name . '@' . $loc . ':' . implode(',', $item_str);
     }
 
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
 
     // 4. CSS summary — byte count + first 300 chars of actual CSS rules
     $raw_css = wp_get_custom_css();
@@ -357,7 +357,6 @@ function wpilot_compress_blueprint($bp) {
 // ═══════════════════════════════════════════════════════════════
 // LIVE TRACKING — blueprint auto-updates on every WordPress change
 
-// ═══ UPDATE DETECTION — notify weblease.se when WP/PHP/plugins update ═══
 
 // Detect WordPress core update
 add_action("upgrader_process_complete", function($upgrader, $options) {
@@ -409,7 +408,7 @@ add_action("shutdown", function() {
     }
 });
 
-// Send notification to weblease.se/chefen
+
 function wpilot_notify_update($event, $details = "") {
     $site_url = get_site_url();
     $license = get_option("ca_license_key", "");

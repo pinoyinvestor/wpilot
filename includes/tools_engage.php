@@ -1042,7 +1042,7 @@ add_action("wp_ajax_nopriv_wpi_booking_submit", function(){ do_action("wpilot_bo
 // ═══════════════════════════════════════════════════════════════
 //  LIVE CHAT WIDGET — 7. enable_live_chat
 // ═══════════════════════════════════════════════════════════════
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 function wpilot_enable_live_chat($params) {
     wpilot_engage_ensure_chat_table();
 

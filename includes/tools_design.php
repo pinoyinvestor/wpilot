@@ -582,7 +582,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
             $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
             $header_bg = sanitize_text_field($params['header_bg'] ?? $accent);
             $text_color = sanitize_text_field($params['text_color'] ?? '#333333');
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             // WooCommerce email settings
             update_option('woocommerce_email_background_color', $bg);
             update_option('woocommerce_email_base_color', $accent);
@@ -781,7 +781,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
 
 
         // ═══ PREMIUM DESIGN TOOLS ══════════════════════════════════
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
 
         case 'hover_effects':
             $sel    = $params['selector'] ?? '';
@@ -1241,7 +1241,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
             $sel = $params['selector'] ?? '[data-count]';
             if (!$pid) return wpilot_err('page_id required.');
             $scope = ".page-id-{$pid}";
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             $css = "{$scope} {$sel}{font-variant-numeric:tabular-nums;}";
             $js_code = "(function(){if(!document.body.classList.contains('page-id-{$pid}'))return;var els=document.querySelectorAll('{$scope} {$sel}');var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){var el=e.target;var target=parseInt(el.getAttribute('data-count')||el.textContent);var start=0;var dur=2000;var step=Math.max(Math.ceil(dur/target),1);var timer=setInterval(function(){start++;el.textContent=start;if(start>=target){clearInterval(timer);el.textContent=target;}},step);obs.unobserve(el);}});},{threshold:0.3});els.forEach(function(el){obs.observe(el);});})();";
             $stored_js = get_option('wpilot_footer_scripts', '');
@@ -1296,7 +1296,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
             $bg_style = $transparent ? 'transparent' : $bg;
             $position = ($transparent || $sticky) ? 'position:fixed;top:0;left:0;right:0;z-index:9999' : 'position:relative';
             $backdrop = $sticky ? 'backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);background:rgba(10,10,10,0.85) !important' : '';
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             $header_html = '<div id="wpilot-header" style="' . $position . ';background:' . $bg_style . ';' . $backdrop . ';border-bottom:1px solid rgba(255,255,255,0.06);padding:0 24px;transition:all 0.3s">';
             $header_html .= '<div style="max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:70px">';
             $header_html .= '<div>' . $logo_html . '</div>';
@@ -1550,7 +1550,7 @@ case 'send_bulk_email':
     foreach ($users as $u) {
         if (wp_mail($u->user_email, $tpl['subject'], $tpl['body'], $headers)) { $sent++; } else { $failed++; }
     }
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $log = get_option('wpilot_email_log', []);
     $log[] = ['to'=>"bulk:{$role}",'subject'=>$tpl['subject'],'date'=>date('Y-m-d H:i:s'),'status'=>"sent:{$sent},failed:{$failed}"];
     if (count($log) > 100) $log = array_slice($log, -100);

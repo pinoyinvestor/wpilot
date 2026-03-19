@@ -74,7 +74,7 @@ function wpilot_run_security_tools($tool, $params = []) {
             $attempts = [];
             // Try WPilot's own tracking
             $log = get_option('wpilot_failed_logins', []);
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             // Try WordPress default
             if (empty($log)) {
                 $log_file = WP_CONTENT_DIR . '/debug.log';

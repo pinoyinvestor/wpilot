@@ -100,7 +100,7 @@ function wpilot_mu_remove( $module_id ) {
 // ═══════════════════════════════════════════════════════════════
 //  LIST ALL ACTIVE MODULES
 // ═══════════════════════════════════════════════════════════════
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 function wpilot_mu_list() {
     $modules = get_option( WPILOT_MU_OPTION, [] );

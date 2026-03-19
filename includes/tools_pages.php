@@ -21,11 +21,49 @@ function wpilot_run_page_tools($tool, $params = []) {
             $id = intval($params['page_id'] ?? $params['post_id'] ?? $params['id'] ?? 0);
             $search = $params['search'] ?? $params['find'] ?? $params['old'] ?? '';
             $replace = $params['replace'] ?? $params['new'] ?? '';
+            // Fallback: if search is empty but html/content was provided, try to parse as old→new
+            if (empty($search) && !empty($params['html'])) {
+                // If label contains search hints like "from X to Y" or "byt X till Y"
+                $search = $params['html'];
+            }
             if (!$id) return wpilot_err('page_id required.');
-            if (empty($search)) return wpilot_err('search string required.');
+            if (empty($search)) return wpilot_err('search string required. Use get_page first to read exact content, then provide {"id":X, "search":"exact old text", "replace":"new text"}.');
             $content = get_post_field('post_content', $id);
-            if (strpos($content, $search) === false) return wpilot_err("Text not found in page #{$id}.");
-            $content = str_replace($search, $replace, $content);
+            // Built by Weblease
+            $found = false;
+            // 1. Exact match
+            if (strpos($content, $search) !== false) {
+                $content = str_replace($search, $replace, $content);
+                $found = true;
+            }
+            // 2. Regex fallback — if search looks like a regex pattern (contains regex chars)
+            if (!$found && (strpos($search, '[') !== false || strpos($search, '(') !== false || strpos($search, '*') !== false || strpos($search, '+') !== false)) {
+                $regex_result = @preg_replace('/' . $search . '/u', $replace, $content);
+                if ($regex_result !== null && $regex_result !== $content) {
+                    $content = $regex_result;
+                    $found = true;
+                }
+            }
+            // 3. Fuzzy fallback — search for text ignoring whitespace differences
+            if (!$found) {
+                $search_flex = preg_quote($search, '/');
+                $search_flex = str_replace('\ ', '\s+', $search_flex);
+                $regex_result = @preg_replace('/' . $search_flex . '/ui', $replace, $content);
+                if ($regex_result !== null && $regex_result !== $content) {
+                    $content = $regex_result;
+                    $found = true;
+                }
+            }
+            // 4. Smart button/link fallback — if searching for text inside a link, match the full <a> tag
+            if (!$found && !str_contains($search, '<')) {
+                $pattern = '/(<a[^>]*>)' . preg_quote($search, '/') . '(<\/a>)/i';
+                if (preg_match($pattern, $content)) {
+                    // Replace just the text inside the link, preserving the <a> tag and href
+                    $content = preg_replace($pattern, '$1' . $replace . '$2', $content);
+                    $found = true;
+                }
+            }
+            if (!$found) return wpilot_err("Text not found in page #{$id}. Use get_page first to read the exact content.");
             wp_update_post(['ID' => $id, 'post_content' => $content]);
             if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             return wpilot_ok("Replaced in page #{$id}.");
@@ -67,7 +105,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                         $html = preg_replace( '/<!--\s*\/wp:html\s*-->/', '', $html );
                         return trim( $html );
                     };
-                    // Built by Christos Ferlachidis & Daniel Hedenberg
+                    // Built by Weblease
                     $existing_inner = $strip_wp_html( $existing );
                     $new_inner      = $strip_wp_html( $content );
                     $content = '<!-- wp:html -->' . $existing_inner . "\n" . $new_inner . '<!-- /wp:html -->';
@@ -343,7 +381,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             return wpilot_ok("Menu #{$menu_id} assigned to location \"{$location}\".");
 
         /* ── SEO metadata ───────────────────────────────────── */
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         case 'create_user':
             $username = sanitize_user($params['username'] ?? 'user'.rand(100,9999));
             $email    = sanitize_email($params['email'] ?? '');
@@ -880,11 +918,9 @@ function wpilot_run_page_tools($tool, $params = []) {
             $php = "<?php\nadd_action('wp_head', function() {\necho '<style id=\"wpilot-head-styles\">\n/* BEGIN CSS */\n"
                 . addslashes($merged_css) . "\n"
                 . "/* END CSS */\n</style>';\n}, 999999);\n";
-            if (function_exists('wpilot_mu_register')) {
-                wpilot_mu_register('head-styles', $php);
-            } else {
-                file_put_contents($filepath, $php);
-            }
+            error_log('WPILOT DEBUG add_head_code: filepath=' . $filepath . ' php_len=' . strlen($php) . ' mu_dir=' . $mu_dir . ' is_dir=' . (is_dir($mu_dir)?'yes':'no'));
+            $written = file_put_contents($filepath, $php);
+            error_log('WPILOT DEBUG written=' . var_export($written, true) . ' file_exists=' . (file_exists($filepath)?'yes':'no'));
             if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             $sel_count = count($new_blocks);
             return wpilot_ok("CSS merged into consolidated mu-plugin: {$filename} ({$sel_count} selector(s) added/updated, " . count($merged) . " total)");
@@ -1041,7 +1077,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 . $code . "\n"
                 . "}, " . $priority . ");\n";
             // Validate PHP syntax before saving
-            $test = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            // PHP syntax check removed for security (no exec)
             if ($ret !== 0 && $ret !== null) {
                 return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
             }
@@ -1815,7 +1851,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             return wpilot_ok("Theme '{$slug}' installed.");
 
         case 'activate_theme':
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
         case 'switch_theme':
             $slug = sanitize_text_field($params['slug'] ?? $params['theme'] ?? $params['name'] ?? '');
             if (empty($slug)) return wpilot_err('Theme slug required.');
@@ -2045,12 +2081,80 @@ function wpilot_run_page_tools($tool, $params = []) {
                 }
             }
 
+            // === DEEP ANALYSIS — what Claude needs to see ===
+            
+            // Layout structure analysis
+            $layout = [];
+            if (strpos($html, 'id="sidebar"') !== false || strpos($html, 'widget-area') !== false) {
+                $layout[] = 'SIDEBAR VISIBLE — has widget area with widgets (Recent Posts, Comments, Search). Hide with CSS: #sidebar,.widget-area{display:none!important}';
+                $issues[] = 'Sidebar is visible with widgets — clutters the Apple-style layout';
+            }
+            if (strpos($html, 'id="footer"') !== false || strpos($html, 'id="copyright"') !== false) {
+                // Check if footer has content
+                if (preg_match('/<footer[^>]*id="footer"[^>]*>.*?<\/footer>/s', $html, $fm)) {
+                    if (strlen(strip_tags($fm[0])) > 10) {
+                        $layout[] = 'FOOTER VISIBLE — theme footer with copyright text. Hide: #footer,#copyright{display:none!important}';
+                        $issues[] = 'Theme footer is visible';
+                    }
+                }
+            }
+            if (strpos($html, 'id="site-title"') !== false) {
+                $layout[] = 'SITE TITLE in header — theme renders site name as H1. Hide: #site-title{display:none!important}';
+            }
+            if (strpos($html, 'entry-title') !== false) {
+                $layout[] = 'ENTRY TITLE — theme renders page title separately from content. Hide: .entry-title{display:none!important}';
+                $issues[] = 'Duplicate page title from theme template';
+            }
+            if (strpos($html, 'id="search"') !== false) {
+                $layout[] = 'SEARCH FORM in header — theme adds search widget. Hide: #search{display:none!important}';
+            }
+            
+            // Width constraints
+            if (preg_match('/content-size:\s*(\d+)px/', $html, $wm)) {
+                if (intval($wm[1]) < 1000) {
+                    $layout[] = 'CONTENT CONSTRAINED to ' . $wm[1] . 'px — theme limits width. Override: :root{--wp--style--global--content-size:100%!important}';
+                    $issues[] = 'Content width capped at ' . $wm[1] . 'px by theme';
+                }
+            }
+            if (strpos($html, 'is-layout-constrained') !== false) {
+                $layout[] = 'GUTENBERG CONSTRAINED LAYOUT active — blocks have max-width. Override: .is-layout-constrained>*{max-width:100%!important}';
+            }
+            
+            // Full-width sections check
+            $has_fullwidth_css = strpos($html, 'calc(-50vw') !== false;
+            if (!$has_fullwidth_css && (strpos($html, 'f5f5f7') !== false || strpos($html, '000000') !== false)) {
+                $layout[] = 'COLORED SECTIONS not full-width — need CSS: .wp-block-group[style*="f5f5f7"]{margin-left:calc(-50vw + 50%)!important;margin-right:calc(-50vw + 50%)!important;width:100vw!important}';
+                $issues[] = 'Background sections not stretching to full width';
+            }
+
+            // Theme detection
+            $theme_info = '';
+            if (strpos($html, 'blankslate') !== false) $theme_info = 'BlankSlate (classic, minimal, has sidebar+footer)';
+            elseif (strpos($html, 'twentytwentyfive') !== false) $theme_info = 'TT5 (block theme, aggressive global styles, template parts)';
+            elseif (strpos($html, 'twentytwentyfour') !== false) $theme_info = 'TT4 (block theme)';
+            elseif (strpos($html, 'hello-elementor') !== false) $theme_info = 'Hello Elementor (clean, Elementor builder)';
+            elseif (strpos($html, 'storefront') !== false) $theme_info = 'Storefront (WooCommerce theme)';
+            $report['theme'] = $theme_info;
+            $report['layout_issues'] = $layout;
+            
+            // DOM summary for Claude
+            $dom_summary = [];
+            preg_match_all('/<(header|footer|nav|main|aside|article|section|div)[^>]*(id|class)="([^"]+)"/', $html, $dom_matches, PREG_SET_ORDER);
+            foreach (array_slice($dom_matches, 0, 20) as $m) {
+                $dom_summary[] = '<' . $m[1] . ' ' . $m[2] . '="' . substr($m[3], 0, 60) . '">';
+            }
+            $report['dom_structure'] = $dom_summary;
+
             $report['issues'] = $issues;
             $report['issues_count'] = count($issues);
 
-            $msg = count($issues) === 0
-                ? "Page looks good. No issues found at {$url}."
-                : count($issues) . " issues found at {$url}: " . implode(', ', $issues);
+            // Build rich message for Claude
+            $msg_parts = [];
+            $msg_parts[] = count($issues) . " issues at {$url}";
+            if ($theme_info) $msg_parts[] = "Theme: {$theme_info}";
+            if ($layout) $msg_parts[] = "Layout: " . implode('. ', array_slice($layout, 0, 3));
+            if ($issues) $msg_parts[] = "Issues: " . implode(', ', $issues);
+            $msg = implode('. ', $msg_parts);
 
             return wpilot_ok($msg, $report);
 
@@ -2771,7 +2875,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                     }
                 }
             }
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             // Export CSV
             $csv = "Email,Name,Source\n";
             foreach ($emails as $email => $data) $csv .= "{$email},\"{$data['name']}\",{$data['source']}\n";
@@ -3040,7 +3144,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             $has_imgopt = in_array('ewww-image-optimizer', $installed) || in_array('imagify', $installed) || in_array('smush', $installed) || defined('LSCWP_V');
             if (!$has_imgopt && !$has_cache) $recommendations[] = ['plugin' => 'ewww-image-optimizer', 'reason' => 'No image optimizer — large images slow your site', 'priority' => 'medium', 'free' => true];
 
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
 
             if (empty($recommendations)) {
                 return wpilot_ok("All essential plugins installed! Your site has good coverage.", ['all_good' => true]);

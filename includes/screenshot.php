@@ -57,7 +57,7 @@ function wpilot_take_screenshot( $url, $options = [] ) {
     }
 
     // Build safe argument list (no shell interpolation)
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $budget = max(1000, $delay * 1000);
     $args = [
         $chrome,

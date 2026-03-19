@@ -146,7 +146,7 @@ function wpilot_parse_ai_actions($response_text) {
         }
 
         // ── Extract inline params from label/description text ──
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         $inline_text = $label . ' ' . $desc . ' ' . ($match[0][0] ?? '');
 
         // Page/post ID: "page ID 150", "id 150", "post_id 75", "product_id 75"
@@ -184,6 +184,45 @@ function wpilot_parse_ai_actions($response_text) {
             }
         }
 
+        // ── Smart param fixing for replace_in_page ──
+        // If Claude provided html block instead of search/replace JSON, parse the label for intent
+        if (in_array($tool, ['replace_in_page', 'edit_page_css']) && empty($params['search']) && empty($params['find'])) {
+            // Try to extract old→new from two consecutive html blocks in the segment
+            if (preg_match_all('//s', $segment, $html_blocks) && count($html_blocks[1]) >= 2) {
+                $params['search'] = trim($html_blocks[1][0]);
+                $params['replace'] = trim($html_blocks[1][1]);
+                unset($params['html'], $params['content']);
+            }
+            // If only one html block — try to use the page content to find what to replace
+            elseif (!empty($params['html']) && !empty($params['id'])) {
+                $page_content = get_post_field('post_content', intval($params['id']));
+                $new_html = $params['html'];
+                // Extract the tag type and try to find similar element in page
+                if (preg_match('/<(a|button|h[1-6]|p|div|span)[^>]*>/', $new_html, $tag_match)) {
+                    $tag = $tag_match[1];
+                    // Find all elements of same tag in page content
+                    if (preg_match_all('/<' . $tag . '[^>]*>.*?<\/' . $tag . '>/s', $page_content, $existing)) {
+                        // If there is text overlap (like class name), pick the closest match
+                        foreach ($existing[0] as $candidate) {
+                            // Check if the label mentions text that appears in this candidate
+                            $label_words = preg_split('/[\s,;|]+/', strtolower($label));
+                            $candidate_lower = strtolower($candidate);
+                            $overlap = 0;
+                            foreach ($label_words as $w) {
+                                if (strlen($w) > 2 && strpos($candidate_lower, $w) !== false) $overlap++;
+                            }
+                            if ($overlap > 0) {
+                                $params['search'] = $candidate;
+                                $params['replace'] = $new_html;
+                                unset($params['html'], $params['content']);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         $actions[] = [
             'tool'        => $tool,
             'label'       => $label ?: $tool,
@@ -215,7 +254,14 @@ function wpilot_auto_execute_actions($actions) {
         $backup_id = function_exists('wpilot_backup_log') ? wpilot_backup_log($tool, $params) : null;
 
         // Execute the tool
+        $_tool_start = microtime(true);
         $r = wpilot_safe_run_tool($tool, $params);
+        $_tool_ms = intval((microtime(true) - $_tool_start) * 1000);
+
+        // Collect usage data
+        if (function_exists('wpilot_collect_tool_usage')) {
+            wpilot_collect_tool_usage($tool, $params, empty($r['success']), $_tool_ms, 'chat', $r['message'] ?? '');
+        }
 
         $entry = [
             'tool'      => $tool,

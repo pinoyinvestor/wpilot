@@ -14,7 +14,7 @@ function wpilot_get_templates() {
         ['name' => 'pricing',          'description' => '3-tier pricing table with features and CTA buttons'],
         ['name' => 'portfolio',        'description' => 'Image grid gallery with hover effects and filters'],
         ['name' => 'services',         'description' => 'Service cards with icons, descriptions, and links'],
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         ['name' => 'testimonials',     'description' => 'Customer reviews with photos, names, star ratings'],
         ['name' => 'faq',              'description' => 'Accordion FAQ section with expandable answers'],
         ['name' => 'team',             'description' => 'Team member cards with photos, roles, social links'],
@@ -396,7 +396,7 @@ HTML;
         <p style="color:rgba(255,255,255,0.7);margin:0;font-size:0.9rem">Branding &middot; Design</p>
       </div>
     </div>
-    <!-- Built by Christos Ferlachidis & Daniel Hedenberg -->
+    <!-- Built by Weblease -->
     <div style="position:relative;border-radius:16px;overflow:hidden;aspect-ratio:4/3;background:linear-gradient(135deg,#0f766e22 0%,#14b8a611 100%);cursor:pointer">
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
         <span style="font-size:3rem;opacity:0.3">&#128247;</span>

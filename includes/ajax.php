@@ -46,8 +46,17 @@ add_action( 'wp_ajax_ca_chat', function () {
     if ( ! wpilot_user_has_access() ) wp_send_json_error( 'You don\'t have WPilot access. Ask your admin to grant it.', 403 );
     if ( wpilot_is_locked() )       wp_send_json_error( 'Free limit reached. Please activate your license.' );
 
+    // Rate limit check (server-defined limits per plan)
+    if ( function_exists( 'wpilot_check_rate_limit' ) ) {
+        $rate_check = wpilot_check_rate_limit();
+        if ( is_wp_error( $rate_check ) ) {
+            wp_send_json_error( $rate_check->get_error_message() );
+        }
+    }
+
     $message = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
     $mode    = sanitize_text_field( wp_unslash( $_POST['mode']    ?? 'chat' ) );
+    $session_key = sanitize_text_field( wp_unslash( $_POST["session_key"] ?? "" ) );
     $history_raw = json_decode( wp_unslash( $_POST['history'] ?? '[]' ), true ) ?: [];
     // Sanitize history entries
     $history = array_map( function($msg) {
@@ -94,7 +103,7 @@ add_action( 'wp_ajax_ca_chat', function () {
     $mem_id   = is_array($result) ? ($result['memory_id'] ?? null) : null;
 
     // Only count against prompt limit if Claude was used
-    if ( $source === 'claude' ) wpilot_bump_prompts();
+    if ( $source === 'claude' ) { wpilot_bump_prompts(); if (function_exists('wpilot_bump_rate_limit')) wpilot_bump_rate_limit(); }
 
     // Primary parser: wpilot_parse_ai_actions extracts actions + code block params
     $actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($response) : [];
@@ -104,7 +113,7 @@ add_action( 'wp_ajax_ca_chat', function () {
         if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($actions, $response);
     }
 
-    // Collect training data (before history — uses $actions early)
+    // Collect data
     $pair_id = null;
     if ( function_exists('wpilot_collect_exchange') && $source === 'claude' ) {
         $tools_used  = array_map(function($a) { return $a['tool']; }, $actions);
@@ -212,6 +221,49 @@ add_action( 'wp_ajax_ca_chat', function () {
         }
     }
 
+    // ── Auto-continue: if Claude did get_page but no replace, send page content back ──
+    $did_get_page = false;
+    $did_replace = false;
+    $get_page_result = '';
+    foreach ($actions as $a) {
+        if ($a['tool'] === 'get_page' && ($a['auto_status'] ?? '') === 'done') {
+            $did_get_page = true;
+            $pid = intval($a['params']['id'] ?? 0);
+            if ($pid) $get_page_result = get_post_field('post_content', $pid);
+        }
+        if (in_array($a['tool'], ['replace_in_page', 'update_page_content'])) $did_replace = true;
+    }
+    if ($did_get_page && !$did_replace && !empty($get_page_result) && $source === 'claude' && wpilot_auto_approve()) {
+        // Claude read the page but didn't replace — send the content back so it can act
+        $cont_msg = "The user asked: " . $message . "\n\nHere is the page content you requested:\n```html\n" . substr($get_page_result, 0, 3000) . "\n```\nNow execute the replace_in_page with the EXACT text from above. Use JSON with search and replace keys.";
+
+        $cont_result = wpilot_call_claude($cont_msg, $mode, [], array_merge($history, [
+            ['role' => 'assistant', 'content' => $response],
+            ['role' => 'user', 'content' => $cont_msg],
+        ]));
+        if (!is_wp_error($cont_result)) {
+            $cont_text = is_array($cont_result) ? $cont_result['text'] : $cont_result;
+            $cont_actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($cont_text) : [];
+            if (empty($cont_actions)) {
+                $cont_actions = wpilot_parse_actions($cont_text);
+                if (function_exists(wpilot_enhance_action_params)) wpilot_enhance_action_params($cont_actions, $cont_text);
+            }
+            $cont_exec = function_exists('wpilot_auto_execute_actions') ? wpilot_auto_execute_actions($cont_actions) : null;
+            if ($cont_exec) {
+                foreach ($cont_exec['results'] as $ri => $res) {
+                    if (isset($cont_actions[$ri])) {
+                        $cont_actions[$ri]['auto_status'] = $res['status'];
+                        $cont_actions[$ri]['auto_backup_id'] = $res['backup_id'] ?? null;
+                        if ($res['status'] === 'failed') $cont_actions[$ri]['auto_error'] = $res['message'];
+                    }
+                }
+                $ok_count += $cont_exec['ok_count'];
+            }
+            $actions = array_merge($actions, $cont_actions);
+            $response .= "\n\n Auto-continued with page content:\n" . $cont_text;
+        }
+    }
+
     // ── Auto-continue: if the AI planned multiple phases, continue to next phase ──
     $has_phases = preg_match('/Phase \d|Step \d|Next:|Part \d/i', $response);
     $all_succeeded = !$failed_any && $ok_count > 0;
@@ -272,13 +324,24 @@ add_action( 'wp_ajax_ca_chat', function () {
     if (count($action_log) > 50) $action_log = array_slice($action_log, -50);
     update_option('wpilot_action_log', $action_log, false);
 
-    // Persist history after auto-approve so response & action statuses are final
+    // Persist to session (DB-backed, auto-expires)
+    if ( $session_key && function_exists('wpilot_session_add_message') ) {
+        wpilot_session_add_message( $session_key, 'user', $message );
+        wpilot_session_add_message( $session_key, 'assistant', $response );
+    }
+    // Legacy: also keep in wp_options for backwards compat
     $hist   = get_option( 'ca_chat_history', [] );
     $hist[] = ['role'=>'user',      'content'=>$message,  'time'=>current_time('H:i'), 'mode'=>$mode];
     $hist[] = ['role'=>'assistant', 'content'=>$response, 'time'=>current_time('H:i'),
                'actions'=>$actions, 'source'=>$source, 'memory_id'=>$mem_id, 'id'=>'msg_'.uniqid()];
     if ( count($hist) > 20 ) $hist = array_slice($hist,-20);
     update_option( 'ca_chat_history', $hist, false );
+
+    // Session remaining time
+    $session_remaining = 0;
+    if ( $session_key && function_exists('wpilot_session_remaining') ) {
+        $session_remaining = wpilot_session_remaining( $session_key );
+    }
 
     wp_send_json_success( [
         'response'      => $response,
@@ -291,6 +354,8 @@ add_action( 'wp_ajax_ca_chat', function () {
         'locked'        => wpilot_is_locked(),
         'savings'       => wpilot_estimate_savings(),
         'pair_id'       => $pair_id ?? null,
+        'session_key'   => $session_key,
+        'session_ttl'   => $session_remaining,
     ] );
 } );
 
@@ -337,14 +402,6 @@ add_action( 'wp_ajax_ca_save_setting', function () {
 } );
 
 // ── Save API key (admin only) ──────────────────────────────────
-add_action( 'wp_ajax_ca_save_api_key', function () {
-    check_ajax_referer( 'ca_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.', 403 );
-    if ( ! wpilot_user_can_admin() ) wp_send_json_error( 'Unauthorized.' );
-    $key = sanitize_text_field( wp_unslash( $_POST['key'] ?? '' ) );
-    update_option( 'ca_api_key', function_exists('wpilot_encrypt') ? wpilot_encrypt($key) : $key );
-    wp_send_json_success( 'Saved.' );
-} );
 
 // ── Clear history (admin only) ─────────────────────────────────
 add_action( 'wp_ajax_ca_clear_history', function () {
@@ -471,7 +528,7 @@ add_action( 'wp_ajax_wpi_load_history', function () {
     wp_send_json_success( $history );
 } );
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Save custom instruction (admin only) ───────────────────────
 add_action( 'wp_ajax_wpi_save_instruction', function () {
@@ -562,7 +619,7 @@ add_action('wp_ajax_wpi_send_feedback', function() {
     ];
     update_option('wpilot_feedbacks', $feedbacks);
 
-    // Send to weblease.se
+    
     $response = wp_remote_post('https://weblease.se/plugin/feedback', [
         'timeout' => 15,
         'headers' => ['Content-Type' => 'application/json'],
@@ -623,3 +680,55 @@ function wpilot_handle_subscribe() {
     update_option('wpilot_subscribers', $subscribers);
     wp_send_json_success(['message' => 'Subscribed! Check your email.', 'email' => $email]);
 }
+// ── Session: start new chat ────────────────────────────────────
+add_action( 'wp_ajax_wpilot_new_session', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    if ( ! wpilot_user_has_access() ) wp_send_json_error( 'Access denied.', 403 );
+    $session = wpilot_start_session();
+    // Built by Weblease
+    wp_send_json_success( $session );
+} );
+
+// ── Session: load messages ─────────────────────────────────────
+add_action( 'wp_ajax_wpilot_load_session', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    if ( ! wpilot_user_has_access() ) wp_send_json_error( 'Access denied.', 403 );
+    $key = sanitize_text_field( $_POST['session_key'] ?? '' );
+    if ( ! $key ) {
+        // Get current active session or return empty
+        $session = wpilot_get_session();
+        if ( $session ) {
+            $msgs = json_decode( $session->messages, true ) ?: [];
+            wp_send_json_success( [
+                'session_key' => $session->session_key,
+                'messages'    => $msgs,
+                'ttl'         => wpilot_session_remaining( $session->session_key ),
+            ] );
+        }
+        wp_send_json_success( [ 'session_key' => '', 'messages' => [], 'ttl' => 0 ] );
+    }
+    $msgs = wpilot_session_messages( $key );
+    wp_send_json_success( [
+        'session_key' => $key,
+        'messages'    => $msgs,
+        'ttl'         => wpilot_session_remaining( $key ),
+    ] );
+} );
+
+// ── Session: check if alive (heartbeat) ────────────────────────
+add_action( 'wp_ajax_wpilot_session_ping', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    $key = sanitize_text_field( $_POST['session_key'] ?? '' );
+    if ( ! $key ) wp_send_json_success( [ 'alive' => false, 'ttl' => 0 ] );
+    $alive = wpilot_session_alive( $key );
+    $ttl   = $alive ? wpilot_session_remaining( $key ) : 0;
+    wp_send_json_success( [ 'alive' => $alive, 'ttl' => $ttl ] );
+} );
+
+// ── Session: end current ───────────────────────────────────────
+add_action( 'wp_ajax_wpilot_end_session', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    $key = sanitize_text_field( $_POST['session_key'] ?? '' );
+    if ( $key ) wpilot_end_session( $key );
+    wp_send_json_success();
+} );

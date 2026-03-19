@@ -66,7 +66,7 @@ function wpilot_run_comment_tools($tool, $params = []) {
             if (!$id) return wpilot_err('Comment ID required.');
             $comment = get_comment($id);
             if (!$comment) return wpilot_err("Comment #{$id} not found.");
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             wp_set_comment_status($id, 'approve');
             return wpilot_ok("Comment #{$id} approved.");
 

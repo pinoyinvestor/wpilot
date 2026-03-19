@@ -278,7 +278,7 @@ function wpilot_verify_design_consistency( $page_id = 0 ) {
         }
     }
 
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     // Flag hardcoded colors that don't match any profile color
     $profile_colors = [];
     foreach ( $color_keys as $key ) {

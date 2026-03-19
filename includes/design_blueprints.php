@@ -1,7 +1,6 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// ═══════════════════════════════════════════════════════════════
 //  DESIGN BLUEPRINTS — Pre-built design recipes
 //
 //  Each blueprint = complete design DNA:
@@ -11,13 +10,11 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 //  Gutenberg, plain HTML). The CSS targets universal selectors
 //  + builder-specific overrides.
 //
-//  Flow:
 //  1. Customer says "elegant clothing store"
 //  2. AI picks best blueprint → apply_blueprint
 //  3. CSS variables + global styles applied
 //  4. Design profile saved automatically
 //  5. All future prompts stay consistent
-// ═══════════════════════════════════════════════════════════════
 
 // ── All available blueprints ──────────────────────────────────
 function wpilot_get_blueprints() {
@@ -166,7 +163,7 @@ function wpilot_get_blueprints() {
         'warm-organic' => [
             'name'        => 'Warm Organic',
             'description' => 'Varm och naturlig. Perfekt för ekologiskt, hälsa, wellness, heminredning, bageri.',
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             'keywords'    => ['organic','warm','natural','eco','health','wellness','bakery','home','interior','wood','nature','ekologisk','hälsa','naturlig','bageri','inredning'],
             'style'           => 'warm organic',
             'mood'            => 'warm and authentic',

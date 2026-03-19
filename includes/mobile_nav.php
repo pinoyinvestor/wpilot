@@ -150,7 +150,7 @@ function wpilot_generate_mobile_nav_mu() {
     $mu_code  = "<?php\n";
     $mu_code .= "// WPilot Mobile Navigation System\n";
     $mu_code .= "if ( ! defined( 'ABSPATH' ) ) exit;\n\n";
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $mu_code .= "add_action('wp_head', function() {\n";
     $mu_code .= "    if (is_admin()) return;\n";
     $mu_code .= "    echo '<style>" . wpilot_escape_mu_string( $css ) . "</style>';\n";
@@ -519,7 +519,7 @@ function wpilot_mobile_nav_css( $style, $bottom, $auto_hide ) {
 // ═══════════════════════════════════════════════════════════════
 //  HTML Generation
 // ═══════════════════════════════════════════════════════════════
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 function wpilot_mobile_nav_html( $menu_tree, $socials, $cart_count ) {
     $chevron_svg = '<svg class="wpilot-mn-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';

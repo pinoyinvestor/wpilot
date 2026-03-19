@@ -111,7 +111,7 @@ function wpilot_answer_similarity( $text_a, $text_b ) {
     return round( ($jaccard * 0.7) + ($len_ratio * 0.3), 4 );
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Log result per topic ───────────────────────────────────────
 function wpilot_shadow_log( $topic, $similarity, $question ) {

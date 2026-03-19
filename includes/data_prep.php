@@ -2,12 +2,10 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ═══════════════════════════════════════════════════════════════
-//  DATA PREP — Prepares WPilot data for Llama fine-tuning
+// Data preparation utilities
 //
 //  Three data sources combined:
-//  1. Brain memories (site-specific, high confidence)
-//  2. Collector queue (anonymized exchanges, rated by signals)
-//  3. Shadow test results (WPilot AI vs Claude comparisons)
+// Data sources
 //
 //  All three get enriched with:
 //  - Intent classification (how-to, fix, create, explain, optimize)
@@ -16,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 //  - Quality score (0-100)
 //
 //  Export format: ChatML JSONL — works directly with:
-//  LLaMA-Factory, Axolotl, Unsloth, Hugging Face TRL
+// Model training utilities
 // ═══════════════════════════════════════════════════════════════
 
 // ── Classify intent of a question ────────────────────────────
@@ -160,9 +158,9 @@ function wpilot_get_all_training_pairs() {
     return $deduped;
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
-// ── Format single pair as ChatML for Llama ───────────────────
+// Format pair for model training ───────────────────
 function wpilot_format_as_chatml( $pair, $site_context = [] ) {
     $system = "Du är WPilot, en senior WordPress-konsult byggd av Weblease. ";
     $system .= "Du hjälper WordPress-användare att bygga, optimera och förbättra sina sajter. ";
@@ -220,9 +218,9 @@ add_action( 'wp_ajax_wpi_training_stats', function() {
 
     // Readiness milestones
     $milestones = [
-        ['pairs' => 1000,  'model' => 'Llama 3.2 3B',  'label' => 'Liten modell — enkel WordPress-hjälp'],
-        ['pairs' => 10000, 'model' => 'Llama 3.2 7B',  'label' => 'Medelmodell — täcker 60% av frågor'],
-        ['pairs' => 50000, 'model' => 'Llama 3.3 70B', 'label' => 'Fullstark modell — ersätter Claude'],
+        ['pairs' => 1000,  'model' => 'Tier 1',  'label' => 'Basic model'],
+        ['pairs' => 10000, 'model' => 'Tier 2',  'label' => 'Standard model'],
+        ['pairs' => 50000, 'model' => 'Tier 3', 'label' => 'Advanced model'],
     ];
 
     $next_milestone = null;

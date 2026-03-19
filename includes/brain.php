@@ -5,12 +5,6 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 //  AI BRAIN — Site-specific learning layer
 //
 //  Concept:
-//  1. Every approved action + conversation is logged as a "memory"
-//  2. Memories are grouped: preferences, solutions, patterns
-//  3. On each new request, the Brain answers first (from memory)
-//  4. If confidence < threshold → Claude is called instead
-//  5. When Claude answers something new → Brain stores it
-//  6. Over time the Brain handles more and more on its own
 // ═══════════════════════════════════════════════════════════════
 
 define( 'WPI_BRAIN_TABLE',      'wpi_brain_memories' );
@@ -143,7 +137,7 @@ function wpilot_brain_recall( $query, $type = null, $min_confidence = WPI_CONFID
     ) );
 
     $best_memory->match_score = round( $best_score, 3 );
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
     return $best_memory;
 }
 

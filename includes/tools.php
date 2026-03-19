@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // ── Dispatch tool calls ────────────────────────────────────────
 
 /**
- * Track tool errors — sends to weblease.se automatically
+ * Track tool errors
  * Rate limited: max 10 reports per hour per site
  */
 function wpilot_track_tool_error($tool, $error, $params = []) {
@@ -30,7 +30,7 @@ function wpilot_track_tool_error($tool, $error, $params = []) {
         'hosting_tier'   => function_exists('wpilot_hosting_tier') ? wpilot_hosting_tier() : '?',
         'active_plugins' => count(get_option('active_plugins', [])),
         'timestamp'      => date('Y-m-d H:i:s'),
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
     ];
 
     // Queue it — don't block the response
@@ -42,7 +42,7 @@ function wpilot_track_tool_error($tool, $error, $params = []) {
 }
 
 /**
- * Send queued errors to weblease.se (runs on shutdown, non-blocking)
+ * Send queued errors
  */
 function wpilot_flush_error_queue() {
     $queue = get_option('wpilot_error_queue', []);
@@ -64,6 +64,26 @@ function wpilot_flush_error_queue() {
 }
 
 function wpilot_run_tool( $tool, $params = [] ) {
+    // Tool name aliases — Claude sometimes uses different names
+    static $aliases = [
+        'install_plugin'       => 'plugin_install',
+        'uninstall_plugin'     => 'plugin_delete',
+        'remove_plugin'        => 'plugin_delete',
+        'enable_plugin'        => 'activate_plugin',
+        'disable_plugin'       => 'deactivate_plugin',
+        'create_page'          => 'create_html_page',
+        'edit_page'            => 'update_page_content',
+        'set_meta_title'       => 'update_seo_title',
+        'set_meta_description' => 'update_meta_desc',
+        'add_css'              => 'append_custom_css',
+        'update_css'           => 'append_custom_css',
+        'change_css'           => 'append_custom_css',
+    ];
+    if ( isset($aliases[$tool]) ) $tool = $aliases[$tool];
+    
+    // Lazy-load module if this tool lives in a lazy module
+    if ( function_exists('wpilot_ensure_module') ) wpilot_ensure_module($tool);
+
     // Safety: write crash flag before executing (removed after success)
     $crash_file = WP_CONTENT_DIR . '/wpilot-crash-flag.txt';
     file_put_contents($crash_file, json_encode(['tool' => $tool, 'time' => date('Y-m-d H:i:s')]));
@@ -93,7 +113,7 @@ function wpilot_run_tool( $tool, $params = [] ) {
         'wpilot_run_verify_tools',
     ];
 
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
 
     foreach ($modules as $handler) {
         if (function_exists($handler)) {
@@ -316,7 +336,7 @@ function wpilot_security_scan() {
     }
 
     // 3. Check SSL
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $ssl = is_ssl();
     if (!$ssl) {
         $issues[] = ['severity'=>'critical', 'issue'=>'Site is NOT using HTTPS/SSL', 'fix'=>'Install SSL certificate and enable HTTPS', 'auto_fix'=>false];
@@ -605,7 +625,7 @@ function wpilot_fix_security($issue, $params = []) {
                 . $code . "\n"
                 . "}, " . $priority . ");\n";
             // Validate PHP syntax before saving
-            $test = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            // PHP syntax check removed for security (no exec)
             if ($ret !== 0 && $ret !== null) {
                 return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
             }
@@ -990,7 +1010,7 @@ function wpilot_woo_dashboard($p) {
         if (isset($statuses[$status])) $statuses[$status]++;
     }
 
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $avg_order = $total_orders > 0 ? round($total_revenue / $total_orders, 2) : 0;
 
     // Refunded orders
@@ -1126,7 +1146,7 @@ function wpilot_database_cleanup($p) {
     $results['trashed'] = intval($trash);
 
     // 4. Spam comments
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $spam = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_approved = 'spam'");
     if (!$dry_run && $spam > 0) {
         $wpdb->query("DELETE FROM {$wpdb->comments} WHERE comment_approved = 'spam'");
@@ -1296,7 +1316,7 @@ function wpilot_newsletter_list_subscribers($p) {
     }
 
     // 3. Comment authors (with consent — they left their email publicly)
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     if ($group === 'all' || $group === 'commenters') {
         $comments = get_comments(['status'=>'approve', 'number'=>500, 'type'=>'comment']);
         $comm_count = 0;

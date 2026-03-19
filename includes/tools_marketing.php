@@ -293,7 +293,7 @@ function wpilot_run_marketing_tools($tool, $params = []) {
                 $prompt .= "Format as Q&A pairs using h3 for questions and p for answers.";
             }
 
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
 
             $result = wpilot_call_claude($prompt, 'chat', [], []);
             if (is_wp_error($result)) return wpilot_err('AI generation failed: ' . $result->get_error_message());
@@ -1001,7 +1001,7 @@ function wpilot_handle_popup_stat() {
     wp_die('ok');
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ═══════════════════════════════════════════════════════════════
 //  SCHEDULED ACTIONS — EXECUTION ENGINE

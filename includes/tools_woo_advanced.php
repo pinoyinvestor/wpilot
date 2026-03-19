@@ -1551,7 +1551,7 @@ SIZEGUIDE_PHP;
             $page_title = sanitize_text_field($params['page_title'] ?? 'Track Your Order');
             $page_slug  = sanitize_title($params['page_slug'] ?? 'order-tracking');
 
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
 
             $existing = get_page_by_path($page_slug);
             if (!$existing) {

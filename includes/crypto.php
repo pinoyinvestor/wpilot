@@ -20,7 +20,7 @@ function wpilot_encrypt( $data ) {
     return base64_encode( $iv . '::' . $encrypted );
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 /**
  * Decrypt a string encrypted with wpilot_encrypt()

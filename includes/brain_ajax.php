@@ -81,7 +81,7 @@ add_action( 'wp_ajax_wpi_approve_memory', function() {
     wp_send_json_success(['message' => 'Memory approved and stored ✅']);
 });
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Teach Brain a preference ───────────────────────────────────
 add_action( 'wp_ajax_wpi_learn_preference', function() {
