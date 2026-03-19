@@ -103,6 +103,7 @@ function wpilot_mcp_generate_key_v2( $label, $role = 'admin', $custom_tools = nu
         'requests'     => 0,
     ];
     wpilot_mcp_keys_save( $keys );
+    delete_option( 'wpilot_mcp_key_revoked' );
 
     // Also maintain backward compat with single-key system
     update_option( 'wpilot_mcp_api_key_hash', $hash );
@@ -124,6 +125,7 @@ function wpilot_mcp_validate_key_v2( $token ) {
             $entry['last_used'] = date( 'Y-m-d H:i:s' );
             $entry['requests']  = ( $entry['requests'] ?? 0 ) + 1;
             wpilot_mcp_keys_save( $keys );
+    delete_option( 'wpilot_mcp_key_revoked' );
 
             return [
                 'valid'        => true,

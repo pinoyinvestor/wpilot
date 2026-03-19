@@ -40,6 +40,16 @@ function wpilot_mcp_generate_key() {
 function wpilot_mcp_validate_key($token) {
     if (empty($token)) return false;
 
+    // Multi-key v2 — check all stored keys
+    if (function_exists("wpilot_mcp_validate_key_v2")) {
+        $v2 = wpilot_mcp_validate_key_v2($token);
+        if ($v2 && $v2["valid"]) {
+            global $wpilot_current_key;
+            $wpilot_current_key = $v2;
+            return true;
+        }
+    }
+
     $stored_hash = get_option('wpilot_mcp_api_key_hash', '');
     if (empty($stored_hash)) return false;
 

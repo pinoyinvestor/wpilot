@@ -177,13 +177,16 @@ function wpilot_mcp3_process( $req ) {
 function wpilot_mcp3_tools_list( $id ) {
     $all_tools = wpilot_mcp_grouped_tool_definitions();
 
-    // Filter by license tier
-    $tier = function_exists( 'wpilot_mcp_check_license' ) ? wpilot_mcp_check_license() : 'pro';
-
-    if ( ! in_array( $tier, ['pro', 'team', 'lifetime'], true ) ) {
-        $free_names = function_exists( 'wpilot_mcp_free_tools' ) ? wpilot_mcp_free_tools() : ['site_info','pages','check_frontend','posts'];
-        $all_tools = array_filter( $all_tools, fn( $t ) => in_array( $t['name'], $free_names, true ) );
-        $all_tools = array_values( $all_tools );
+    // Multi-key: if active, key role controls access (skip license tier)
+    global $wpilot_current_key;
+    if ( ! $wpilot_current_key ) {
+        // No multi-key — use license tier filtering
+        $tier = function_exists( 'wpilot_mcp_check_license' ) ? wpilot_mcp_check_license() : 'pro';
+        if ( ! in_array( $tier, ['pro', 'team', 'lifetime'], true ) ) {
+            $free_names = function_exists( 'wpilot_mcp_free_tools' ) ? wpilot_mcp_free_tools() : ['site_info','pages','check_frontend','posts'];
+            $all_tools = array_filter( $all_tools, fn( $t ) => in_array( $t['name'], $free_names, true ) );
+            $all_tools = array_values( $all_tools );
+        }
     }
 
     // Multi-key: filter tools by key role
@@ -253,8 +256,8 @@ function wpilot_mcp3_tools_call( $id, $params ) {
         }
     }
 
-    // 1. License check
-    $tier = function_exists( 'wpilot_mcp_check_license' ) ? wpilot_mcp_check_license() : 'pro';
+    // 1. License check (skip if multi-key handles it)
+    $tier = ( $wpilot_current_key ) ? ($wpilot_current_key['role'] ?? 'pro') : (function_exists( 'wpilot_mcp_check_license' ) ? wpilot_mcp_check_license() : 'pro');
     if ( function_exists( 'wpilot_mcp_tool_allowed_for_tier' ) && ! wpilot_mcp_tool_allowed_for_tier( $name, $tier ) ) {
         return wpilot_mcp3_result( $id, [
             'content' => [[ 'type' => 'text', 'text' => "This tool requires a WPilot Pro license. Current tier: {$tier}. Upgrade at https://weblease.se/wpilot" ]],
