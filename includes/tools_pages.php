@@ -520,6 +520,11 @@ function wpilot_run_page_tools($tool, $params = []) {
             return wpilot_ok( "Instruction saved: \"{$rule}\"" );
 
         /* ── Restore ─────────────────────────────────────────── */
+        case "list_backups":
+            $backups = function_exists("wpilot_backup_history") ? wpilot_backup_history() : [];
+            $count = is_array($backups) ? count($backups) : 0;
+            return wpilot_ok($count . " backups found.", $backups);
+
         case 'restore_backup':
             return wpilot_restore( intval($params['backup_id'] ?? 0) );
 
@@ -703,6 +708,15 @@ function wpilot_run_page_tools($tool, $params = []) {
         /* ── Widgets & Sidebars ─────────────────────────────── */
         case 'update_widget_area':
         case 'clear_sidebar':
+        case "list_widgets":
+            $sidebars = wp_get_sidebars_widgets();
+            $result = [];
+            foreach ($sidebars as $id => $widgets) {
+                if ($id === "wp_inactive_widgets") continue;
+                $result[$id] = is_array($widgets) ? count($widgets) . " widgets" : "empty";
+            }
+            return wpilot_ok("Widget sidebars.", $result);
+
         case 'remove_widgets':
             $sidebar = sanitize_text_field($params['sidebar_id'] ?? $params['sidebar'] ?? 'sidebar-1');
             $widgets = $params['widgets'] ?? [];
@@ -1726,6 +1740,11 @@ function wpilot_run_page_tools($tool, $params = []) {
                 if ($result) $updated++;
             }
             return wpilot_ok("Updated {$updated} plugins.");
+
+        case "maintenance_status":
+            $mu_file = WPMU_PLUGIN_DIR . "/wpilot-maintenance.php";
+            $is_on = file_exists($mu_file);
+            return wpilot_ok("Maintenance mode is " . ($is_on ? "ON" : "OFF") . ".", ["enabled" => $is_on]);
 
         case 'maintenance_mode':
         case 'enable_maintenance':

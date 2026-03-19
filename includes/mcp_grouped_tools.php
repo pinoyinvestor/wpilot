@@ -1092,12 +1092,12 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
         ],
         'backup' => [
             'create'    => 'backup_now',
-            'list'      => 'restore_backup',
+            'list'      => 'list_backups',
             'restore'   => 'restore_backup',
             'configure' => 'backup_configure',
         ],
         'widgets' => [
-            'list'          => 'remove_widgets',
+            'list'          => 'list_widgets',
             'add'           => 'builder_add_widget',
             'update'        => 'update_widget_area',
             'remove'        => 'remove_widgets',
@@ -1185,7 +1185,7 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
         'maintenance' => [
             'enable'  => 'enable_maintenance',
             'disable' => 'disable_maintenance',
-            'status'  => 'maintenance_mode',
+            'status'  => 'maintenance_status',
         ],
     ];
 
