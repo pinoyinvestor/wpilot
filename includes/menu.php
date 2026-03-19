@@ -804,22 +804,47 @@ function wpilot_page_license() {
 
     <!-- License key input (for Pro/Team/Lifetime) -->
     <?php if($type !== 'lifetime'): ?>
+    <?php if($key): ?>
+    <!-- Active license display -->
+    <div class="ca-card">
+        <div class="ca-section-lbl">Your license</div>
+        <p style="font-size:13px;color:var(--ca-text2);margin:0 0 12px">
+            Your license key was sent to your email. It is hidden here for security.
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <div style="flex:1;min-width:200px;background:var(--ca-bg);border:1px solid var(--ca-border);border-radius:8px;padding:10px 14px;font-family:monospace;font-size:13.5px;color:var(--ca-text);letter-spacing:1px" id="wpiKeyDisplay">
+                <?= esc_html(substr($key, 0, 3) . '-****-****-' . substr($key, -4)) ?>
+            </div>
+            <button class="ca-btn ca-btn-ghost ca-btn-sm" id="wpiToggleKey" onclick="wpiToggleKeyVis()">Show</button>
+            <button class="ca-btn ca-btn-ghost ca-btn-sm" onclick="navigator.clipboard.writeText('<?= esc_js($key) ?>');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+            <button class="ca-btn ca-btn-ghost ca-btn-sm" onclick="wpiDeactivateLicense()" style="color:#ef4444;border-color:#ef4444">Deactivate</button>
+        </div>
+        <input type="hidden" id="wpiLicenseKey" value="<?= esc_attr($key) ?>">
+        <div id="wpiLicenseMsg" style="margin-top:10px;font-size:13px"></div>
+    </div>
+    <script>
+    var wpiKeyVisible = false;
+    function wpiToggleKeyVis() {
+        wpiKeyVisible = !wpiKeyVisible;
+        document.getElementById('wpiKeyDisplay').textContent = wpiKeyVisible ? '<?= esc_js($key) ?>' : '<?= esc_js(substr($key, 0, 3) . "-****-****-" . substr($key, -4)) ?>';
+        document.getElementById('wpiToggleKey').textContent = wpiKeyVisible ? 'Hide' : 'Show';
+    }
+    </script>
+    <?php else: ?>
+    <!-- No license — enter key -->
     <div class="ca-card">
         <div class="ca-section-lbl">Activate with license key</div>
         <p style="font-size:13px;color:var(--ca-text2);margin:0 0 12px">
-            You receive your key via email after purchase. Format: CA-XXXX-XXXX-XXXX
+            Enter the license key you received via email. Format: CA-XXXX-XXXX-XXXX
         </p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
             <input type="text" id="wpiLicenseKey" placeholder="CA-XXXX-XXXX-XXXX"
-                   value="<?= esc_attr($key) ?>"
                    style="flex:1;min-width:200px;background:var(--ca-bg);border:1px solid var(--ca-border);border-radius:8px;padding:10px 14px;color:var(--ca-text);font-size:13.5px;font-family:monospace">
             <button class="ca-btn ca-btn-primary" onclick="wpiActivateLicense()">Activate</button>
-            <?php if($key): ?>
-            <button class="ca-btn ca-btn-ghost ca-btn-sm" onclick="wpiDeactivateLicense()" style="color:#ef4444;border-color:#ef4444">Deactivate</button>
-            <?php endif; ?>
         </div>
         <div id="wpiLicenseMsg" style="margin-top:10px;font-size:13px"></div>
     </div>
+    <?php endif; ?>
     <?php endif; ?>
 // Built by Weblease
 
