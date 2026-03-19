@@ -847,5 +847,396 @@ function wpilot_strings() {
         'onb_error' => [
             'sv' => 'Något gick fel. Försök igen.', 'en' => 'Something went wrong. Try again.', 'de' => 'Etwas ist schiefgelaufen. Versuchen Sie es erneut.', 'fr' => 'Une erreur est survenue. Réessayez.', 'es' => 'Algo salió mal. Inténtalo de nuevo.',
         ],
+
+        // ── Claude Code (MCP) Admin Page ──────────────────────────
+        'mcp_key_generated_banner' => [
+            'sv' => 'API-nyckel skapad — kopiera den nu, den visas inte igen',
+            'en' => 'API key generated — copy it now, it won\'t be shown again',
+            'de' => 'API-Schlüssel erstellt — jetzt kopieren, er wird nicht erneut angezeigt',
+            'fr' => 'Clé API générée — copiez-la maintenant, elle ne sera plus affichée',
+            'es' => 'Clave API generada — cópiala ahora, no se mostrará de nuevo',
+        ],
+        'mcp_copy' => [
+            'sv' => 'Kopiera', 'en' => 'Copy', 'de' => 'Kopieren', 'fr' => 'Copier', 'es' => 'Copiar',
+        ],
+        'mcp_copied' => [
+            'sv' => 'Kopierat!', 'en' => 'Copied!', 'de' => 'Kopiert!', 'fr' => 'Copié !', 'es' => '¡Copiado!',
+        ],
+        'mcp_run_in_terminal' => [
+            'sv' => 'Kör i din terminal', 'en' => 'Run in your terminal', 'de' => 'In Ihrem Terminal ausführen', 'fr' => 'Exécutez dans votre terminal', 'es' => 'Ejecuta en tu terminal',
+        ],
+        'mcp_key_revoked_title' => [
+            'sv' => 'API-nyckel återkallad.', 'en' => 'API key revoked.', 'de' => 'API-Schlüssel widerrufen.', 'fr' => 'Clé API révoquée.', 'es' => 'Clave API revocada.',
+        ],
+        'mcp_key_revoked_desc' => [
+            'sv' => 'Claude Code kan inte längre ansluta. Skapa en ny nyckel för att ansluta igen.',
+            'en' => 'Claude Code can no longer connect. Generate a new key to reconnect.',
+            'de' => 'Claude Code kann nicht mehr verbinden. Erstellen Sie einen neuen Schlüssel zum Wiederverbinden.',
+            'fr' => 'Claude Code ne peut plus se connecter. Générez une nouvelle clé pour vous reconnecter.',
+            'es' => 'Claude Code ya no puede conectarse. Genera una nueva clave para reconectar.',
+        ],
+        'mcp_snapshot_restored' => [
+            'sv' => 'Ögonblicksbild återställd.', 'en' => 'Snapshot restored.', 'de' => 'Snapshot wiederhergestellt.', 'fr' => 'Instantané restauré.', 'es' => 'Instantánea restaurada.',
+        ],
+        'mcp_undo_failed' => [
+            'sv' => 'Ångra misslyckades.', 'en' => 'Undo failed.', 'de' => 'Rückgängig fehlgeschlagen.', 'fr' => 'L\'annulation a échoué.', 'es' => 'Deshacer falló.',
+        ],
+        'mcp_status' => [
+            'sv' => 'Status', 'en' => 'Status', 'de' => 'Status', 'fr' => 'Statut', 'es' => 'Estado',
+        ],
+        'mcp_active' => [
+            'sv' => 'Aktiv', 'en' => 'Active', 'de' => 'Aktiv', 'fr' => 'Actif', 'es' => 'Activo',
+        ],
+        'mcp_inactive' => [
+            'sv' => 'Inaktiv', 'en' => 'Inactive', 'de' => 'Inaktiv', 'fr' => 'Inactif', 'es' => 'Inactivo',
+        ],
+        'mcp_key_created' => [
+            'sv' => 'Nyckel skapad', 'en' => 'Key created', 'de' => 'Schlüssel erstellt', 'fr' => 'Clé créée', 'es' => 'Clave creada',
+        ],
+        'mcp_no_api_key' => [
+            'sv' => 'Ingen API-nyckel', 'en' => 'No API key', 'de' => 'Kein API-Schlüssel', 'fr' => 'Aucune clé API', 'es' => 'Sin clave API',
+        ],
+        'mcp_requests' => [
+            'sv' => 'Förfrågningar', 'en' => 'Requests', 'de' => 'Anfragen', 'fr' => 'Requêtes', 'es' => 'Solicitudes',
+        ],
+        'mcp_requests_lc' => [
+            'sv' => 'förfrågningar', 'en' => 'requests', 'de' => 'Anfragen', 'fr' => 'requêtes', 'es' => 'solicitudes',
+        ],
+        'mcp_last' => [
+            'sv' => 'Senast:', 'en' => 'Last:', 'de' => 'Zuletzt:', 'fr' => 'Dernière :', 'es' => 'Última:',
+        ],
+        'mcp_no_requests_yet' => [
+            'sv' => 'Inga förfrågningar ännu', 'en' => 'No requests yet', 'de' => 'Noch keine Anfragen', 'fr' => 'Aucune requête pour le moment', 'es' => 'Sin solicitudes aún',
+        ],
+        'mcp_tools' => [
+            'sv' => 'Verktyg', 'en' => 'Tools', 'de' => 'Werkzeuge', 'fr' => 'Outils', 'es' => 'Herramientas',
+        ],
+        'mcp_available_tools' => [
+            'sv' => 'Tillgängliga verktyg', 'en' => 'Available tools', 'de' => 'Verfügbare Werkzeuge', 'fr' => 'Outils disponibles', 'es' => 'Herramientas disponibles',
+        ],
+        'mcp_rate_limit' => [
+            'sv' => 'Hastighetsgräns', 'en' => 'Rate Limit', 'de' => 'Ratenlimit', 'fr' => 'Limite de débit', 'es' => 'Límite de velocidad',
+        ],
+        'mcp_requests_per_min' => [
+            'sv' => 'Förfrågningar per minut per IP', 'en' => 'Requests per minute per IP', 'de' => 'Anfragen pro Minute pro IP', 'fr' => 'Requêtes par minute par IP', 'es' => 'Solicitudes por minuto por IP',
+        ],
+        'mcp_get_claude_code' => [
+            'sv' => 'Skaffa Claude Code', 'en' => 'Get Claude Code', 'de' => 'Claude Code installieren', 'fr' => 'Obtenir Claude Code', 'es' => 'Obtener Claude Code',
+        ],
+        'mcp_get_claude_code_desc' => [
+            'sv' => 'Claude Code är Anthropics AI-kodningsverktyg. Installera det en gång, anslut sedan till din WordPress-sajt.',
+            'en' => 'Claude Code is Anthropic\'s AI coding tool. Install it once, then connect to your WordPress site.',
+            'de' => 'Claude Code ist Anthropics KI-Programmiertool. Einmal installieren, dann mit Ihrer WordPress-Seite verbinden.',
+            'fr' => 'Claude Code est l\'outil de codage IA d\'Anthropic. Installez-le une fois, puis connectez-le à votre site WordPress.',
+            'es' => 'Claude Code es la herramienta de programación IA de Anthropic. Instálala una vez, luego conéctala a tu sitio WordPress.',
+        ],
+        'mcp_install_claude_code' => [
+            'sv' => 'Installera Claude Code', 'en' => 'Install Claude Code', 'de' => 'Claude Code installieren', 'fr' => 'Installer Claude Code', 'es' => 'Instalar Claude Code',
+        ],
+        'mcp_open_terminal_run' => [
+            'sv' => 'Öppna din terminal och kör:', 'en' => 'Open your terminal and run:', 'de' => 'Öffnen Sie Ihr Terminal und führen Sie aus:', 'fr' => 'Ouvrez votre terminal et exécutez :', 'es' => 'Abre tu terminal y ejecuta:',
+        ],
+        'mcp_requires_node' => [
+            'sv' => 'Kräver Node.js 18+. På Mac kan du även använda: <code style="color:var(--ca-text2)">brew install claude-code</code>',
+            'en' => 'Requires Node.js 18+. On Mac you can also use: <code style="color:var(--ca-text2)">brew install claude-code</code>',
+            'de' => 'Erfordert Node.js 18+. Auf dem Mac können Sie auch verwenden: <code style="color:var(--ca-text2)">brew install claude-code</code>',
+            'fr' => 'Nécessite Node.js 18+. Sur Mac, vous pouvez aussi utiliser : <code style="color:var(--ca-text2)">brew install claude-code</code>',
+            'es' => 'Requiere Node.js 18+. En Mac también puedes usar: <code style="color:var(--ca-text2)">brew install claude-code</code>',
+        ],
+        'mcp_sign_in_anthropic' => [
+            'sv' => 'Logga in på Anthropic', 'en' => 'Sign in to Anthropic', 'de' => 'Bei Anthropic anmelden', 'fr' => 'Se connecter à Anthropic', 'es' => 'Iniciar sesión en Anthropic',
+        ],
+        'mcp_sign_in_anthropic_desc' => [
+            'sv' => 'Kör <code style="font-family:var(--ca-mono);color:var(--ca-cyan)">claude</code> i din terminal. Ett webbläsarfönster öppnas för att logga in med ditt Anthropic-konto.',
+            'en' => 'Run <code style="font-family:var(--ca-mono);color:var(--ca-cyan)">claude</code> in your terminal. It will open a browser window to sign in with your Anthropic account.',
+            'de' => 'Führen Sie <code style="font-family:var(--ca-mono);color:var(--ca-cyan)">claude</code> in Ihrem Terminal aus. Ein Browserfenster öffnet sich zur Anmeldung.',
+            'fr' => 'Exécutez <code style="font-family:var(--ca-mono);color:var(--ca-cyan)">claude</code> dans votre terminal. Une fenêtre de navigateur s\'ouvrira pour vous connecter.',
+            'es' => 'Ejecuta <code style="font-family:var(--ca-mono);color:var(--ca-cyan)">claude</code> en tu terminal. Se abrirá una ventana del navegador para iniciar sesión.',
+        ],
+        'mcp_need_account' => [
+            'sv' => 'Behöver du ett konto? <a href="https://claude.ai" target="_blank" rel="noopener" style="color:var(--ca-accent)">Registrera dig på claude.ai</a> — du behöver ett Max-abonnemang eller API-konto.',
+            'en' => 'Need an account? <a href="https://claude.ai" target="_blank" rel="noopener" style="color:var(--ca-accent)">Sign up at claude.ai</a> — you need a Max plan or API account.',
+            'de' => 'Kein Konto? <a href="https://claude.ai" target="_blank" rel="noopener" style="color:var(--ca-accent)">Bei claude.ai registrieren</a> — Sie benötigen einen Max-Plan oder API-Konto.',
+            'fr' => 'Besoin d\'un compte ? <a href="https://claude.ai" target="_blank" rel="noopener" style="color:var(--ca-accent)">Inscrivez-vous sur claude.ai</a> — vous avez besoin d\'un plan Max ou d\'un compte API.',
+            'es' => '¿Necesitas una cuenta? <a href="https://claude.ai" target="_blank" rel="noopener" style="color:var(--ca-accent)">Regístrate en claude.ai</a> — necesitas un plan Max o cuenta API.',
+        ],
+        'mcp_connect_wp_site' => [
+            'sv' => 'Anslut till din WordPress-sajt', 'en' => 'Connect to your WordPress site', 'de' => 'Mit Ihrer WordPress-Seite verbinden', 'fr' => 'Connectez-vous à votre site WordPress', 'es' => 'Conéctate a tu sitio WordPress',
+        ],
+        'mcp_connect_wp_site_desc' => [
+            'sv' => 'Skapa din API-nyckel nedan, kör sedan anslutningskommandot i din terminal. Klart!',
+            'en' => 'Generate your API key below, then run the connection command in your terminal. Done!',
+            'de' => 'Erstellen Sie Ihren API-Schlüssel unten, führen Sie dann den Verbindungsbefehl in Ihrem Terminal aus. Fertig!',
+            'fr' => 'Générez votre clé API ci-dessous, puis exécutez la commande de connexion dans votre terminal. Terminé !',
+            'es' => 'Genera tu clave API abajo, luego ejecuta el comando de conexión en tu terminal. ¡Listo!',
+        ],
+        'mcp_claude_code_docs' => [
+            'sv' => 'Claude Code-dokumentation', 'en' => 'Claude Code documentation', 'de' => 'Claude Code-Dokumentation', 'fr' => 'Documentation Claude Code', 'es' => 'Documentación de Claude Code',
+        ],
+        'mcp_api_key' => [
+            'sv' => 'API-nyckel', 'en' => 'API Key', 'de' => 'API-Schlüssel', 'fr' => 'Clé API', 'es' => 'Clave API',
+        ],
+        'mcp_key_active_desc' => [
+            'sv' => 'Din API-nyckel är aktiv. Claude Code kan ansluta till denna sajt.',
+            'en' => 'Your API key is active. Claude Code can connect to this site.',
+            'de' => 'Ihr API-Schlüssel ist aktiv. Claude Code kann sich mit dieser Seite verbinden.',
+            'fr' => 'Votre clé API est active. Claude Code peut se connecter à ce site.',
+            'es' => 'Tu clave API está activa. Claude Code puede conectarse a este sitio.',
+        ],
+        'mcp_regenerate_key' => [
+            'sv' => 'Generera om nyckel', 'en' => 'Regenerate Key', 'de' => 'Schlüssel neu generieren', 'fr' => 'Regénérer la clé', 'es' => 'Regenerar clave',
+        ],
+        'mcp_revoke_key' => [
+            'sv' => 'Återkalla nyckel', 'en' => 'Revoke Key', 'de' => 'Schlüssel widerrufen', 'fr' => 'Révoquer la clé', 'es' => 'Revocar clave',
+        ],
+        'mcp_revoke_confirm' => [
+            'sv' => 'Återkalla denna nyckel? Claude Code förlorar omedelbart åtkomst.',
+            'en' => 'Revoke this key? Claude Code will immediately lose access.',
+            'de' => 'Diesen Schlüssel widerrufen? Claude Code verliert sofort den Zugriff.',
+            'fr' => 'Révoquer cette clé ? Claude Code perdra immédiatement l\'accès.',
+            'es' => '¿Revocar esta clave? Claude Code perderá el acceso inmediatamente.',
+        ],
+        'mcp_key_inactive_desc' => [
+            'sv' => 'Skapa en API-nyckel för att låta Claude Code ansluta direkt till din sajt.',
+            'en' => 'Generate an API key to let Claude Code connect directly to your site.',
+            'de' => 'Erstellen Sie einen API-Schlüssel, damit Claude Code eine direkte Verbindung zu Ihrer Seite herstellen kann.',
+            'fr' => 'Générez une clé API pour permettre à Claude Code de se connecter directement à votre site.',
+            'es' => 'Genera una clave API para que Claude Code se conecte directamente a tu sitio.',
+        ],
+        'mcp_generate_api_key' => [
+            'sv' => 'Skapa API-nyckel', 'en' => 'Generate API Key', 'de' => 'API-Schlüssel erstellen', 'fr' => 'Générer une clé API', 'es' => 'Generar clave API',
+        ],
+        'mcp_api_keys' => [
+            'sv' => 'API-nycklar', 'en' => 'API Keys', 'de' => 'API-Schlüssel', 'fr' => 'Clés API', 'es' => 'Claves API',
+        ],
+        'mcp_api_keys_desc' => [
+            'sv' => 'Skapa nycklar med olika åtkomstnivåer. Varje nyckel = en Claude Code-anslutning.',
+            'en' => 'Create keys with different access levels. Each key = one Claude Code connection.',
+            'de' => 'Erstellen Sie Schlüssel mit verschiedenen Zugriffsebenen. Jeder Schlüssel = eine Claude Code-Verbindung.',
+            'fr' => 'Créez des clés avec différents niveaux d\'accès. Chaque clé = une connexion Claude Code.',
+            'es' => 'Crea claves con diferentes niveles de acceso. Cada clave = una conexión Claude Code.',
+        ],
+        'mcp_created' => [
+            'sv' => 'Skapad', 'en' => 'Created', 'de' => 'Erstellt', 'fr' => 'Créée', 'es' => 'Creada',
+        ],
+        'mcp_revoke' => [
+            'sv' => 'Återkalla', 'en' => 'Revoke', 'de' => 'Widerrufen', 'fr' => 'Révoquer', 'es' => 'Revocar',
+        ],
+        'mcp_revoke_confirm_v2' => [
+            'sv' => 'Återkalla denna nyckel? Anslutningen slutar fungera omedelbart.',
+            'en' => 'Revoke this key? The connection will stop working immediately.',
+            'de' => 'Diesen Schlüssel widerrufen? Die Verbindung wird sofort unterbrochen.',
+            'fr' => 'Révoquer cette clé ? La connexion cessera de fonctionner immédiatement.',
+            'es' => '¿Revocar esta clave? La conexión dejará de funcionar inmediatamente.',
+        ],
+        'mcp_key_name' => [
+            'sv' => 'Nyckelnamn', 'en' => 'Key name', 'de' => 'Schlüsselname', 'fr' => 'Nom de la clé', 'es' => 'Nombre de clave',
+        ],
+        'mcp_key_name_placeholder' => [
+            'sv' => 't.ex. Min klient', 'en' => 'e.g. My client', 'de' => 'z.B. Mein Kunde', 'fr' => 'ex. Mon client', 'es' => 'ej. Mi cliente',
+        ],
+        'mcp_access_level' => [
+            'sv' => 'Åtkomstnivå', 'en' => 'Access level', 'de' => 'Zugriffsebene', 'fr' => 'Niveau d\'accès', 'es' => 'Nivel de acceso',
+        ],
+        'mcp_create_key' => [
+            'sv' => 'Skapa nyckel', 'en' => 'Create Key', 'de' => 'Schlüssel erstellen', 'fr' => 'Créer la clé', 'es' => 'Crear clave',
+        ],
+        'mcp_roles_desc' => [
+            'sv' => '<strong>Admin</strong> = alla verktyg &middot; <strong>Klient</strong> = innehåll, design, SEO, WooCommerce (inga plugins/säkerhet/kod) &middot; <strong>Betraktare</strong> = skrivskyddad',
+            'en' => '<strong>Admin</strong> = all tools &middot; <strong>Client</strong> = content, design, SEO, WooCommerce (no plugins/security/code) &middot; <strong>Viewer</strong> = read-only',
+            'de' => '<strong>Admin</strong> = alle Werkzeuge &middot; <strong>Client</strong> = Inhalte, Design, SEO, WooCommerce (keine Plugins/Sicherheit/Code) &middot; <strong>Betrachter</strong> = schreibgeschützt',
+            'fr' => '<strong>Admin</strong> = tous les outils &middot; <strong>Client</strong> = contenu, design, SEO, WooCommerce (pas de plugins/sécurité/code) &middot; <strong>Lecteur</strong> = lecture seule',
+            'es' => '<strong>Admin</strong> = todas las herramientas &middot; <strong>Cliente</strong> = contenido, diseño, SEO, WooCommerce (sin plugins/seguridad/código) &middot; <strong>Visor</strong> = solo lectura',
+        ],
+        'mcp_setup' => [
+            'sv' => 'Installation', 'en' => 'Setup', 'de' => 'Einrichtung', 'fr' => 'Configuration', 'es' => 'Configuración',
+        ],
+        'mcp_setup_desc' => [
+            'sv' => 'Anslut Claude Code till din WordPress-sajt i tre steg.',
+            'en' => 'Connect Claude Code to your WordPress site in three steps.',
+            'de' => 'Verbinden Sie Claude Code in drei Schritten mit Ihrer WordPress-Seite.',
+            'fr' => 'Connectez Claude Code à votre site WordPress en trois étapes.',
+            'es' => 'Conecta Claude Code a tu sitio WordPress en tres pasos.',
+        ],
+        'mcp_step1_title' => [
+            'sv' => 'Skapa API-nyckel', 'en' => 'Generate API Key', 'de' => 'API-Schlüssel erstellen', 'fr' => 'Générer une clé API', 'es' => 'Generar clave API',
+        ],
+        'mcp_step1_desc' => [
+            'sv' => 'Klicka på knappen ovan — du ser nyckeln en gång',
+            'en' => 'Click the button above — you\'ll see the key once',
+            'de' => 'Klicken Sie auf die Schaltfläche oben — Sie sehen den Schlüssel einmal',
+            'fr' => 'Cliquez sur le bouton ci-dessus — vous verrez la clé une fois',
+            'es' => 'Haz clic en el botón de arriba — verás la clave una vez',
+        ],
+        'mcp_step2_title' => [
+            'sv' => 'Kopiera terminalkommandot', 'en' => 'Copy Terminal Command', 'de' => 'Terminalbefehl kopieren', 'fr' => 'Copier la commande du terminal', 'es' => 'Copiar comando del terminal',
+        ],
+        'mcp_step2_desc' => [
+            'sv' => 'Hela <code>claude mcp add</code>-kommandot visas efter generering',
+            'en' => 'The full <code>claude mcp add</code> command is shown after generation',
+            'de' => 'Der vollständige <code>claude mcp add</code>-Befehl wird nach der Generierung angezeigt',
+            'fr' => 'La commande complète <code>claude mcp add</code> est affichée après la génération',
+            'es' => 'El comando completo <code>claude mcp add</code> se muestra después de la generación',
+        ],
+        'mcp_step3_title' => [
+            'sv' => 'Börja bygga', 'en' => 'Start Building', 'de' => 'Losbauen', 'fr' => 'Commencez à construire', 'es' => 'Empieza a construir',
+        ],
+        'mcp_step3_desc' => [
+            'sv' => 'Claude Code ser nu alla {tools} verktyg — fråga vad som helst',
+            'en' => 'Claude Code now sees all {tools} tools — ask it anything',
+            'de' => 'Claude Code sieht jetzt alle {tools} Werkzeuge — fragen Sie alles',
+            'fr' => 'Claude Code voit maintenant les {tools} outils — demandez-lui ce que vous voulez',
+            'es' => 'Claude Code ahora ve las {tools} herramientas — pregúntale lo que quieras',
+        ],
+        'mcp_example_commands' => [
+            'sv' => 'Exempelkommandon', 'en' => 'Example Commands', 'de' => 'Beispielbefehle', 'fr' => 'Exemples de commandes', 'es' => 'Comandos de ejemplo',
+        ],
+        'mcp_example_commands_desc' => [
+            'sv' => 'När du är ansluten, skriv direkt i Claude Code:',
+            'en' => 'Once connected, type directly in Claude Code:',
+            'de' => 'Nach der Verbindung direkt in Claude Code eingeben:',
+            'fr' => 'Une fois connecté, tapez directement dans Claude Code :',
+            'es' => 'Una vez conectado, escribe directamente en Claude Code:',
+        ],
+        'mcp_ex_about_page' => [
+            'sv' => 'Skapa en Om-sida med en hero-sektion och teamgrid',
+            'en' => 'Create an About page with a hero section and team grid',
+            'de' => 'Erstellen Sie eine Über-uns-Seite mit Hero-Bereich und Teamgrid',
+            'fr' => 'Créez une page À propos avec une section héros et une grille d\'équipe',
+            'es' => 'Crea una página Acerca de con sección hero y cuadrícula de equipo',
+        ],
+        'mcp_ex_shop_button' => [
+            'sv' => 'Gör Shop-knappen svart med vit text',
+            'en' => 'Make the Shop button black with white text',
+            'de' => 'Machen Sie den Shop-Button schwarz mit weißem Text',
+            'fr' => 'Rendez le bouton Boutique noir avec du texte blanc',
+            'es' => 'Haz el botón Tienda negro con texto blanco',
+        ],
+        'mcp_ex_products_sale' => [
+            'sv' => 'Lista alla produkter under 100 kr och sätt dem på rea',
+            'en' => 'List all products under 100kr and set them on sale',
+            'de' => 'Listen Sie alle Produkte unter 100€ auf und setzen Sie sie in den Sale',
+            'fr' => 'Listez tous les produits sous 100€ et mettez-les en promotion',
+            'es' => 'Lista todos los productos bajo 100€ y ponlos en oferta',
+        ],
+        'mcp_ex_wordfence' => [
+            'sv' => 'Installera Wordfence och kör en säkerhetsskanning',
+            'en' => 'Install Wordfence and run a security scan',
+            'de' => 'Wordfence installieren und einen Sicherheitsscan durchführen',
+            'fr' => 'Installez Wordfence et lancez un scan de sécurité',
+            'es' => 'Instala Wordfence y ejecuta un escaneo de seguridad',
+        ],
+        'mcp_ex_footer' => [
+            'sv' => 'Designa sidfoten med 3 kolumner och sociala länkar',
+            'en' => 'Design the footer with 3 columns and social links',
+            'de' => 'Gestalten Sie den Footer mit 3 Spalten und Social-Media-Links',
+            'fr' => 'Concevez le pied de page avec 3 colonnes et des liens sociaux',
+            'es' => 'Diseña el pie de página con 3 columnas y enlaces sociales',
+        ],
+        'mcp_ex_seo_audit' => [
+            'sv' => 'Kör en fullständig SEO-granskning och fixa alla problem',
+            'en' => 'Run a full SEO audit and fix all issues',
+            'de' => 'Führen Sie ein vollständiges SEO-Audit durch und beheben Sie alle Probleme',
+            'fr' => 'Effectuez un audit SEO complet et corrigez tous les problèmes',
+            'es' => 'Ejecuta una auditoría SEO completa y corrige todos los problemas',
+        ],
+        'mcp_example_footer' => [
+            'sv' => 'Claude Code anropar WPilot-verktyg direkt — inga API-kostnader för dig, ingen parser, inget auto-continue.',
+            'en' => 'Claude Code calls WPilot tools directly — no API costs for you, no parser, no auto-continue.',
+            'de' => 'Claude Code ruft WPilot-Werkzeuge direkt auf — keine API-Kosten für Sie, kein Parser, kein Auto-Continue.',
+            'fr' => 'Claude Code appelle les outils WPilot directement — pas de coûts API pour vous, pas de parseur, pas d\'auto-continue.',
+            'es' => 'Claude Code llama a las herramientas de WPilot directamente — sin costos API para ti, sin parser, sin auto-continue.',
+        ],
+        'mcp_security' => [
+            'sv' => 'Säkerhet', 'en' => 'Security', 'de' => 'Sicherheit', 'fr' => 'Sécurité', 'es' => 'Seguridad',
+        ],
+        'mcp_sec_encrypted_title' => [
+            'sv' => 'Krypterad API-nyckel', 'en' => 'Encrypted API key', 'de' => 'Verschlüsselter API-Schlüssel', 'fr' => 'Clé API chiffrée', 'es' => 'Clave API cifrada',
+        ],
+        'mcp_sec_encrypted_desc' => [
+            'sv' => 'Nyckeln lagras aldrig i klartext', 'en' => 'Key is never stored in plaintext', 'de' => 'Schlüssel wird nie im Klartext gespeichert', 'fr' => 'La clé n\'est jamais stockée en clair', 'es' => 'La clave nunca se almacena en texto plano',
+        ],
+        'mcp_sec_rate_limit_title' => [
+            'sv' => 'Hastighetsbegränsning', 'en' => 'Rate limiting', 'de' => 'Ratenbegrenzung', 'fr' => 'Limitation de débit', 'es' => 'Limitación de velocidad',
+        ],
+        'mcp_sec_rate_limit_desc' => [
+            'sv' => '120 förfrågningar per minut', 'en' => '120 requests per minute', 'de' => '120 Anfragen pro Minute', 'fr' => '120 requêtes par minute', 'es' => '120 solicitudes por minuto',
+        ],
+        'mcp_sec_token_title' => [
+            'sv' => 'Tokenautentisering', 'en' => 'Token authentication', 'de' => 'Token-Authentifizierung', 'fr' => 'Authentification par jeton', 'es' => 'Autenticación por token',
+        ],
+        'mcp_sec_token_desc' => [
+            'sv' => 'Varje förfrågan måste ha en giltig token', 'en' => 'Every request must include a valid token', 'de' => 'Jede Anfrage muss ein gültiges Token enthalten', 'fr' => 'Chaque requête doit inclure un jeton valide', 'es' => 'Cada solicitud debe incluir un token válido',
+        ],
+        'mcp_sec_tool_title' => [
+            'sv' => 'Verktygsvalidering', 'en' => 'Tool validation', 'de' => 'Werkzeugvalidierung', 'fr' => 'Validation des outils', 'es' => 'Validación de herramientas',
+        ],
+        'mcp_sec_tool_desc' => [
+            'sv' => 'Bara vitlistade verktygsnamn accepteras', 'en' => 'Only whitelisted tool names accepted', 'de' => 'Nur zugelassene Werkzeugnamen akzeptiert', 'fr' => 'Seuls les noms d\'outils autorisés sont acceptés', 'es' => 'Solo se aceptan nombres de herramientas autorizados',
+        ],
+        'mcp_activity_log' => [
+            'sv' => 'Aktivitetslogg', 'en' => 'Activity Log', 'de' => 'Aktivitätsprotokoll', 'fr' => 'Journal d\'activité', 'es' => 'Registro de actividad',
+        ],
+        'mcp_activity_log_desc' => [
+            'sv' => 'Varje verktygsanrop via Claude Code loggas här.',
+            'en' => 'Every tool call through Claude Code is logged here.',
+            'de' => 'Jeder Werkzeugaufruf über Claude Code wird hier protokolliert.',
+            'fr' => 'Chaque appel d\'outil via Claude Code est enregistré ici.',
+            'es' => 'Cada llamada de herramienta a través de Claude Code se registra aquí.',
+        ],
+        'mcp_total_calls' => [
+            'sv' => 'Totalt anrop', 'en' => 'Total calls', 'de' => 'Gesamtaufrufe', 'fr' => 'Appels totaux', 'es' => 'Llamadas totales',
+        ],
+        'mcp_today' => [
+            'sv' => 'Idag', 'en' => 'Today', 'de' => 'Heute', 'fr' => 'Aujourd\'hui', 'es' => 'Hoy',
+        ],
+        'mcp_errors' => [
+            'sv' => 'Fel', 'en' => 'Errors', 'de' => 'Fehler', 'fr' => 'Erreurs', 'es' => 'Errores',
+        ],
+        'mcp_col_tool' => [
+            'sv' => 'Verktyg', 'en' => 'Tool', 'de' => 'Werkzeug', 'fr' => 'Outil', 'es' => 'Herramienta',
+        ],
+        'mcp_col_action' => [
+            'sv' => 'Åtgärd', 'en' => 'Action', 'de' => 'Aktion', 'fr' => 'Action', 'es' => 'Acción',
+        ],
+        'mcp_col_result' => [
+            'sv' => 'Resultat', 'en' => 'Result', 'de' => 'Ergebnis', 'fr' => 'Résultat', 'es' => 'Resultado',
+        ],
+        'mcp_col_time' => [
+            'sv' => 'Tid', 'en' => 'Time', 'de' => 'Zeit', 'fr' => 'Temps', 'es' => 'Tiempo',
+        ],
+        'mcp_col_when' => [
+            'sv' => 'När', 'en' => 'When', 'de' => 'Wann', 'fr' => 'Quand', 'es' => 'Cuándo',
+        ],
+        'mcp_error_label' => [
+            'sv' => 'Fel', 'en' => 'Error', 'de' => 'Fehler', 'fr' => 'Erreur', 'es' => 'Error',
+        ],
+        'mcp_no_tool_calls' => [
+            'sv' => 'Inga verktygsanrop ännu. Anslut Claude Code för att komma igång.',
+            'en' => 'No tool calls yet. Connect Claude Code to get started.',
+            'de' => 'Noch keine Werkzeugaufrufe. Verbinden Sie Claude Code, um loszulegen.',
+            'fr' => 'Aucun appel d\'outil pour le moment. Connectez Claude Code pour commencer.',
+            'es' => 'Sin llamadas de herramientas aún. Conecta Claude Code para empezar.',
+        ],
+        'mcp_undo_history' => [
+            'sv' => 'Ångringshistorik', 'en' => 'Undo History', 'de' => 'Rückgängig-Verlauf', 'fr' => 'Historique d\'annulation', 'es' => 'Historial de deshacer',
+        ],
+        'mcp_undo_history_desc' => [
+            'sv' => 'Automatiskt sparade ögonblicksbilder före varje destruktiv ändring. Klicka för att återställa.',
+            'en' => 'Auto-saved snapshots before every destructive change. Click to restore.',
+            'de' => 'Automatisch gespeicherte Snapshots vor jeder destruktiven Änderung. Klicken zum Wiederherstellen.',
+            'fr' => 'Instantanés sauvegardés automatiquement avant chaque changement destructif. Cliquez pour restaurer.',
+            'es' => 'Instantáneas guardadas automáticamente antes de cada cambio destructivo. Haz clic para restaurar.',
+        ],
+        'mcp_restore_confirm' => [
+            'sv' => 'Återställa denna ögonblicksbild?', 'en' => 'Restore this snapshot?', 'de' => 'Diesen Snapshot wiederherstellen?', 'fr' => 'Restaurer cet instantané ?', 'es' => '¿Restaurar esta instantánea?',
+        ],
+        'mcp_no_undo_snapshots' => [
+            'sv' => 'Inga ögonblicksbilder ännu. Ändringar sparas automatiskt när Claude Code modifierar din sajt.',
+            'en' => 'No undo snapshots yet. Changes are auto-saved when Claude Code modifies your site.',
+            'de' => 'Noch keine Snapshots. Änderungen werden automatisch gespeichert, wenn Claude Code Ihre Seite ändert.',
+            'fr' => 'Aucun instantané pour le moment. Les modifications sont sauvegardées automatiquement quand Claude Code modifie votre site.',
+            'es' => 'Sin instantáneas aún. Los cambios se guardan automáticamente cuando Claude Code modifica tu sitio.',
+        ],
     ];
 }
