@@ -93,6 +93,7 @@ $_wpilot_core = [
     // 'includes/oauth.php', // OAuth abandoned — using MCP
     // 'includes/mcp_server_v2.php', // replaced by v3
     'includes/mcp_auth.php',
+    'includes/mcp_multikey.php',
     // 'includes/mcp_server.php', // replaced by v3
     // 'includes/mcp_tool_registry.php', // replaced by grouped tools
     'includes/mcp_security.php',

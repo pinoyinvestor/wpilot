@@ -23,7 +23,16 @@ function wpilot_page_mcp() {
     if (isset($_POST['wpilot_mcp_action']) && wp_verify_nonce($_POST['_wpnonce'], 'wpilot_mcp_action')) {
         $action = sanitize_text_field($_POST['wpilot_mcp_action']);
 
-        if ($action === 'generate') {
+        if ($action === 'generate_v2' && function_exists('wpilot_mcp_generate_key_v2')) {
+            $label = sanitize_text_field($_POST['wpilot_key_label'] ?? 'API Key');
+            $role = sanitize_text_field($_POST['wpilot_key_role'] ?? 'admin');
+            $new_key = wpilot_mcp_generate_key_v2($label, $role);
+            $notice = 'generated';
+        } elseif ($action === 'revoke_v2' && function_exists('wpilot_mcp_revoke_key_v2')) {
+            $hash = sanitize_text_field($_POST['wpilot_key_hash'] ?? '');
+            if ($hash) wpilot_mcp_revoke_key_v2($hash);
+            $notice = 'revoked';
+        } elseif ($action === 'generate') {
             $new_key = wpilot_mcp_generate_key();
             $notice  = 'generated';
         } elseif ($action === 'revoke') {
@@ -184,6 +193,69 @@ function wpilot_page_mcp() {
                 <button type="submit" class="ca-btn ca-btn-primary" style="font-size:13.5px;padding:10px 24px">Generate API Key</button>
             </form>
         <?php endif; ?>
+    </div>
+
+    <!-- All API Keys -->
+    <div class="ca-card">
+        <h3>🔐 API Keys</h3>
+        <p class="ca-card-sub">Create keys with different access levels. Each key = one Claude Code connection.</p>
+
+        <?php
+        $all_keys = function_exists('wpilot_mcp_keys_get') ? wpilot_mcp_keys_get() : [];
+        $roles = function_exists('wpilot_mcp_key_roles') ? wpilot_mcp_key_roles() : [];
+
+        if (!empty($all_keys)) : ?>
+        <div style="display:grid;gap:8px;margin-bottom:16px">
+            <?php foreach ($all_keys as $k) :
+                $role_info = $roles[$k['role']] ?? ['label' => $k['role'], 'color' => '#666'];
+            ?>
+            <div style="display:flex;align-items:center;gap:12px;background:var(--ca-bg3);border:1px solid var(--ca-border);border-radius:var(--ca-r2);padding:12px 14px">
+                <div style="width:8px;height:8px;border-radius:50%;background:<?php echo esc_attr($role_info['color']); ?>;flex-shrink:0"></div>
+                <div style="flex:1">
+                    <div style="font-size:13px;font-weight:600;color:var(--ca-text)"><?php echo esc_html($k['label']); ?></div>
+                    <div style="font-size:11px;color:var(--ca-text3);margin-top:2px">
+                        <?php echo esc_html($role_info['label']); ?> &middot;
+                        Created <?php echo esc_html($k['created']); ?> &middot;
+                        <?php echo intval($k['requests'] ?? 0); ?> requests
+                        <?php if ($k['last_used']) : ?> &middot; Last: <?php echo esc_html($k['last_used']); ?><?php endif; ?>
+                    </div>
+                </div>
+                <form method="post" style="margin:0">
+                    <?php wp_nonce_field('wpilot_mcp_action'); ?>
+                    <input type="hidden" name="wpilot_mcp_action" value="revoke_v2">
+                    <input type="hidden" name="wpilot_key_hash" value="<?php echo esc_attr($k['hash']); ?>">
+                    <button type="submit" class="ca-btn ca-btn-ghost" style="font-size:11px;padding:4px 12px;color:var(--ca-red,#f87171)"
+                        onclick="return confirm('Revoke this key? The connection will stop working immediately.');">Revoke</button>
+                </form>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+            <?php wp_nonce_field('wpilot_mcp_action'); ?>
+            <input type="hidden" name="wpilot_mcp_action" value="generate_v2">
+            <div style="flex:1;min-width:150px">
+                <label style="font-size:11px;font-weight:600;color:var(--ca-text3);display:block;margin-bottom:4px">Key name</label>
+                <input type="text" name="wpilot_key_label" placeholder="e.g. My client" required
+                    style="width:100%;padding:8px 12px;background:var(--ca-bg);border:1px solid var(--ca-border2);border-radius:var(--ca-r2);color:var(--ca-text);font-size:13px">
+            </div>
+            <div style="min-width:120px">
+                <label style="font-size:11px;font-weight:600;color:var(--ca-text3);display:block;margin-bottom:4px">Access level</label>
+                <select name="wpilot_key_role" style="width:100%;padding:8px 12px;background:var(--ca-bg);border:1px solid var(--ca-border2);border-radius:var(--ca-r2);color:var(--ca-text);font-size:13px">
+                    <?php foreach ($roles as $slug => $info) : ?>
+                    <option value="<?php echo esc_attr($slug); ?>"><?php echo esc_html($info['label']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button type="submit" class="ca-btn ca-btn-primary" style="padding:8px 16px;font-size:13px;white-space:nowrap">Create Key</button>
+        </form>
+
+        <div style="margin-top:12px;font-size:12px;color:var(--ca-text3)">
+            <strong>Admin</strong> = all tools &middot;
+            <strong>Client</strong> = content, design, SEO, WooCommerce (no plugins/security/code) &middot;
+            <strong>Viewer</strong> = read-only
+        </div>
     </div>
 
     <!-- Setup -->

@@ -186,6 +186,15 @@ function wpilot_mcp3_tools_list( $id ) {
         $all_tools = array_values( $all_tools );
     }
 
+    // Multi-key: filter tools by key role
+    global $wpilot_current_key;
+    if ( $wpilot_current_key && function_exists('wpilot_mcp_tool_allowed_for_key') ) {
+        $all_tools = array_values(array_filter( $all_tools, function($t) {
+            global $wpilot_current_key;
+            return wpilot_mcp_tool_allowed_for_key( $t['name'], '', $wpilot_current_key );
+        }));
+    }
+
     return wpilot_mcp3_result( $id, [ 'tools' => $all_tools ] );
 }
 
@@ -198,7 +207,19 @@ function wpilot_mcp3_tools_call( $id, $params ) {
         return wpilot_mcp3_error( $id, -32602, 'Tool name required.' );
     }
 
-    // 0. Guardian gate — license + domain + tamper check before any tool execution
+    // 0. Multi-key role check
+    global $wpilot_current_key;
+    if ( $wpilot_current_key && function_exists('wpilot_mcp_tool_allowed_for_key') ) {
+        $action_arg = $args['action'] ?? '';
+        if ( ! wpilot_mcp_tool_allowed_for_key( $name, $action_arg, $wpilot_current_key ) ) {
+            return wpilot_mcp3_result( $id, [
+                'content' => [[ 'type' => 'text', 'text' => 'Access denied. Your API key does not have permission for this tool. Contact the site admin.' ]],
+                'isError' => true,
+            ] );
+        }
+    }
+
+    // 0b. Guardian gate — license + domain + tamper check before any tool execution
     if ( function_exists( 'wpilot_guardian_mcp_gate' ) ) {
         $guardian_check = wpilot_guardian_mcp_gate( $name );
         if ( $guardian_check !== true && is_array( $guardian_check ) && ! empty( $guardian_check['blocked'] ) ) {
@@ -209,7 +230,19 @@ function wpilot_mcp3_tools_call( $id, $params ) {
         }
     }
 
-    // 0. Guardian gate — license + domain + integrity
+    // 0. Multi-key role check
+    global $wpilot_current_key;
+    if ( $wpilot_current_key && function_exists('wpilot_mcp_tool_allowed_for_key') ) {
+        $action_arg = $args['action'] ?? '';
+        if ( ! wpilot_mcp_tool_allowed_for_key( $name, $action_arg, $wpilot_current_key ) ) {
+            return wpilot_mcp3_result( $id, [
+                'content' => [[ 'type' => 'text', 'text' => 'Access denied. Your API key does not have permission for this tool. Contact the site admin.' ]],
+                'isError' => true,
+            ] );
+        }
+    }
+
+    // 0b. Guardian gate — license + domain + integrity
     if ( function_exists( "wpilot_guardian_mcp_gate" ) ) {
         $gate = wpilot_guardian_mcp_gate( $name );
         if ( $gate !== true && is_array( $gate ) && ! empty( $gate["blocked"] ) ) {
