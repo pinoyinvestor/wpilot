@@ -21,7 +21,7 @@ add_action( 'admin_menu', function () {
     add_menu_page( 'WPilot', 'WPilot', 'manage_options', CA_SLUG, 'wpilot_page_dashboard', $svg, 25 );
     $pages = [
         [ CA_SLUG,               'Dashboard',       'wpilot_page_dashboard'    ],
-        [ CA_SLUG.'-mcp',        'Claude Code',     'wpilot_page_mcp_admin'    ],
+        [ CA_SLUG.'-mcp',        'Claude Code',     'wpilot_page_mcp'    ],
         [ CA_SLUG.'-mcp',   'Settings',        'wpilot_page_settings'     ],
         [ CA_SLUG.'-license',    'License',         'wpilot_page_license'      ],
         [ CA_SLUG.'-restore',    'History',         'wpilot_page_restore'      ],
