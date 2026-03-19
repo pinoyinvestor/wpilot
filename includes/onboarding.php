@@ -77,51 +77,50 @@ add_action( 'admin_footer', function() {
         <!-- STEP 1: Welcome -->
         <div class="wpi-onb-step <?= $step===1?'active':'' ?>" data-step="1">
           <div style="font-size:48px;margin-bottom:16px">&#9889;</div>
-          <h2>Welcome to WPilot</h2>
-          <p>WPilot lets you build and manage your entire WordPress site using AI.<br><br>
-          Just talk to Claude — describe what you want, and it builds it. Pages, design, SEO, WooCommerce, everything.</p>
+          <h2><?php echo wpilot_t('onb_welcome_title'); ?></h2>
+          <p><?php echo wpilot_t('onb_welcome_text'); ?></p>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
             <div class="wpi-onb-card" style="text-align:center">
               <div style="font-size:24px;margin-bottom:6px">&#128172;</div>
-              <div style="font-size:12px;color:#C8D0E8;font-weight:600">Just talk</div>
-              <div style="font-size:11px;color:#3A4A68;margin-top:2px">Describe what you want</div>
+              <div style="font-size:12px;color:#C8D0E8;font-weight:600"><?php echo wpilot_t('onb_just_talk'); ?></div>
+              <div style="font-size:11px;color:#3A4A68;margin-top:2px"><?php echo wpilot_t('onb_just_talk_sub'); ?></div>
             </div>
             <div class="wpi-onb-card" style="text-align:center">
               <div style="font-size:24px;margin-bottom:6px">&#128274;</div>
-              <div style="font-size:12px;color:#C8D0E8;font-weight:600">Always safe</div>
-              <div style="font-size:11px;color:#3A4A68;margin-top:2px">Every change is undoable</div>
+              <div style="font-size:12px;color:#C8D0E8;font-weight:600"><?php echo wpilot_t('onb_always_safe'); ?></div>
+              <div style="font-size:11px;color:#3A4A68;margin-top:2px"><?php echo wpilot_t('onb_always_safe_sub'); ?></div>
             </div>
           </div>
 
-          <button class="wpi-onb-btn" id="wpiNext1">Get started</button>
+          <button class="wpi-onb-btn" id="wpiNext1"><?php echo wpilot_t('onb_get_started'); ?></button>
         </div>
 
         <!-- STEP 2: Email + License -->
         <div class="wpi-onb-step <?= $step===2?'active':'' ?>" data-step="2">
           <div style="font-size:48px;margin-bottom:16px">&#128231;</div>
-          <h2>Create your free account</h2>
-          <p>Enter your email to get a free WPilot license with 20 AI prompts. No credit card needed.</p>
+          <h2><?php echo wpilot_t('onb_email_title'); ?></h2>
+          <p><?php echo wpilot_t('onb_email_text'); ?></p>
 
           <label class="wpi-onb-label">Email</label>
           <input type="email" id="wpiEmail" class="wpi-onb-input" placeholder="you@example.com" value="<?= esc_attr($saved_email) ?>">
-          <button class="wpi-onb-btn" id="wpiSaveEmail" style="margin-top:14px">Create free account</button>
-          <button class="wpi-onb-btn-ghost" id="wpiBack1">Back</button>
+          <button class="wpi-onb-btn" id="wpiSaveEmail" style="margin-top:14px"><?php echo wpilot_t('onb_email_btn'); ?></button>
+          <button class="wpi-onb-btn-ghost" id="wpiBack1"><?php echo wpilot_t('onb_back'); ?></button>
           <div class="wpi-onb-msg" id="wpiEmailMsg"></div>
         </div>
 
         <!-- STEP 3: Connect + Done -->
         <div class="wpi-onb-step <?= $step===3?'active':'' ?>" data-step="3">
           <div style="font-size:48px;margin-bottom:16px">&#127881;</div>
-          <h2>Connect Claude</h2>
-          <p>WPilot works with <strong>Claude Code</strong> or <strong>Claude Desktop</strong>. Pick one and follow the steps.</p>
+          <h2><?php echo wpilot_t('onb_connect_title'); ?></h2>
+          <p><?php echo wpilot_t('onb_connect_text'); ?></p>
 
           <div class="wpi-onb-card">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
               <span style="font-size:20px">&#128187;</span>
-              <strong style="font-size:14px;color:#EEF2FF">Option A: Claude Code (terminal)</strong>
+              <strong style="font-size:14px;color:#EEF2FF"><?php echo wpilot_t('onb_option_terminal'); ?></strong>
             </div>
-            <p style="font-size:12px;color:#5E6E91;margin:0 0 10px">Install Claude Code, then run this command:</p>
+            <p style="font-size:12px;color:#5E6E91;margin:0 0 10px"><?php echo wpilot_t('onb_run_command'); ?></p>
             <div class="wpi-onb-code" id="wpiTermCmd">
               claude mcp add --transport http wpilot <?= esc_html($endpoint) ?>
             </div>
@@ -131,7 +130,7 @@ add_action( 'admin_footer', function() {
           <div class="wpi-onb-card">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
               <span style="font-size:20px">&#128421;</span>
-              <strong style="font-size:14px;color:#EEF2FF">Option B: Claude Desktop</strong>
+              <strong style="font-size:14px;color:#EEF2FF"><?php echo wpilot_t('onb_option_desktop'); ?></strong>
             </div>
             <ol style="font-size:12px;color:#5E6E91;margin:0;padding-left:20px;line-height:2">
               <li>Download <a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> (free)</li>
@@ -145,8 +144,8 @@ add_action( 'admin_footer', function() {
             Need an API key? Go to <strong>WPilot &#8594; Claude Code</strong> after setup.
           </p>
 
-          <button class="wpi-onb-btn" id="wpiFinish">Done — go to dashboard</button>
-          <button class="wpi-onb-btn-ghost" id="wpiBack2">Back</button>
+          <button class="wpi-onb-btn" id="wpiFinish"><?php echo wpilot_t('onb_done_btn'); ?></button>
+          <button class="wpi-onb-btn-ghost" id="wpiBack2"><?php echo wpilot_t('onb_back'); ?></button>
         </div>
 
         <button class="wpi-onb-close" id="wpiClose" title="Close">&#10005;</button>
@@ -177,7 +176,7 @@ add_action( 'admin_footer', function() {
           return;
         }
         var $btn = $(this);
-        $btn.text('Creating account...').prop('disabled', true);
+        $btn.text('<?php echo esc_js(wpilot_t("onb_creating")); ?>').prop('disabled', true);
         $.post(ajaxurl, {action:'wpi_save_user_email', nonce:nonce, email:email}, function(r){
           if (r.success) {
             // Activate license silently

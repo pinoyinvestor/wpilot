@@ -736,5 +736,116 @@ function wpilot_strings() {
             'tr'=>'Hata','ru'=>'Ошибка','ja'=>'エラー','ko'=>'오류','zh'=>'错误','ar'=>'خطأ',
         ],
 
+
+        // ── Onboarding ────────────────────────────────────────────
+        'onb_welcome_title' => [
+            'sv' => 'Välkommen till WPilot',
+            'en' => 'Welcome to WPilot',
+            'de' => 'Willkommen bei WPilot',
+            'fr' => 'Bienvenue sur WPilot',
+            'es' => 'Bienvenido a WPilot',
+            'nb' => 'Velkommen til WPilot',
+            'da' => 'Velkommen til WPilot',
+            'nl' => 'Welkom bij WPilot',
+            'pt' => 'Bem-vindo ao WPilot',
+            'it' => 'Benvenuto su WPilot',
+            'pl' => 'Witamy w WPilot',
+            'fi' => 'Tervetuloa WPilotiin',
+        ],
+        'onb_welcome_text' => [
+            'sv' => 'WPilot låter dig bygga och hantera hela din WordPress-sajt med AI.<br><br>Prata med Claude — beskriv vad du vill ha så bygger den det. Sidor, design, SEO, WooCommerce, allt.',
+            'en' => 'WPilot lets you build and manage your entire WordPress site using AI.<br><br>Just talk to Claude — describe what you want, and it builds it. Pages, design, SEO, WooCommerce, everything.',
+            'de' => 'WPilot ermöglicht es Ihnen, Ihre gesamte WordPress-Website mit KI zu erstellen und zu verwalten.<br><br>Sprechen Sie einfach mit Claude — beschreiben Sie was Sie wollen, und es wird gebaut.',
+            'fr' => 'WPilot vous permet de créer et gérer votre site WordPress avec l\'IA.<br><br>Parlez à Claude — décrivez ce que vous voulez, et il le construit.',
+            'es' => 'WPilot te permite construir y gestionar tu sitio WordPress con IA.<br><br>Habla con Claude — describe lo que quieres y lo construye.',
+        ],
+        'onb_just_talk' => [
+            'sv' => 'Bara prata', 'en' => 'Just talk', 'de' => 'Einfach reden', 'fr' => 'Parlez simplement', 'es' => 'Solo habla',
+            'nb' => 'Bare snakk', 'da' => 'Bare tal', 'nl' => 'Gewoon praten', 'pt' => 'Apenas fale', 'it' => 'Basta parlare', 'pl' => 'Po prostu mów', 'fi' => 'Vain puhu',
+        ],
+        'onb_just_talk_sub' => [
+            'sv' => 'Beskriv vad du vill ha', 'en' => 'Describe what you want', 'de' => 'Beschreiben Sie was Sie wollen', 'fr' => 'Décrivez ce que vous voulez', 'es' => 'Describe lo que quieres',
+            'nb' => 'Beskriv hva du vil ha', 'da' => 'Beskriv hvad du vil have', 'nl' => 'Beschrijf wat je wilt', 'pt' => 'Descreva o que você quer', 'it' => 'Descrivi cosa vuoi', 'pl' => 'Opisz czego chcesz', 'fi' => 'Kuvaile mitä haluat',
+        ],
+        'onb_always_safe' => [
+            'sv' => 'Alltid säkert', 'en' => 'Always safe', 'de' => 'Immer sicher', 'fr' => 'Toujours sûr', 'es' => 'Siempre seguro',
+            'nb' => 'Alltid trygt', 'da' => 'Altid sikkert', 'nl' => 'Altijd veilig', 'pt' => 'Sempre seguro', 'it' => 'Sempre sicuro', 'pl' => 'Zawsze bezpieczne', 'fi' => 'Aina turvallista',
+        ],
+        'onb_always_safe_sub' => [
+            'sv' => 'Varje ändring kan ångras', 'en' => 'Every change is undoable', 'de' => 'Jede Änderung ist rückgängig machbar', 'fr' => 'Chaque modification est réversible', 'es' => 'Cada cambio es reversible',
+            'nb' => 'Alle endringer kan angres', 'da' => 'Alle ændringer kan fortrydes', 'nl' => 'Elke wijziging is ongedaan te maken', 'pt' => 'Toda mudança pode ser desfeita', 'it' => 'Ogni modifica è reversibile', 'pl' => 'Każda zmiana jest odwracalna', 'fi' => 'Jokainen muutos voidaan kumota',
+        ],
+        'onb_get_started' => [
+            'sv' => 'Kom igång', 'en' => 'Get started', 'de' => 'Los geht\'s', 'fr' => 'Commencer', 'es' => 'Empezar',
+            'nb' => 'Kom i gang', 'da' => 'Kom i gang', 'nl' => 'Aan de slag', 'pt' => 'Começar', 'it' => 'Inizia', 'pl' => 'Zacznij', 'fi' => 'Aloita',
+        ],
+        'onb_email_title' => [
+            'sv' => 'Skapa ditt gratiskonto', 'en' => 'Create your free account', 'de' => 'Erstellen Sie Ihr kostenloses Konto', 'fr' => 'Créez votre compte gratuit', 'es' => 'Crea tu cuenta gratuita',
+            'nb' => 'Opprett din gratis konto', 'da' => 'Opret din gratis konto', 'nl' => 'Maak je gratis account', 'pt' => 'Crie sua conta gratuita', 'it' => 'Crea il tuo account gratuito', 'pl' => 'Utwórz darmowe konto', 'fi' => 'Luo ilmainen tili',
+        ],
+        'onb_email_text' => [
+            'sv' => 'Ange din e-post för att få en gratis WPilot-licens med 20 AI-frågor. Inget kreditkort behövs.',
+            'en' => 'Enter your email to get a free WPilot license with 20 AI prompts. No credit card needed.',
+            'de' => 'Geben Sie Ihre E-Mail ein, um eine kostenlose WPilot-Lizenz mit 20 KI-Anfragen zu erhalten. Keine Kreditkarte erforderlich.',
+            'fr' => 'Entrez votre email pour obtenir une licence WPilot gratuite avec 20 requêtes IA. Aucune carte bancaire requise.',
+            'es' => 'Ingresa tu email para obtener una licencia WPilot gratuita con 20 consultas IA. Sin tarjeta de crédito.',
+        ],
+        'onb_email_btn' => [
+            'sv' => 'Skapa gratiskonto', 'en' => 'Create free account', 'de' => 'Kostenloses Konto erstellen', 'fr' => 'Créer un compte gratuit', 'es' => 'Crear cuenta gratuita',
+            'nb' => 'Opprett gratis konto', 'da' => 'Opret gratis konto', 'nl' => 'Gratis account aanmaken', 'pt' => 'Criar conta gratuita', 'it' => 'Crea account gratuito', 'pl' => 'Utwórz darmowe konto', 'fi' => 'Luo ilmainen tili',
+        ],
+        'onb_creating' => [
+            'sv' => 'Skapar konto...', 'en' => 'Creating account...', 'de' => 'Konto wird erstellt...', 'fr' => 'Création du compte...', 'es' => 'Creando cuenta...',
+        ],
+        'onb_connect_title' => [
+            'sv' => 'Koppla Claude', 'en' => 'Connect Claude', 'de' => 'Claude verbinden', 'fr' => 'Connecter Claude', 'es' => 'Conectar Claude',
+        ],
+        'onb_connect_text' => [
+            'sv' => 'WPilot fungerar med <strong>Claude Code</strong> eller <strong>Claude Desktop</strong>. Välj ett alternativ och följ stegen.',
+            'en' => 'WPilot works with <strong>Claude Code</strong> or <strong>Claude Desktop</strong>. Pick one and follow the steps.',
+            'de' => 'WPilot funktioniert mit <strong>Claude Code</strong> oder <strong>Claude Desktop</strong>. Wählen Sie eine Option.',
+            'fr' => 'WPilot fonctionne avec <strong>Claude Code</strong> ou <strong>Claude Desktop</strong>. Choisissez une option.',
+            'es' => 'WPilot funciona con <strong>Claude Code</strong> o <strong>Claude Desktop</strong>. Elige una opción.',
+        ],
+        'onb_option_terminal' => [
+            'sv' => 'Alternativ A: Claude Code (terminal)', 'en' => 'Option A: Claude Code (terminal)', 'de' => 'Option A: Claude Code (Terminal)', 'fr' => 'Option A : Claude Code (terminal)', 'es' => 'Opción A: Claude Code (terminal)',
+        ],
+        'onb_run_command' => [
+            'sv' => 'Installera Claude Code och kör detta kommando:', 'en' => 'Install Claude Code, then run this command:', 'de' => 'Installieren Sie Claude Code und führen Sie diesen Befehl aus:', 'fr' => 'Installez Claude Code, puis exécutez cette commande :', 'es' => 'Instala Claude Code y ejecuta este comando:',
+        ],
+        'onb_no_claude_code' => [
+            'sv' => 'Har du inte Claude Code? Kör:', 'en' => "Don't have Claude Code? Run:", 'de' => 'Kein Claude Code? Führen Sie aus:', 'fr' => "Pas de Claude Code ? Exécutez :", 'es' => '¿No tienes Claude Code? Ejecuta:',
+        ],
+        'onb_option_desktop' => [
+            'sv' => 'Alternativ B: Claude Desktop', 'en' => 'Option B: Claude Desktop', 'de' => 'Option B: Claude Desktop', 'fr' => 'Option B : Claude Desktop', 'es' => 'Opción B: Claude Desktop',
+        ],
+        'onb_desktop_step1' => [
+            'sv' => 'Ladda ner <a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> (gratis)',
+            'en' => 'Download <a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> (free)',
+            'de' => '<a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> herunterladen (kostenlos)',
+            'fr' => 'Téléchargez <a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> (gratuit)',
+            'es' => 'Descarga <a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> (gratis)',
+        ],
+        'onb_need_key' => [
+            'sv' => 'Behöver du en API-nyckel? Gå till <strong>WPilot → Claude Code</strong> efter setup.',
+            'en' => 'Need an API key? Go to <strong>WPilot → Claude Code</strong> after setup.',
+            'de' => 'API-Schlüssel benötigt? Gehen Sie nach dem Setup zu <strong>WPilot → Claude Code</strong>.',
+            'fr' => "Besoin d'une clé API ? Allez dans <strong>WPilot → Claude Code</strong> après l'installation.",
+            'es' => '¿Necesitas una clave API? Ve a <strong>WPilot → Claude Code</strong> después de la configuración.',
+        ],
+        'onb_done_btn' => [
+            'sv' => 'Klart — gå till dashboard', 'en' => 'Done — go to dashboard', 'de' => 'Fertig — zum Dashboard', 'fr' => 'Terminé — aller au tableau de bord', 'es' => 'Listo — ir al panel',
+            'nb' => 'Ferdig — gå til dashbord', 'da' => 'Færdig — gå til dashboard', 'nl' => 'Klaar — naar dashboard', 'pt' => 'Pronto — ir ao painel', 'it' => 'Fatto — vai alla dashboard', 'pl' => 'Gotowe — przejdź do panelu', 'fi' => 'Valmis — siirry hallintapaneeliin',
+        ],
+        'onb_back' => [
+            'sv' => 'Tillbaka', 'en' => 'Back', 'de' => 'Zurück', 'fr' => 'Retour', 'es' => 'Volver',
+            'nb' => 'Tilbake', 'da' => 'Tilbage', 'nl' => 'Terug', 'pt' => 'Voltar', 'it' => 'Indietro', 'pl' => 'Wstecz', 'fi' => 'Takaisin',
+        ],
+        'onb_valid_email' => [
+            'sv' => 'Ange en giltig e-postadress', 'en' => 'Please enter a valid email', 'de' => 'Bitte geben Sie eine gültige E-Mail ein', 'fr' => 'Veuillez entrer un email valide', 'es' => 'Ingrese un email válido',
+        ],
+        'onb_error' => [
+            'sv' => 'Något gick fel. Försök igen.', 'en' => 'Something went wrong. Try again.', 'de' => 'Etwas ist schiefgelaufen. Versuchen Sie es erneut.', 'fr' => 'Une erreur est survenue. Réessayez.', 'es' => 'Algo salió mal. Inténtalo de nuevo.',
+        ],
     ];
 }
