@@ -148,7 +148,7 @@ function wpilot_site_knowledge() {
         'desc'    => 'Tandläkare, psykolog, fysioterapeut, klinik',
         'plugins' => [
             ['name'=>'Amelia',                'price'=>'Fr $49/år',   'stars'=>5, 'why'=>'GDPR-kompatibelt bokningssystem med personalkategorier per specialitet.',              'tip'=>'Aktivera SMS-påminnelser 24h och 2h innan — kritiskt för att minska no-shows i vård.'],
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             ['name'=>'WPForms HIPAA Add-on',  'price'=>'$249/år',     'stars'=>4, 'why'=>'HIPAA-kompatibla formulär för känslig patientdata (USA-marknaden).',                  'tip'=>'För Sverige: aktivera kryptering och GDPR-samtycke på alla formulär.'],
             ['name'=>'Schema Pro Medical',    'price'=>'$79/år',      'stars'=>5, 'why'=>'Medical/Physician schema markup. Visar specialitet och kontakt i Google.',             'tip'=>'Aktivera Physician eller MedicalClinic schema type.'],
             ['name'=>'Google Reviews Widget', 'price'=>'Fr gratis',   'stars'=>5, 'why'=>'Visar Google-recensioner på sajten. Kritiskt för tillit i vård.',                     'tip'=>'Be varje patient skriva Google-recension via QR-kod i receptionen.'],

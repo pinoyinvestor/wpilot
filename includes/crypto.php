@@ -13,14 +13,14 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 function wpilot_encrypt( $data ) {
     if ( empty( $data ) ) return '';
     if ( ! function_exists( 'openssl_encrypt' ) ) return $data; // fallback if no openssl
-    $key = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'wpilot-default-key-change-me';
+    $key = wpilot_get_encryption_key();
     $key = hash( 'sha256', $key, true );
     $iv  = openssl_random_pseudo_bytes( 16 );
     $encrypted = openssl_encrypt( $data, 'aes-256-cbc', $key, 0, $iv );
     return base64_encode( $iv . '::' . $encrypted );
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 /**
  * Decrypt a string encrypted with wpilot_encrypt()
@@ -34,7 +34,7 @@ function wpilot_decrypt( $data ) {
     if ( $decoded === false || strpos( $decoded, '::' ) === false ) return $data;
     list( $iv, $encrypted ) = explode( '::', $decoded, 2 );
     if ( strlen( $iv ) !== 16 ) return $data; // invalid IV length → plaintext
-    $key = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'wpilot-default-key-change-me';
+    $key = wpilot_get_encryption_key();
     $key = hash( 'sha256', $key, true );
     $decrypted = openssl_decrypt( $encrypted, 'aes-256-cbc', $key, 0, $iv );
     return ( $decrypted !== false ) ? $decrypted : $data;
@@ -43,6 +43,20 @@ function wpilot_decrypt( $data ) {
 /**
  * Check if a value is already encrypted (base64 with :: separator)
  */
+/**
+ * Get encryption key — AUTH_KEY if available, otherwise generate and store a random key
+ */
+function wpilot_get_encryption_key() {
+    if ( defined( 'AUTH_KEY' ) && AUTH_KEY !== 'put your unique phrase here' ) {
+        return AUTH_KEY;
+    }
+    $stored = get_option( 'wpilot_encryption_key', '' );
+    if ( ! empty( $stored ) ) return $stored;
+    $generated = wp_generate_password( 64, true, true );
+    update_option( 'wpilot_encryption_key', $generated );
+    return $generated;
+}
+
 function wpilot_is_encrypted( $data ) {
     if ( empty( $data ) ) return false;
     $decoded = base64_decode( $data, true );

@@ -27,6 +27,7 @@ add_filter('wpi_after_tool_run', function($result, $tool, $params, $backup_id) {
     $labels = [
         'create_page'          => 'Created page',
         'update_page_content'  => 'Updated page content',
+        'append_page_content'  => 'Appended page content',
         'update_post_title'    => 'Updated post title',
         'set_homepage'         => 'Set homepage',
         'create_menu'          => 'Created menu',
@@ -39,7 +40,7 @@ add_filter('wpi_after_tool_run', function($result, $tool, $params, $backup_id) {
         'bulk_fix_alt_text'    => 'Bulk fixed alt text',
         'create_coupon'        => 'Created coupon',
         'update_product_price' => 'Updated product price',
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
         'create_user'          => 'Created user',
         'deactivate_plugin'    => 'Deactivated plugin',
         'update_blogname'      => 'Updated site name',

@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 //  Each snippet stored as its own mu-plugin file so it can be
 //  individually removed without touching functions.php.
 // ═══════════════════════════════════════════════════════════════
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // Dangerous function names that must not appear in snippets.
 // Stored split so this file itself does not trigger security scanners.
@@ -111,12 +111,22 @@ function wpilot_remove_snippet( $params ) {
 
 function wpilot_create_html_page( $params ) {
     $title    = sanitize_text_field( $params['title']   ?? 'New Page' );
-    $html     = wp_kses_post( $params['html'] ?? $params['content'] ?? '' );
+    $raw_html = $params['html'] ?? $params['content'] ?? '';
     $slug     = sanitize_title( $params['slug'] ?? $title );
     $status   = sanitize_text_field( $params['status']  ?? 'publish' );
     $set_home = ! empty( $params['set_as_homepage'] );
 
-    if ( empty( $html ) ) return wpilot_err( 'html or content parameter required.' );
+    if ( empty( $raw_html ) ) return wpilot_err( 'html or content parameter required.' );
+
+    // Strip wrapping <!-- wp:html --> if AI accidentally added it
+    $html = preg_replace( '/^<!--\s*wp:html\s*-->\s*/s', '', trim($raw_html) );
+    $html = preg_replace( '/\s*<!--\s*\/wp:html\s*-->$/s', '', $html );
+
+    // If content has Gutenberg blocks, DON'T run wp_kses_post (it strips block comments)
+    // Only sanitize non-block content
+    if ( strpos($html, '<!-- wp:') === false ) {
+        $html = wp_kses_post( $html );
+    }
 
     $existing = get_page_by_path( $slug );
     if ( $existing ) {

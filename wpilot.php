@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name:  WPilot powered by Claude AI
+ * Plugin Name:  WPilot — AI Website Builder
  * Plugin URI:   https://weblease.se/wpilot
- * Description:  Live AI assistant for WordPress — design, build, and improve your site in real time using Claude AI. Connect your own Claude API key from Anthropic.
- * Version:           2.2.0
+ * Description:  Build, design and manage your WordPress site with AI. Connect Claude and start building — no coding required. Powered by Claude.
+ * Version:           3.0.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -14,6 +14,15 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+// ── Recovery page handler ──
+if ( is_admin() && isset( $_GET['wpilot-recover'] ) && $_GET['wpilot-recover'] === '1' ) {
+    add_action( 'admin_init', function() {
+        if ( current_user_can( 'manage_options' ) && file_exists( __DIR__ . '/wpilot-recovery.php' ) ) {
+            require_once __DIR__ . '/wpilot-recovery.php';
+        }
+    });
+}
+
 // ── Safe Mode: skip loading if crashed 3+ times ──
 $safe_mode_file = WP_CONTENT_DIR . '/wpilot-safe-mode.txt';
 if (file_exists($safe_mode_file)) {
@@ -21,7 +30,7 @@ if (file_exists($safe_mode_file)) {
     if (($sm['crashes'] ?? 0) >= 3 && strtotime($sm['last_crash'] ?? '') > time() - 600) {
         // Don't load WPilot — safe mode active
         add_action('admin_notices', function() {
-            echo '<div class="notice notice-error"><p><strong>WPilot Safe Mode:</strong> Plugin disabled due to repeated crashes. <a href="' . admin_url('?wpilot-recover=1') . '">Open Recovery</a></p></div>';
+            echo '<div class="notice notice-error"><p><strong>WPilot Safe Mode:</strong> Plugin disabled due to repeated crashes. <a href="' . esc_url(admin_url('?wpilot-recover=1')) . '">Open Recovery</a></p></div>';
         });
         return; // Stop loading the plugin
     }
@@ -45,14 +54,14 @@ if ( defined('WP_DEBUG') && WP_DEBUG ) {
     error_reporting(E_ALL);
 }
 
-define( "CA_VERSION", "2.2.0" );
+if ( ! defined( 'CA_VERSION' ) ) define( "CA_VERSION", "3.0.0" );
 define( 'CA_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'CA_URL',        plugin_dir_url( __FILE__ ) );
 define( 'CA_FREE_LIMIT',        20   );  // Free prompts before upgrade required
 define( 'CA_LIFETIME_SLOTS',   20   );  // First 20 buyers get lifetime access
-define( 'CA_PRICE_PRO',        19   );  // USD/month — Pro
-define( 'CA_PRICE_TEAM',       49   );  // USD/month — Team (3 licenses)
-define( 'CA_PRICE_LIFETIME',   299  );  // USD one-time — Lifetime
+define( 'CA_PRICE_PRO',        9    );  // USD/month — Pro
+define( 'CA_PRICE_TEAM',       25   );  // USD/month — Team (3 licenses)
+define( 'CA_PRICE_LIFETIME',   199  );  // USD one-time — Lifetime
 define( 'CA_LIFETIME_CLAIMED_KEY', 'wpi_lifetime_claimed_count' );
 
 // Stripe Product/Price IDs (set these after creating products in Stripe Dashboard)
@@ -61,14 +70,15 @@ define( 'WPI_STRIPE_AGENCY_PRICE_ID',   getenv('WPI_STRIPE_AGENCY_PRICE_ID')   ?
 define( 'WPI_STRIPE_LIFETIME_PRICE_ID', getenv('WPI_STRIPE_LIFETIME_PRICE_ID') ?: 'price_lifetime_once' );
 define( 'WPI_STRIPE_SECRET_KEY',        '' );  // loaded from get_option() in helpers
 define( 'WPI_STRIPE_WEBHOOK_SECRET',    '' );  // loaded from get_option() in helpers
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 define( 'WPI_LICENSE_VALIDATE_URL',    'https://weblease.se/ai-license/validate' );
 define( 'WPI_STRIPE_PUBLISHABLE_KEY',   '' );  // loaded from get_option() in helpers
 define( 'WPI_LICENSE_SERVER',    'https://weblease.se/ai-license' );
 define( 'CA_SLUG',       'wpilot' );
-define( 'CA_MONTHLY_PRICE',          19   );   // Alias for bubble.php
+define( 'CA_MONTHLY_PRICE',          9    );   // Alias for bubble.php
 define( 'WPI_WEBLEAS_ENDPOINT',      'https://weblease.se/ai-query' );  // WPilot AI server (moved from webleas_ai.php)
 define( 'CA_MODEL',      'claude-sonnet-4-6' );
+define( 'CA_MODEL_FAST', 'claude-haiku-4-5-20251001' ); // 10x cheaper for simple tasks
 
 // ── Always load (lightweight — hooks and helpers) ─────────────
 $_wpilot_core = [
@@ -79,7 +89,21 @@ $_wpilot_core = [
     'includes/tracking.php',
     'includes/bubble.php',
     'includes/ajax.php',
+    'includes/sessions.php',
+    'includes/shield.php',
+    // 'includes/oauth.php', // OAuth abandoned — using MCP
+    // 'includes/mcp_server_v2.php', // replaced by v3
     'includes/brain_ajax.php',
+    'includes/mcp_auth.php',
+    // 'includes/mcp_server.php', // replaced by v3
+    // 'includes/mcp_tool_registry.php', // replaced by grouped tools
+    'includes/mcp_security.php',
+    'includes/mcp_license.php',
+    'includes/mcp_audit.php',
+    'includes/mcp_undo.php',
+    'includes/mcp_grouped_tools.php',
+    'includes/mcp_safeguards.php',
+    'includes/mcp_server_v3.php',
 ];
 foreach ( $_wpilot_core as $f ) {
     require_once CA_PATH . $f;
@@ -89,6 +113,9 @@ foreach ( $_wpilot_core as $f ) {
 if ( is_admin() ) {
     require_once CA_PATH . 'includes/menu.php';
     require_once CA_PATH . 'includes/onboarding.php';
+    require_once CA_PATH . 'includes/mcp_admin.php';
+    // Migrate plaintext API keys to encrypted storage (runs once)
+    add_action( 'admin_init', 'wpilot_migrate_encrypt_keys' );
 }
 
 // ── Heavy modules — loaded on demand ─────────────────────────
@@ -100,7 +127,7 @@ function wpilot_load_heavy() {
     $dir = plugin_dir_path(__FILE__) . 'includes/';
 
     // Core modules — always needed for chat
-    $core = ['api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'backup', 'parser_fix'];
+    $core = ['mu_consolidator', 'brain', 'business_profile', 'api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_woo_advanced', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'tools_forms', 'tools_comments', 'tools_gdpr', 'tools_content', 'tools_marketing', 'tools_engage', 'backup', 'activity_log', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes', 'header_footer_blueprints', 'webleas_ai', 'collector', 'shadow', 'pwa', 'verify_agent'];
     foreach ($core as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;
@@ -117,7 +144,7 @@ function wpilot_load_heavy() {
 function wpilot_register_lazy_modules() {
     global $wpilot_lazy_modules;
     $wpilot_lazy_modules = [
-        'plugin_tools'   => ['woo_configure_stripe', 'woo_configure_email', 'woo_setup_checkout', 'cf7_create_form', 'smtp_configure', 'amelia_', 'learndash_', 'memberpress_', 'gravity_', 'wpforms_', 'bulk_import_products'],
+        'plugin_tools'   => ['plugin_install', 'plugin_delete', 'plugin_activate', 'plugin_deactivate', 'woo_configure_stripe', 'woo_configure_email', 'woo_setup_checkout', 'cf7_create_form', 'smtp_configure', 'amelia_', 'learndash_', 'memberpress_', 'gravity_', 'wpforms_', 'bulk_import_products'],
         'builder_tools'  => ['builder_create_page', 'builder_update_section', 'builder_add_widget', 'builder_update_css', 'builder_set_colors', 'builder_set_fonts', 'builder_create_header', 'builder_create_footer'],
         'blueprint'      => ['wpilot_build_site_snapshot', 'wpilot_get_blueprint'],
         'screenshot'     => ['screenshot', 'take_screenshot', 'analyze_design', 'visual_review', 'design_review', 'check_visual_bugs', 'visual_debug', 'compare_before_after', 'screenshot_before', 'screenshot_history', 'responsive_check', 'multi_device_screenshot'],
@@ -226,6 +253,8 @@ register_activation_hook( __FILE__, function () {
     add_option( 'wpi_data_consent',        'no' );   // GDPR: default to no consent
     wpilot_backup_create_table();
     wpilot_brain_install();
+    wpilot_create_sessions_table();
+    if ( function_exists("wpilot_mcp_create_audit_table") ) wpilot_mcp_create_audit_table();
     // Track activation on weblease.se
     if ( function_exists('wpilot_track_activation') ) wpilot_track_activation();
     // Schedule daily screenshot cleanup
@@ -248,7 +277,7 @@ function wpilot_asset_suffix() {
 
 // ── Shared enqueue helper ─────────────────────────────────────
 function wpilot_enqueue_bubble() {
-    if ( ! wpilot_can_use() ) return;
+    // Assets always load - features are gated in JS
     $sfx = wpilot_asset_suffix();
     wp_enqueue_style(  'aib-bubble', CA_URL . "assets/bubble{$sfx}.css", [], CA_VERSION );
     wp_enqueue_script( 'aib-bubble', CA_URL . "assets/bubble{$sfx}.js",  ['jquery'], CA_VERSION, true );
@@ -283,8 +312,8 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
             'site_url'    => get_site_url(),
             'page_title'  => get_admin_page_title(),
             'i18n'        => [
-                'error_no_credits' => wpilot_t('error_no_credits'),
-                'add_credits'      => wpilot_t('add_credits_btn'),
+                'error_no_account' => 'Connect your Claude account to continue',
+                'add_account'      => 'Connect Claude',
             ],
             'strings'     => [
                 'thinking'  => wpilot_t('thinking'),
@@ -300,9 +329,15 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 
 // ── Frontend: bubble on all public pages for logged-in users ──
 add_action( 'wp_enqueue_scripts', function () {
+    // Framework CSS — loads on ALL pages for ALL visitors (not just logged in)
+    // This is the site's design system. Priority 999 = loads AFTER theme CSS.
+    if ( file_exists( CA_PATH . 'assets/wpilot-framework.css' ) ) {
+        wp_enqueue_style( 'wpilot-framework', CA_URL . 'assets/wpilot-framework.css', [], CA_VERSION );
+    }
+    // Bubble only for logged-in users
     if ( ! is_user_logged_in() ) return;
     wpilot_enqueue_bubble();
-} );
+}, 999 );
 // Execute scheduled WPilot actions
 add_action('wpilot_run_scheduled', function($id) {
     $scheduled = get_option('wpilot_scheduled_actions', []);
@@ -344,7 +379,6 @@ add_action('rest_api_init', function() {
         'permission_callback' => '__return_true',
     ]);
 });
-
 /**
  * Memory guard — check if we have enough RAM for an operation
  */

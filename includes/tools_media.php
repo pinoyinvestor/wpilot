@@ -49,8 +49,20 @@ function wpilot_run_media_tools($tool, $params = []) {
                 require_once(ABSPATH . 'wp-admin/includes/media.php');
                 require_once(ABSPATH . 'wp-admin/includes/file.php');
                 require_once(ABSPATH . 'wp-admin/includes/image.php');
+                // Try media_sideload_image first (works for URLs with extension)
                 $image_id = media_sideload_image($image_url, $post_id, '', 'id');
-                if (is_wp_error($image_id)) return wpilot_err('Image download failed: ' . $image_id->get_error_message());
+                // If URL has no extension (Unsplash etc), download manually
+                if (is_wp_error($image_id)) {
+                    $tmp = download_url($image_url);
+                    if (is_wp_error($tmp)) return wpilot_err('Image download failed: ' . $tmp->get_error_message());
+                    $ext = 'jpg';
+                    $type = wp_check_filetype(basename(parse_url($image_url, PHP_URL_PATH)));
+                    if (!empty($type['ext'])) $ext = $type['ext'];
+                    $file = ['name' => sanitize_file_name('wpilot-image-' . time() . '.' . $ext), 'tmp_name' => $tmp];
+                    $image_id = media_handle_sideload($file, $post_id, '');
+                    @unlink($tmp);
+                    if (is_wp_error($image_id)) return wpilot_err('Image upload failed: ' . $image_id->get_error_message());
+                }
             }
             if (!$post_id||!$image_id) return wpilot_err('post_id and image_url or image_id required.');
             set_post_thumbnail($post_id,$image_id);
@@ -152,7 +164,7 @@ function wpilot_run_media_tools($tool, $params = []) {
 
         case 'analyze_design':
         case 'visual_review':
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
         case 'design_review':
             // Fallback on low-memory hosting
             if (function_exists('wpilot_can_use') && !wpilot_can_use_feature('screenshot')) {
@@ -301,7 +313,7 @@ function wpilot_run_media_tools($tool, $params = []) {
             return wpilot_ok('Current logo.', ['has_logo' => true, 'image_id' => $logo_id, 'url' => wp_get_attachment_url($logo_id)]);
 
         // ═══ WEB RESEARCH ═══
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
 
         default:
             return null; // Not handled by this module

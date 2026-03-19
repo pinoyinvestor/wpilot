@@ -92,7 +92,7 @@ function wpilot_execute_task( $task_id ) {
             );
             break;
 
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         case 'performance_check':
             $result = wpilot_call_claude(
                 "Analyze this WordPress site for performance issues. Review: active plugins count, image optimization status, caching setup, and theme. Give a performance score and specific recommendations.",

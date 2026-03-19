@@ -252,7 +252,7 @@ function wpilot_ctx_plugins() {
     foreach ( $all as $file => $p ) {
         $slug = explode('/',$file)[0];
         $kb   = $plugin_kb[$slug] ?? null;
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
         $info = [
             'name'              => $p['Name'],
             'version'           => $p['Version'],
@@ -681,7 +681,7 @@ function wpilot_ctx_file_map_lite() {
         $count = wp_count_posts($pt->name);
         $cpt[] = $pt->name . ":" . ($count->publish ?? 0);
     }
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $map["post_types"] = implode(", ", $cpt);
 
     return $map;
@@ -778,7 +778,7 @@ function wpilot_ctx_business_stats() {
     }
 
     // ═══ BOOKINGS (Amelia, Bookly, Simply Schedule) ═══
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     if (defined('FLAVOR') || class_exists('\\AmeliaBooking\\Application\\Services\\Booking\\BookingApplicationService')) {
         // Amelia
         global $wpdb;
@@ -919,7 +919,7 @@ function wpilot_ctx_product_map() {
         'country' => get_option('woocommerce_default_country'),
         'taxes' => get_option('woocommerce_calc_taxes', 'no'),
         'shipping' => !empty(WC()->shipping()->get_shipping_methods()),
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         'payments' => array_keys(array_filter(WC()->payment_gateways()->get_available_payment_gateways())),
         'checkout_page' => get_option('woocommerce_checkout_page_id'),
         'cart_page' => get_option('woocommerce_cart_page_id'),
@@ -1008,7 +1008,7 @@ function wpilot_ctx_file_map() {
             $mu_plugins[] = $f . ' — ' . trim(str_replace(['<?php','//','/*','*/'], '', $first_line));
         }
     }
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $map['mu_plugins'] = $mu_plugins;
     
     // 4. Key wp-config settings (no secrets!)

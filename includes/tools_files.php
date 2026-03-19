@@ -17,7 +17,8 @@ function wpilot_run_file_tools($tool, $params = []) {
             $wp_root = realpath(ABSPATH);
             if (!$real || strpos($real, $wp_root) !== 0) return wpilot_err('File not found or outside WordPress directory.');
             if (!is_file($real)) return wpilot_err('Not a file: ' . $path);
-            // SECURITY: Block reading sensitive files that contain credentials
+            // SECURITY: Can read any file in WordPress directory
+            // Only block credentials and sensitive config files
             $blocked_read = ['wp-config.php', '.htaccess', '.htpasswd', 'wp-settings.php', '.env', 'debug.log'];
             if (in_array(basename($real), $blocked_read)) return wpilot_err('Cannot read sensitive configuration files for security.');
             // Block files that may contain secrets
@@ -46,11 +47,19 @@ function wpilot_run_file_tools($tool, $params = []) {
             if (in_array($basename, ['wp-config.php', '.htaccess', '.htpasswd', 'wp-settings.php', '.env'])) {
                 return wpilot_err('Cannot modify core WordPress config files for security.');
             }
-            // SECURITY: Block writing to sensitive directories
-            $blocked_dirs = ['/wpilot/', '/mu-plugins/wpilot-', '/wp-admin/includes/', '/wp-includes/'];
-            foreach ($blocked_dirs as $bd) {
-                if (strpos($path, $bd) !== false) return wpilot_err('Cannot write to protected directory.');
-            }
+            // SECURITY: Write to theme + uploads only, NEVER write PHP or plugin files
+            $theme_dir2 = realpath(get_stylesheet_directory());
+            $upload_dir2 = realpath(wp_upload_dir()['basedir']);
+            $target_dir = realpath(dirname($path));
+            $write_safe = false;
+            if ($theme_dir2 && $target_dir && strpos($target_dir, $theme_dir2) === 0) $write_safe = true;
+            if ($upload_dir2 && $target_dir && strpos($target_dir, $upload_dir2) === 0) $write_safe = true;
+            if (!$write_safe) return wpilot_err('Can only write files in the active theme or uploads folder.');
+            // NEVER write PHP files — prevents code injection
+            if (preg_match('/\.php$/i', $path)) return wpilot_err('Cannot create or modify PHP files. Use WordPress tools instead.');
+            // NEVER write to any plugin directory
+            $plugins_dir = realpath(WP_PLUGIN_DIR);
+            if ($plugins_dir && $target_dir && strpos($target_dir, $plugins_dir) === 0) return wpilot_err('Cannot modify plugin files.');
             if (file_exists($path)) {
                 $backup_dir = WP_CONTENT_DIR . '/wpilot-backups/files/' . date('Y-m-d');
                 wp_mkdir_p($backup_dir);
@@ -134,7 +143,7 @@ function wpilot_run_file_tools($tool, $params = []) {
             ]);
 
         // ═══ DATABASE QUERY (read-only + safe writes) ═══
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         case 'db_query':
         case 'database_query':
             $query = $params['query'] ?? $params['sql'] ?? '';
@@ -160,15 +169,8 @@ function wpilot_run_file_tools($tool, $params = []) {
                 if ($wpdb->last_error) return wpilot_err("SQL error: " . $wpdb->last_error);
                 return wpilot_ok(count($results) . " rows.", ['rows' => array_slice($results, 0, 100), 'total' => count($results)]);
             }
-            if (strpos($query_upper, 'UPDATE') === 0 || strpos($query_upper, 'INSERT') === 0 || strpos($query_upper, 'DELETE') === 0) {
-                if (empty($params['confirm'])) {
-                    return wpilot_err("Write query requires confirm:true. Query: " . substr($query, 0, 200));
-                }
-                $affected = $wpdb->query($query);
-                if ($wpdb->last_error) return wpilot_err("SQL error: " . $wpdb->last_error);
-                return wpilot_ok("{$affected} rows affected.", ['affected' => $affected]);
-            }
-            return wpilot_err("Unsupported query type. Use SELECT, SHOW, UPDATE, INSERT, or DELETE.");
+            // Write queries disabled for security — use WordPress API functions instead
+            return wpilot_err("Only SELECT, SHOW, and DESCRIBE queries are allowed. Use WordPress tools for data modifications.");
 
         // ═══ WP-CLI WRAPPER ═══
         case 'wp_cli':
@@ -176,10 +178,27 @@ function wpilot_run_file_tools($tool, $params = []) {
             $cmd = $params['command'] ?? $params['cmd'] ?? '';
             if (empty($cmd)) return wpilot_err('WP-CLI command required. Example: command="post list --post_type=page"');
             if (preg_match('/[;&|`$()\\{}]/', $cmd)) return wpilot_err('Shell operators not allowed in WP-CLI commands.');
-            $blocked_cmds = ['db export', 'db import', 'db reset', 'db drop', 'db query', 'core download', 'config set', 'config delete', 'package install', 'super-admin', 'shell', 'eval-file', 'eval '];
+            // Security: allowlist of safe WP-CLI subcommands only
+            // SECURITY: Allow most WP-CLI commands. Block only dangerous ones.
+            $blocked_cmds = ['db drop', 'db reset', 'db export', 'db import', 'db query',
+                'user delete', 'site delete', 'core update', 'eval', 'eval-file', 'shell',
+                'config set', 'config delete', 'package install'];
+            $cmd_lower = strtolower(trim($cmd));
+            $is_blocked = false;
             foreach ($blocked_cmds as $bc) {
-                if (strpos($cmd, $bc) !== false) return wpilot_err("Blocked command: {$bc}");
+                if (strpos($cmd_lower, $bc) === 0) { $is_blocked = true; break; }
             }
+            if ($is_blocked) return wpilot_err('This WP-CLI command is not allowed for security.');
+            // Keep the existing allowed_cmds as a fallback whitelist
+            $allowed_cmds = ['post', 'page', 'plugin', 'theme', 'option', 'menu', 'widget',
+                'sidebar', 'term', 'taxonomy', 'comment', 'media', 'wc', 'user list', 'user get',
+                'cron', 'transient', 'rewrite', 'cache', 'role', 'cap'];
+            $cmd_lower = strtolower(trim($cmd));
+            $allowed = false;
+            foreach ($allowed_cmds as $ac) {
+                if (strpos($cmd_lower, $ac) === 0) { $allowed = true; break; }
+            }
+            if (!$allowed) return wpilot_err("Command not allowed. Permitted: " . implode(', ', array_slice($allowed_cmds, 0, 10)) . '...');
             // Split command into args for safe execution
             $args = ['wp', '--allow-root', '--path=' . ABSPATH];
             $parts = preg_split('/\s+/', trim($cmd));
@@ -195,7 +214,7 @@ function wpilot_run_file_tools($tool, $params = []) {
             $exit = proc_close($proc);
             if ($exit !== 0) return wpilot_err("WP-CLI error: " . ($stderr ?: $output));
             return wpilot_ok("Command: wp {$cmd}", ['output' => $output, 'exit_code' => $exit]);
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
         // ═══ ACTION CHAIN — Run multiple tools in sequence ═══
         case 'run_chain':

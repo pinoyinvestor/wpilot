@@ -21,6 +21,7 @@ function wpilot_render_bubble() {
         'used'         => wpilot_prompts_used(),
         'licensed'     => wpilot_is_licensed()  ? 'yes' : 'no',
         'locked'       => $locked           ? 'yes' : 'no',
+            'oauth_connected' => (function_exists('wpilot_oauth_is_connected') && wpilot_oauth_is_connected()) ? 'yes' : 'no',
         'connected'    => $connected        ? 'yes' : 'no',
             'license_type' => wpilot_license_type(),
             'is_lifetime'  => wpilot_is_lifetime() ? 'yes' : 'no',
@@ -39,9 +40,27 @@ function wpilot_render_bubble() {
         'can_modify'   => $can_modify ? 'yes' : 'no',
         'plugin_name'  => 'WPilot',
         'i18n'         => [
-            'error_no_credits'   => wpilot_t( 'error_no_credits' ),
-            'add_credits'        => wpilot_t( 'add_credits_btn' ),
+            'error_no_credits'   => 'Connect your Claude account to continue',
+            'add_credits'        => 'Connect Claude',
             'guide'              => wpilot_t( 'step_by_step_guide' ),
+            'oauth_connect_title' => wpilot_t('oauth_connect_title'),
+            'oauth_connect_desc'  => wpilot_t('oauth_connect_desc'),
+            'oauth_connect_btn'   => wpilot_t('oauth_connect_btn'),
+            'oauth_secure'        => wpilot_t('oauth_secure'),
+            'oauth_not_connected' => wpilot_t('oauth_not_connected'),
+            'oauth_ask_admin'     => wpilot_t('oauth_ask_admin'),
+            'bubble_how_help'     => wpilot_t('bubble_how_help'),
+            'bubble_desc'         => wpilot_t('bubble_desc'),
+            'thinking'            => wpilot_t('thinking'),
+            'working'             => wpilot_t('working'),
+            'almost_done'         => wpilot_t('almost_done'),
+            'new_chat'            => wpilot_t('new_chat'),
+            'session_expired'     => wpilot_t('session_expired'),
+            'type_message'        => wpilot_t('type_message'),
+            'apply_btn'           => wpilot_t('apply_btn'),
+            'skip_btn'            => wpilot_t('skip_btn'),
+            'done_btn'            => wpilot_t('done_btn'),
+            'retry_btn'           => wpilot_t('retry_btn'),
         ],
     ];
     echo '<script>var CA = ' . wp_json_encode( $ca_data ) . ';</script>';
@@ -49,7 +68,7 @@ function wpilot_render_bubble() {
 
     <div id="caRoot" data-theme="<?= esc_attr( wpilot_theme() ) ?>">
 
-        <button id="caTrigger" aria-label="WPilot — powered by Claude AI (Alt+C)">
+        <button id="caTrigger" aria-label="WPilot Connected (Alt+C)">
             <span class="ca-t-idle">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             </span>
@@ -64,16 +83,20 @@ function wpilot_render_bubble() {
                     <div class="cap-av">⚡</div>
                     <div>
                         <div class="cap-name">WPilot</div>
-                        <div class="cap-powered">Powered by <a href="https://anthropic.com" target="_blank" rel="noopener">Claude AI</a></div>
+                        <div class="cap-status">
+                            <?php if ( $connected ): ?>
+                                <span class="cap-status-dot cap-status-online"></span> <span class="cap-status-label">Connected</span>
+                            <?php else: ?>
+                                <span class="cap-status-dot cap-status-offline"></span> <span class="cap-status-label">Not connected</span>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
                 <div class="cap-hdr-r">
                     <?php if ( $is_admin ): ?>
                     <button class="cap-ib" id="capCfgBtn" title="Quick settings">⚙️</button>
                     <?php endif; ?>
-                    <button class="cap-ib" id="capClearChat" title="Clear chat">🗑️</button>
-                    <button class="cap-ib" id="capRestartScan" title="Clear + re-analyze site">🔄</button>
-                    <button class="cap-ib" id="capExportChat" title="Export chat">📋</button>
+                    <button class="cap-ib" id="capNewChat" title="Ny chatt">➕</button><button class="cap-ib" id="capClearChat" title="Rensa" style="display:none">🗑️</button>
                     <button class="cap-ib" id="capClose">✕</button>
                 </div>
             </div>
@@ -93,55 +116,41 @@ function wpilot_render_bubble() {
             </div>
             <?php endif; ?>
 
-            <div class="cap-ctx">
-                <span>📍 <?= esc_html( get_bloginfo('name') ) ?></span>
-                <span class="cap-ctx-r">
-                    <?php
-                    $tier_name = wpilot_get_license_tier();
-                    $tier_labels = ['free'=>'Free','pro'=>'⚡ Pro','team'=>'👥 Team','lifetime'=>'🏆 Lifetime'];
-                    $tier_label = $tier_labels[$tier_name] ?? ucfirst($tier_name);
-                    if ( $connected && ! $locked ): ?>
-                        <span class="cap-pill-ok">● <?= esc_html($tier_label) ?></span>
-                    <?php elseif ( $locked ): ?>
-                        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-license') ) ?>" class="cap-pill-warn">🔑 Activate</a>
-                    <?php elseif ( $is_admin ): ?>
-                        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-settings') ) ?>" class="cap-pill-warn">⚡ Connect →</a>
-                    <?php else: ?>
-                        <span class="cap-pill-off">○ Not connected</span>
-                    <?php endif; ?>
-                </span>
-            </div>
 
             <div class="cap-msgs" id="capMsgs">
-                <?php if ( ! $connected ): ?>
+<?php if ( ! $connected ): ?>
 
                 <div class="cap-nc" style="padding:20px 14px">
-                    <div class="cap-nc-logo">⚡</div>
-                    <h3 class="cap-nc-h">Connect Claude AI</h3>
-                    <?php if ( $is_admin ): ?>
-                    <p class="cap-nc-sub" style="margin-bottom:12px">Paste your Claude API key to start. Get one free at <a href="https://console.anthropic.com" target="_blank" rel="noopener" style="color:#4F7EFF">console.anthropic.com</a></p>
+                    <div class="cap-nc-logo" style="font-size:32px">&#9889;</div>
+                    <?php if ($is_admin): ?>
+                    <h3 class="cap-nc-h"><?= esc_html(wpilot_t("oauth_connect_title")) ?></h3>
+                    <p class="cap-nc-sub" style="margin-bottom:14px"><?= esc_html(wpilot_t("oauth_connect_desc")) ?></p>
 
-                    <div style="width:100%;margin-bottom:12px">
-                        <?php /* FIX: removed inline onkeydown — bubble.js handles Enter key on #capApiKeyInput */ ?>
-                        <input type="password" id="capApiKeyInput" placeholder="sk-ant-api03-..."
-                            style="width:100%;padding:10px 14px;background:var(--ca-bg3);border:1px solid var(--ca-border2);border-radius:10px;color:var(--ca-text);font-family:var(--ca-mono);font-size:12px;outline:none;box-sizing:border-box" />
-                    </div>
-
-                    <?php /* FIX: removed massive inline onclick — bubble.js handles #capConnectBtn click via event delegation.
-                              Having both caused triple AJAX calls (inline + 2 JS handlers). */ ?>
-                    <button id="capConnectBtn" style="width:100%;padding:10px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer">
-                        Connect & Start
+                    <button id="wpiOAuthStart" style="display:block;width:100%;padding:13px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;text-align:center;box-sizing:border-box">
+                        Anslut Claude-konto
                     </button>
 
-                    <p id="capConnectStatus" style="display:none;margin-top:8px;font-size:12px;text-align:center"></p>
-
-                    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--ca-border)">
-                        <p style="font-size:11px;color:var(--ca-text3);text-align:center;line-height:1.6">
-                            Your key stays on your server only.<br/>Never shared with Weblease.
+                    <div id="wpiOAuthStep2" style="display:none;margin-top:14px">
+                        <p style="font-size:12px;color:var(--ca-text2);margin-bottom:8px;line-height:1.5">
+                            1. Logga in pa Claude i det nya fonstret<br>
+                            2. Kopiera koden du ser<br>
+                            3. Klistra in den har:
                         </p>
+                        <input type="text" id="wpiOAuthCode" placeholder="Klistra in koden har..." style="width:100%;padding:10px 12px;background:var(--ca-bg,#050608);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text,#fff);font-size:13px;font-family:monospace;box-sizing:border-box;margin-bottom:8px">
+                        <button id="wpiOAuthExchange" style="width:100%;padding:11px;background:#10B981;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer">
+                            Anslut
+                        </button>
                     </div>
+
+                    <div id="wpiOAuthStatus" style="display:none;margin-top:10px;font-size:12px;text-align:center"></div>
+
+                    <p style="margin-top:12px;font-size:11px;color:var(--ca-text3);text-align:center;line-height:1.5">
+                        <?= esc_html(wpilot_t("oauth_secure")) ?>
+                    </p>
+
                     <?php else: ?>
-                    <p class="cap-nc-sub"><?php wpilot_te('bubble_ask_admin') ?></p>
+                    <h3 class="cap-nc-h"><?= esc_html(wpilot_t("oauth_not_connected")) ?></h3>
+                    <p class="cap-nc-sub">Be din administrator att ansluta Claude i WPilot-installningarna.</p>
                     <?php endif; ?>
                 </div>
 
@@ -157,7 +166,7 @@ function wpilot_render_bubble() {
                     <?php if($has_lifetime_slots): ?>
                     <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 14px;margin:10px 0;text-align:left">
                         <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:4px">🏆 <?= (int)$slots_remaining ?> Lifetime slots left</div>
-                        <div style="font-size:12px;color:#d97706;line-height:1.5">You connected your API key early. Your access is <strong>free forever</strong> — no $<?= CA_MONTHLY_PRICE ?>/month fee.</div>
+                        <div style="font-size:12px;color:#d97706;line-height:1.5">You connected early. Your access is <strong>free forever</strong> — no $<?= CA_MONTHLY_PRICE ?>/month fee.</div>
                     </div>
                     <?php if($is_admin): ?>
                     <a href="<?= esc_url(admin_url('admin.php?page='.CA_SLUG.'-license')) ?>" class="cap-nc-btn cap-nc-btn-primary" style="margin-top:8px;background:linear-gradient(135deg,#f59e0b,#d97706)">🏆 Claim Lifetime Access →</a>
@@ -177,8 +186,8 @@ function wpilot_render_bubble() {
 
                 <div class="cap-welcome" id="capWelcome">
                     <div class="cap-wlc-av">⚡</div>
-                    <div class="cap-wlc-title">Ready to build</div>
-                    <div class="cap-wlc-sub">Ask Claude to design, fix, or improve anything on your WordPress site — live.</div>
+                    <div class="cap-wlc-title"><?= esc_html(wpilot_t("bubble_how_help")) ?></div>
+                    <div class="cap-wlc-sub">I can design, fix, or improve anything on your WordPress site — just ask.</div>
                     <div class="cap-chips">
                         <button class="cap-chip" data-msg="What can I improve on this page right now?">💡 Improve this page</button>
                         <button class="cap-chip" data-msg="Analyze my site and give me the top 3 issues to fix.">🔍 Site analysis</button>
@@ -194,9 +203,9 @@ function wpilot_render_bubble() {
                     <div class="cap-m cap-m-ai">
                         <div class="cap-av">⚡</div>
                         <div class="cap-mt" style="display:flex;align-items:center;gap:8px">
-                            <div class="cap-dots"><span></span><span></span><span></span></div>
+                            <div class="cap-thinking-spinner"></div>
                             <span id="capThinkText" style="font-size:12px;color:var(--ca-text2)">Thinking...</span>
-                            <span id="capThinkTimer" style="font-size:11px;color:var(--ca-text3);font-family:var(--ca-mono)">0s</span>
+                            <span id="capThinkTimer" style="font-size:11px;color:var(--ca-text3);font-variant-numeric:tabular-nums">0s</span>
                         </div>
                     </div>
                 </div>
@@ -209,7 +218,7 @@ function wpilot_render_bubble() {
                     <label for="capFileUpload" style="cursor:pointer;padding:8px;color:var(--ca-text3,#5E6E91);font-size:16px;flex-shrink:0" title="Upload file (image, CSV, PDF)">📎</label>
                     <input type="file" id="capFileUpload" accept="image/*,.csv,.xlsx,.xls,.pdf,.txt,.json" style="display:none" />
                     <?php endif; ?>
-                    <textarea id="capIn" placeholder="Ask Claude to build, design, or fix…" rows="1"></textarea>
+                    <textarea id="capIn" placeholder="Ask me anything about your site..." rows="1"></textarea>
                     <button id="capSend">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     </button>
@@ -217,9 +226,9 @@ function wpilot_render_bubble() {
                 <?php elseif ( ! $connected ): ?>
                     <div class="cap-inp-cta" style="text-align:center;padding:8px 12px">
                         <?php if ( $is_admin ): ?>
-                            <p style="font-size:11px;color:var(--ca-text3);margin:0">Paste your API key above or type it here to connect</p>
+                            <p style="font-size:11px;color:var(--ca-text3);margin:0">Type a message to start chatting</p>
                         <?php else: ?>
-                            <span style="font-size:11px;color:var(--ca-text3)">Claude not connected — ask admin</span>
+                            <span style="font-size:11px;color:var(--ca-text3)">Not connected — ask your admin</span>
                         <?php endif; ?>
                     </div>
                 <?php else: ?>
@@ -231,9 +240,6 @@ function wpilot_render_bubble() {
 
             <div class="cap-footer">
                 <span>WPilot by <a href="https://weblease.se" target="_blank" rel="noopener">Weblease</a></span>
-
-                <span class="cap-footer-dot">·</span>
-                <span>Powered by <a href="https://anthropic.com" target="_blank" rel="noopener">Claude AI</a></span>
                 <span class="cap-footer-dot">&middot;</span><span><a href="#" onclick="wpiShowFeedback();return false" style="color:var(--ca-text3)">Feedback</a></span>
                 <?php
                 // FIX: escape $slots_msg output — construct with allowed HTML only
@@ -241,7 +247,7 @@ function wpilot_render_bubble() {
                     $slots_cached = get_transient('wpi_lifetime_slots');
                     if ($slots_cached !== false && (int)$slots_cached > 0) {
                         $slots_count = (int)$slots_cached;
-                        // Built by Christos Ferlachidis & Daniel Hedenberg
+                        // Built by Weblease
                         echo '<div class="cap-lifetime-hint">🏆 ' . esc_html($slots_count) . ' Lifetime slots left</div>';
                     }
                 }
@@ -265,56 +271,12 @@ function wpilot_render_bubble() {
 
     <script>
     (function(){
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
 
         function wpiLS(key,val){try{if(val!==undefined)localStorage.setItem(key,val);else return localStorage.getItem(key);}catch(e){return null;}}
 
 
-        // Connect API key - inline so it works without external JS
-        // FIX: wpiConnect is kept as a fallback global but is NOT called from any
-        // onclick attr — bubble.js handles the button via event delegation.
-        window.wpiConnect = function() {
-            var btn = document.getElementById('capConnectBtn');
-            var inp = document.getElementById('capApiKeyInput');
-            var st = document.getElementById('capConnectStatus');
-            if (!btn || !inp) return;
-            var key = (inp.value || '').trim();
-            if (!key || key.indexOf('sk-') !== 0) {
-                if(st){st.textContent='Enter a valid Claude API key (starts with sk-)';st.style.color='#EF4444';st.style.display='block';}
-                return;
-            }
-            btn.textContent = 'Connecting...';
-            btn.disabled = true;
-            if(st){st.textContent='Testing connection...';st.style.color='#5E6E91';st.style.display='block';}
-            var xhr = new XMLHttpRequest();
-            var url = (typeof ajaxurl !== 'undefined') ? ajaxurl : '/wp-admin/admin-ajax.php';
-            var nonce = (typeof CA !== 'undefined' && CA.nonce) ? CA.nonce : '';
-            xhr.open('POST', url, true);
-            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            xhr.onload = function() {
-                try {
-                    var r = JSON.parse(xhr.responseText);
-                    if (r && r.success) {
-                        if(st){st.textContent='Connected! Reloading...';st.style.color='#10B981';}
-                        setTimeout(function(){location.reload()},1000);
-                    } else {
-                        var m = r && r.data ? (typeof r.data === 'string' ? r.data : r.data.message || 'Failed') : 'Failed';
-                        if(st){st.textContent=m;st.style.color='#EF4444';}
-                        btn.textContent='Connect & Start';btn.disabled=false;
-                    }
-                } catch(e) {
-                    if(st){st.textContent='Error parsing response';st.style.color='#EF4444';}
-                    btn.textContent='Connect & Start';btn.disabled=false;
-                }
-            };
-            xhr.onerror = function() {
-                if(st){st.textContent='Network error';st.style.color='#EF4444';}
-                btn.textContent='Connect & Start';btn.disabled=false;
-            };
-            xhr.send('action=ca_test_connection&nonce=' + encodeURIComponent(nonce) + '&key=' + encodeURIComponent(key));
-        };
-
-
+        // Connect Claude - inline so it works without external JS
         // Apply tool - inline so it works without bubble.js event delegation
         window.wpiApply = function(btn) {
             if (btn.disabled) return;

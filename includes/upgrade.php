@@ -1,20 +1,11 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// ═══════════════════════════════════════════════════════════════
-//  WPILOT UPGRADE — Handle payments directly from WordPress
 //
-//  Flow:
-//  1. User clicks "Upgrade" in plugin
-//  2. Plugin calls weblease.se/api/checkout/create-session
-//  3. User is redirected to Stripe Checkout
-//  4. After payment, Stripe webhook creates license on server
-//  5. Plugin validates license on next page load
-// ═══════════════════════════════════════════════════════════════
 
 define( 'WPI_CHECKOUT_ENDPOINT', 'https://weblease.se/api/checkout/create-session' );
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── AJAX: Create Stripe checkout session from plugin ─────────
 add_action( 'wp_ajax_wpi_create_checkout', function() {

@@ -36,6 +36,10 @@ function wpilot_run_design_tools($tool, $params = []) {
                 // Classic theme — remove mu-plugin if it exists (prevents double CSS)
                 if (file_exists($mu_css_path)) @unlink($mu_css_path);
             }
+            // Auto-detect design tokens and save to design profile
+            if ( function_exists( 'wpilot_auto_detect_design_from_css' ) ) {
+                wpilot_auto_detect_design_from_css( $css );
+            }
             return wpilot_ok('Custom CSS applied.');
 
         case 'append_custom_css':
@@ -59,6 +63,10 @@ function wpilot_run_design_tools($tool, $params = []) {
             $curr = preg_replace('/\/\*\s*WPilot[^*]*\*\/\s*/', '', $curr);
             $curr = preg_replace('/\n{3,}/', "\n\n", trim($curr));
             wp_update_custom_css_post(trim($curr) . "\n" . $new);
+            // Auto-detect design tokens from new CSS
+            if ( function_exists( 'wpilot_auto_detect_design_from_css' ) ) {
+                wpilot_auto_detect_design_from_css( $new );
+            }
             return wpilot_ok('CSS updated (duplicates removed).');
 
         /* ── Media / Images ─────────────────────────────────── */
@@ -574,7 +582,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
             $bg = sanitize_text_field($params['background'] ?? '#0a0a0a');
             $header_bg = sanitize_text_field($params['header_bg'] ?? $accent);
             $text_color = sanitize_text_field($params['text_color'] ?? '#333333');
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             // WooCommerce email settings
             update_option('woocommerce_email_background_color', $bg);
             update_option('woocommerce_email_base_color', $accent);
@@ -773,7 +781,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
 
 
         // ═══ PREMIUM DESIGN TOOLS ══════════════════════════════════
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
 
         case 'hover_effects':
             $sel    = $params['selector'] ?? '';
@@ -1009,6 +1017,40 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
 
         // ═══ UX TOOLS ══════════════════════════════════════════════
 
+        case 'add_whatsapp':
+        case 'whatsapp_chat':
+        case 'whatsapp_button':
+            $phone = preg_replace('/[^0-9+]/', '', $params['phone'] ?? $params['number'] ?? '');
+            $message = sanitize_text_field($params['message'] ?? $params['text'] ?? 'Hej! Jag vill veta mer.');
+            $position = sanitize_text_field($params['position'] ?? 'bottom-right');
+            $label = sanitize_text_field($params['label'] ?? '');
+            if (empty($phone)) return wpilot_err('Phone number required (with country code, e.g. +46701234567)');
+            $wa_url = 'https://wa.me/' . ltrim($phone, '+') . '?text=' . rawurlencode($message);
+            $pos_css = $position === 'bottom-left' ? 'left:24px;right:auto;' : 'right:24px;left:auto;';
+            $code = "<?php\nadd_action('wp_footer', function() {\n";
+            $code .= "    if (is_admin()) return;\n";
+            $code .= "    echo '<a href=\"" . esc_url($wa_url) . "\" target=\"_blank\" rel=\"noopener\" id=\"wpilot-whatsapp\" style=\"position:fixed;bottom:90px;{$pos_css}z-index:9999;width:60px;height:60px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(37,211,102,0.4);transition:all 0.3s ease;text-decoration:none;\" onmouseover=\"this.style.transform=\\'scale(1.1)\\'\" onmouseout=\"this.style.transform=\\'scale(1)\\'\">"
+                . "<svg width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"white\"><path d=\"M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z\"/></svg>"
+                . "</a>';\n";
+            if ($label) {
+                $code .= "    echo '<style>#wpilot-whatsapp::after{content:\"" . esc_attr($label) . "\";position:absolute;right:70px;background:var(--wp-bg,#fff);color:var(--wp-text,#333);padding:8px 16px;border-radius:20px;font-size:14px;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.1);font-family:system-ui,sans-serif;}#wpilot-whatsapp:hover::after{display:block;}</style>';\n";
+            }
+            $code .= "});\n";
+            if (function_exists('wpilot_mu_register')) {
+                wpilot_mu_register('whatsapp', $code);
+            } else {
+                $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+                if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
+                file_put_contents($mu_dir . '/wpilot-whatsapp.php', $code);
+            }
+            $pos_text = $position === 'bottom-left' ? 'bottom-left' : 'bottom-right';
+            return wpilot_ok("WhatsApp chat button added ({$pos_text}). Phone: {$phone}. Visitors can click to chat directly.", ['phone' => $phone, 'url' => $wa_url]);
+
+        case 'remove_whatsapp':
+            if (function_exists('wpilot_mu_remove')) wpilot_mu_remove('whatsapp');
+            else @unlink((defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins') . '/wpilot-whatsapp.php');
+            return wpilot_ok('WhatsApp button removed.');
+
         case 'smooth_scroll':
             $enable     = ($params['enable'] ?? true) !== false;
             $scroll_top = ($params['scroll_to_top'] ?? true) !== false;
@@ -1199,7 +1241,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
             $sel = $params['selector'] ?? '[data-count]';
             if (!$pid) return wpilot_err('page_id required.');
             $scope = ".page-id-{$pid}";
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
             $css = "{$scope} {$sel}{font-variant-numeric:tabular-nums;}";
             $js_code = "(function(){if(!document.body.classList.contains('page-id-{$pid}'))return;var els=document.querySelectorAll('{$scope} {$sel}');var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){var el=e.target;var target=parseInt(el.getAttribute('data-count')||el.textContent);var start=0;var dur=2000;var step=Math.max(Math.ceil(dur/target),1);var timer=setInterval(function(){start++;el.textContent=start;if(start>=target){clearInterval(timer);el.textContent=target;}},step);obs.unobserve(el);}});},{threshold:0.3});els.forEach(function(el){obs.observe(el);});})();";
             $stored_js = get_option('wpilot_footer_scripts', '');
@@ -1254,7 +1296,7 @@ body.login::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bo
             $bg_style = $transparent ? 'transparent' : $bg;
             $position = ($transparent || $sticky) ? 'position:fixed;top:0;left:0;right:0;z-index:9999' : 'position:relative';
             $backdrop = $sticky ? 'backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);background:rgba(10,10,10,0.85) !important' : '';
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             $header_html = '<div id="wpilot-header" style="' . $position . ';background:' . $bg_style . ';' . $backdrop . ';border-bottom:1px solid rgba(255,255,255,0.06);padding:0 24px;transition:all 0.3s">';
             $header_html .= '<div style="max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:70px">';
             $header_html .= '<div>' . $logo_html . '</div>';
@@ -1508,7 +1550,7 @@ case 'send_bulk_email':
     foreach ($users as $u) {
         if (wp_mail($u->user_email, $tpl['subject'], $tpl['body'], $headers)) { $sent++; } else { $failed++; }
     }
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $log = get_option('wpilot_email_log', []);
     $log[] = ['to'=>"bulk:{$role}",'subject'=>$tpl['subject'],'date'=>date('Y-m-d H:i:s'),'status'=>"sent:{$sent},failed:{$failed}"];
     if (count($log) > 100) $log = array_slice($log, -100);

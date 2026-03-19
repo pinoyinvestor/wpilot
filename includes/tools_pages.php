@@ -16,13 +16,109 @@ function wpilot_run_page_tools($tool, $params = []) {
             if ( is_wp_error($id) ) return wpilot_err( $id->get_error_message() );
             return wpilot_ok( "Page \"{$title}\" created (ID: {$id}, status: {$status}).", ['id'=>$id] );
 
+        case 'edit_page_css':
+        case 'replace_in_page':
+            $id = intval($params['page_id'] ?? $params['post_id'] ?? $params['id'] ?? 0);
+            $search = $params['search'] ?? $params['find'] ?? $params['old'] ?? '';
+            $replace = $params['replace'] ?? $params['new'] ?? '';
+            // Fallback: if search is empty but html/content was provided, try to parse as old→new
+            if (empty($search) && !empty($params['html'])) {
+                // If label contains search hints like "from X to Y" or "byt X till Y"
+                $search = $params['html'];
+            }
+            if (!$id) return wpilot_err('page_id required.');
+            if (empty($search)) return wpilot_err('search string required. Use get_page first to read exact content, then provide {"id":X, "search":"exact old text", "replace":"new text"}.');
+            $content = get_post_field('post_content', $id);
+            // Built by Weblease
+            $found = false;
+            // 1. Exact match
+            if (strpos($content, $search) !== false) {
+                $content = str_replace($search, $replace, $content);
+                $found = true;
+            }
+            // 2. Regex fallback — if search looks like a regex pattern (contains regex chars)
+            if (!$found && (strpos($search, '[') !== false || strpos($search, '(') !== false || strpos($search, '*') !== false || strpos($search, '+') !== false)) {
+                $regex_result = @preg_replace('/' . $search . '/u', $replace, $content);
+                if ($regex_result !== null && $regex_result !== $content) {
+                    $content = $regex_result;
+                    $found = true;
+                }
+            }
+            // 3. Fuzzy fallback — search for text ignoring whitespace differences
+            if (!$found) {
+                $search_flex = preg_quote($search, '/');
+                $search_flex = str_replace('\ ', '\s+', $search_flex);
+                $regex_result = @preg_replace('/' . $search_flex . '/ui', $replace, $content);
+                if ($regex_result !== null && $regex_result !== $content) {
+                    $content = $regex_result;
+                    $found = true;
+                }
+            }
+            // 4. Smart button/link fallback — if searching for text inside a link, match the full <a> tag
+            if (!$found && !str_contains($search, '<')) {
+                $pattern = '/(<a[^>]*>)' . preg_quote($search, '/') . '(<\/a>)/i';
+                if (preg_match($pattern, $content)) {
+                    // Replace just the text inside the link, preserving the <a> tag and href
+                    $content = preg_replace($pattern, '$1' . $replace . '$2', $content);
+                    $found = true;
+                }
+            }
+            if (!$found) return wpilot_err("Text not found in page #{$id}. Use get_page first to read the exact content.");
+            wp_update_post(['ID' => $id, 'post_content' => $content]);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Replaced in page #{$id}.");
+
+        case 'append_page_content':
+            $params['append'] = true;
+            // Fall through to update_page_content
+
         case 'update_page_content':
             $id      = intval( $params['id'] ?? $params['page_id'] ?? $params['post_id'] ?? 0 );
-            $content = wp_kses_post( $params['content'] ?? '' );
+            $content = $params['content'] ?? $params['html'] ?? '';
+            $append  = !empty( $params['append'] );
             if ( !$id ) return wpilot_err('Page ID required.');
+            if ( empty($content) ) return wpilot_err('Content required.');
+            // Clean AI artifacts
+            $content = preg_replace('/\[ACTION:[^\]]*\]/', '', $content);
+            $content = preg_replace('/```(?:html|json|css)?\s*/', '', $content);
+            $content = preg_replace('/\n*[✅⚠️].*Auto-approved:.*$/s', '', $content);
+            $content = trim($content);
+            // Auto-fix: wrap orphan CSS in <style> tags
+            if (preg_match('/^@import|^[.#*{]|^body\s*{/m', $content) && strpos($content, '<style') === false) {
+                $content = '<style>' . $content;
+                if (($pos = strpos($content, '</div>')) !== false || ($pos = strpos($content, '<div')) !== false || ($pos = strpos($content, '<section')) !== false) {
+                    $content = substr($content, 0, $pos) . '</style>' . substr($content, $pos);
+                } else {
+                    $content .= '</style>';
+                }
+            }
+            // Wrap in Gutenberg HTML block
+            if (strpos($content, '<!-- wp:') === false) {
+                $content = '<!-- wp:html -->' . $content . '<!-- /wp:html -->';
+            }
+            // Append mode: merge new content with existing page content
+            if ( $append ) {
+                $existing = get_post_field( 'post_content', $id );
+                if ( !empty( $existing ) ) {
+                    $strip_wp_html = function( $html ) {
+                        $html = preg_replace( '/<!--\s*wp:html\s*-->/', '', $html );
+                        $html = preg_replace( '/<!--\s*\/wp:html\s*-->/', '', $html );
+                        return trim( $html );
+                    };
+                    // Built by Weblease
+                    $existing_inner = $strip_wp_html( $existing );
+                    $new_inner      = $strip_wp_html( $content );
+                    $content = '<!-- wp:html -->' . $existing_inner . "\n" . $new_inner . '<!-- /wp:html -->';
+                }
+            }
             wpilot_save_post_snapshot( $id );
-            wp_update_post( ['ID'=>$id,'post_content'=>$content] );
-            return wpilot_ok( "Page #{$id} content updated." );
+            // Use direct DB update to preserve <style> tags (wp_update_post strips them via wp_kses)
+            global $wpdb;
+            $wpdb->update($wpdb->posts, ['post_content' => $content], ['ID' => $id]);
+            clean_post_cache($id);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            $mode_label = $append ? 'appended to' : 'updated';
+            return wpilot_ok( "Page #{$id} content {$mode_label}." );
 
         case 'update_post_title':
             $id    = intval( $params['id'] ?? 0 );
@@ -34,14 +130,30 @@ function wpilot_run_page_tools($tool, $params = []) {
 
         case 'set_page_template':
             $id = intval($params['id'] ?? $params['page_id'] ?? $params['post_id'] ?? 0);
-            $template = sanitize_text_field($params['template'] ?? 'default');
+            $template = sanitize_text_field($params['template'] ?? '');
             if (!$id) return wpilot_err('Page ID required.');
+            // Auto-detect full-width template if none specified
+            if (empty($template)) {
+                $available = wp_get_theme()->get_page_templates(null, 'page');
+                foreach ($available as $file => $name) {
+                    if (preg_match('/full[- ]?width|no[- ]?sidebar|blank|canvas/i', $name . ' ' . $file)) {
+                        $template = $file; break;
+                    }
+                }
+                if (empty($template)) $template = 'default';
+            }
             update_post_meta($id, '_wp_page_template', $template);
             // For Elementor
             if (strpos($template, 'elementor') !== false) {
                 update_post_meta($id, '_elementor_edit_mode', 'builder');
             }
-            return wpilot_ok("Page #{$id} template set to {$template}.");
+            // For Storefront: also disable sidebar via theme mod
+            $theme_slug = get_option('stylesheet');
+            if ($theme_slug === 'storefront' && preg_match('/full|blank|no.*sidebar/i', $template)) {
+                set_theme_mod('storefront_layout', 'none');
+            }
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Page #{$id} template set to \"{$template}\".");
 
         case 'set_homepage':
             // Accept any ID variant
@@ -128,8 +240,148 @@ function wpilot_run_page_tools($tool, $params = []) {
             if ( is_wp_error($item_id) ) return wpilot_err( $item_id->get_error_message() );
             return wpilot_ok( "Menu item \"{$title}\" added." );
 
+        case 'edit_menu_item':
+            $menu_item_id = intval( $params['menu_item_id'] ?? 0 );
+            if ( !$menu_item_id ) return wpilot_err('menu_item_id is required.');
+            $post = get_post( $menu_item_id );
+            if ( !$post || $post->post_type !== 'nav_menu_item' ) return wpilot_err("Menu item #{$menu_item_id} not found.");
+            // Find which menu this item belongs to
+            $menu_terms = wp_get_object_terms( $menu_item_id, 'nav_menu' );
+            if ( empty($menu_terms) ) return wpilot_err('Could not determine menu for this item.');
+            $belong_menu_id = $menu_terms[0]->term_id;
+            $update_args = [];
+            if ( isset($params['title']) ) $update_args['menu-item-title'] = sanitize_text_field( $params['title'] );
+            if ( isset($params['url']) )   $update_args['menu-item-url']   = esc_url_raw( $params['url'] );
+            if ( isset($params['position']) ) $update_args['menu-item-position'] = intval( $params['position'] );
+            $update_args['menu-item-status'] = 'publish';
+            $result = wp_update_nav_menu_item( $belong_menu_id, $menu_item_id, $update_args );
+            if ( is_wp_error($result) ) return wpilot_err( $result->get_error_message() );
+            return wpilot_ok("Menu item #{$menu_item_id} updated.");
+
+        case 'remove_menu_item':
+            $menu_item_id = intval( $params['menu_item_id'] ?? 0 );
+            $title = sanitize_text_field( $params['title'] ?? '' );
+            if ( !$menu_item_id && $title ) {
+                // Find menu item by title
+                $all_menus = wp_get_nav_menus();
+                foreach ( $all_menus as $m ) {
+                    $items = wp_get_nav_menu_items( $m->term_id );
+                    if ( !$items ) continue;
+                    foreach ( $items as $item ) {
+                        if ( strcasecmp( $item->title, $title ) === 0 ) {
+                            $menu_item_id = $item->ID;
+                            break 2;
+                        }
+                    }
+                }
+            }
+            if ( !$menu_item_id ) return wpilot_err('Provide menu_item_id or title to identify the item.');
+            $post = get_post( $menu_item_id );
+            if ( !$post || $post->post_type !== 'nav_menu_item' ) return wpilot_err("Menu item #{$menu_item_id} not found.");
+            $deleted = wp_delete_post( $menu_item_id, true );
+            if ( !$deleted ) return wpilot_err("Failed to remove menu item #{$menu_item_id}.");
+            return wpilot_ok("Menu item #{$menu_item_id} removed.");
+
+        case 'reorder_menu':
+            $menu_id = intval( $params['menu_id'] ?? 0 );
+            $order_titles = $params['items'] ?? [];
+            if ( empty($order_titles) ) return wpilot_err('Provide items array with titles in desired order.');
+            // Auto-find primary menu if not specified
+            if ( !$menu_id ) {
+                $locations = get_nav_menu_locations();
+                foreach (['primary','main-menu','header-menu','main','header','top'] as $loc) {
+                    if (!empty($locations[$loc])) { $menu_id = $locations[$loc]; break; }
+                }
+                if (!$menu_id) {
+                    $menus = wp_get_nav_menus();
+                    if (!empty($menus)) $menu_id = $menus[0]->term_id;
+                }
+            }
+            if ( !$menu_id ) return wpilot_err('No menu found.');
+            $items = wp_get_nav_menu_items( $menu_id );
+            if ( !$items ) return wpilot_err('Menu has no items.');
+            $reordered = 0;
+            foreach ( $order_titles as $pos => $t ) {
+                $t = sanitize_text_field( $t );
+                foreach ( $items as $item ) {
+                    if ( strcasecmp( $item->title, $t ) === 0 ) {
+                        wp_update_post([ 'ID' => $item->ID, 'menu_order' => $pos + 1 ]);
+                        $reordered++;
+                        break;
+                    }
+                }
+            }
+            return wpilot_ok("Reordered {$reordered} menu items.");
+
+        case 'rename_menu':
+            $menu_id  = intval( $params['menu_id'] ?? 0 );
+            $old_name = sanitize_text_field( $params['old_name'] ?? '' );
+            $new_name = sanitize_text_field( $params['new_name'] ?? '' );
+            if ( !$new_name ) return wpilot_err('new_name is required.');
+            if ( !$menu_id && $old_name ) {
+                $menu_obj = wp_get_nav_menu_object( $old_name );
+                if ( $menu_obj ) $menu_id = $menu_obj->term_id;
+            }
+            if ( !$menu_id ) return wpilot_err('Provide menu_id or old_name to identify the menu.');
+            $result = wp_update_nav_menu_object( $menu_id, [ 'menu-name' => $new_name ] );
+            if ( is_wp_error($result) ) return wpilot_err( $result->get_error_message() );
+            return wpilot_ok("Menu renamed to \"{$new_name}\".");
+
+        case 'delete_menu':
+            $menu_id = intval( $params['menu_id'] ?? 0 );
+            $name    = sanitize_text_field( $params['name'] ?? '' );
+            if ( !$menu_id && $name ) {
+                $menu_obj = wp_get_nav_menu_object( $name );
+                if ( $menu_obj ) $menu_id = $menu_obj->term_id;
+            }
+            if ( !$menu_id ) return wpilot_err('Provide menu_id or name to identify the menu.');
+            $result = wp_delete_nav_menu( $menu_id );
+            if ( is_wp_error($result) ) return wpilot_err( $result->get_error_message() );
+            return wpilot_ok("Menu #{$menu_id} deleted.");
+
+        case 'list_menus':
+            $all_menus = wp_get_nav_menus();
+            $locations = get_nav_menu_locations();
+            $registered = get_registered_nav_menus();
+            $data = [];
+            foreach ( $all_menus as $m ) {
+                $items = wp_get_nav_menu_items( $m->term_id );
+                $item_list = [];
+                if ( $items ) {
+                    foreach ( $items as $item ) {
+                        $item_list[] = [ 'id' => $item->ID, 'title' => $item->title, 'url' => $item->url, 'order' => $item->menu_order ];
+                    }
+                }
+                $assigned = [];
+                foreach ( $locations as $loc => $mid ) {
+                    if ( $mid == $m->term_id ) $assigned[] = $loc;
+                }
+                $data[] = [ 'id' => $m->term_id, 'name' => $m->name, 'locations' => $assigned, 'items' => $item_list ];
+            }
+            return wpilot_ok("Found " . count($data) . " menus.", [ 'menus' => $data, 'registered_locations' => $registered ]);
+
+        case 'set_menu_location':
+            $menu_id   = intval( $params['menu_id'] ?? 0 );
+            $menu_name = sanitize_text_field( $params['menu_name'] ?? '' );
+            $location  = sanitize_text_field( $params['location'] ?? '' );
+            if ( !$location ) return wpilot_err('location is required.');
+            if ( !$menu_id && $menu_name ) {
+                $menu_obj = wp_get_nav_menu_object( $menu_name );
+                if ( $menu_obj ) $menu_id = $menu_obj->term_id;
+            }
+            if ( !$menu_id ) {
+                // Auto-find first menu
+                $menus = wp_get_nav_menus();
+                if ( !empty($menus) ) $menu_id = $menus[0]->term_id;
+            }
+            if ( !$menu_id ) return wpilot_err('No menu found. Provide menu_id or menu_name.');
+            $locs = get_theme_mod( 'nav_menu_locations', [] );
+            $locs[$location] = $menu_id;
+            set_theme_mod( 'nav_menu_locations', $locs );
+            return wpilot_ok("Menu #{$menu_id} assigned to location \"{$location}\".");
+
         /* ── SEO metadata ───────────────────────────────────── */
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         case 'create_user':
             $username = sanitize_user($params['username'] ?? 'user'.rand(100,9999));
             $email    = sanitize_email($params['email'] ?? '');
@@ -310,6 +562,98 @@ function wpilot_run_page_tools($tool, $params = []) {
             }, $users);
             return wpilot_ok("Found " . count($list) . " users.", ['users' => $list]);
 
+        case 'reset_password':
+        case 'change_password':
+            $uid = intval($params['user_id'] ?? 0);
+            $username = sanitize_text_field($params['username'] ?? $params['user'] ?? '');
+            $email = sanitize_email($params['email'] ?? '');
+            $new_pass = $params['password'] ?? $params['new_password'] ?? '';
+            // Find user
+            $user = null;
+            if ($uid) $user = get_user_by('ID', $uid);
+            elseif ($username) $user = get_user_by('login', $username);
+            elseif ($email) $user = get_user_by('email', $email);
+            if (!$user) return wpilot_err('User not found. Provide user_id, username, or email.');
+            // Generate password if not provided
+            if (empty($new_pass)) $new_pass = wp_generate_password(16, true, true);
+            wp_set_password($new_pass, $user->ID);
+            return wpilot_ok("Password reset for {$user->user_login} (ID:{$user->ID}). New password: {$new_pass}", ['user_id' => $user->ID, 'username' => $user->user_login, 'password' => $new_pass]);
+
+        case 'send_password_reset':
+        case 'send_reset_link':
+            $username = sanitize_text_field($params['username'] ?? $params['user'] ?? '');
+            $email = sanitize_email($params['email'] ?? '');
+            $user = null;
+            if ($username) $user = get_user_by('login', $username);
+            elseif ($email) $user = get_user_by('email', $email);
+            if (!$user) return wpilot_err('User not found.');
+            $key = get_password_reset_key($user);
+            if (is_wp_error($key)) return wpilot_err('Could not generate reset key.');
+            $link = network_site_url("wp-login.php?action=rp&key=$key&login=" . rawurlencode($user->user_login));
+            // Send email
+            $subject = sprintf('[%s] Password Reset', get_bloginfo('name'));
+            $body = "Hi {$user->display_name},\n\nClick the link below to reset your password:\n\n{$link}\n\nIf you didn't request this, ignore this email.\n\n— {$blogname}";
+            $sent = wp_mail($user->user_email, $subject, $body);
+            return wpilot_ok("Password reset link " . ($sent ? "sent to {$user->user_email}" : "generated (email delivery may have failed — check SMTP)") . ".", ['link' => $link, 'email' => $user->user_email, 'sent' => $sent]);
+
+        case 'list_media':
+        case 'list_images':
+        case 'media_library':
+            $type = sanitize_text_field($params['type'] ?? 'image');
+            $limit = intval($params['limit'] ?? 20);
+            $search = sanitize_text_field($params['search'] ?? '');
+            $args = ['post_type' => 'attachment', 'post_status' => 'inherit', 'posts_per_page' => $limit, 'orderby' => 'date', 'order' => 'DESC'];
+            if ($type === 'image') $args['post_mime_type'] = 'image';
+            elseif ($type === 'video') $args['post_mime_type'] = 'video';
+            elseif ($type !== 'all') $args['post_mime_type'] = $type;
+            if ($search) $args['s'] = $search;
+            $media = get_posts($args);
+            $items = [];
+            foreach ($media as $m) {
+                $url = wp_get_attachment_url($m->ID);
+                $meta = wp_get_attachment_metadata($m->ID);
+                $items[] = [
+                    'id' => $m->ID,
+                    'title' => $m->post_title,
+                    'url' => $url,
+                    'alt' => get_post_meta($m->ID, '_wp_attachment_image_alt', true),
+                    'mime' => $m->post_mime_type,
+                    'width' => $meta['width'] ?? 0,
+                    'height' => $meta['height'] ?? 0,
+                    'filesize' => size_format(filesize(get_attached_file($m->ID)) ?: 0),
+                    'date' => $m->post_date,
+                    'used_as_featured' => (bool) get_posts(['post_type' => 'any', 'meta_key' => '_thumbnail_id', 'meta_value' => $m->ID, 'fields' => 'ids', 'numberposts' => 1]),
+                ];
+            }
+            $summary = count($items) . " {$type} files found";
+            if ($search) $summary .= " matching \"{$search}\"";
+            $summary .= ". ";
+            foreach (array_slice($items, 0, 5) as $item) {
+                $summary .= "\n- {$item['title']} ({$item['width']}x{$item['height']}, {$item['filesize']}) ID:{$item['id']}";
+            }
+            return wpilot_ok($summary, ['items' => $items, 'total' => count($items)]);
+
+        case 'assign_image_to_product':
+        case 'set_product_image':
+            $product_id = intval($params['product_id'] ?? 0);
+            $image_id = intval($params['image_id'] ?? 0);
+            $image_url = esc_url_raw($params['image_url'] ?? '');
+            if (!$product_id) return wpilot_err('product_id required.');
+            if (!$image_id && !$image_url) return wpilot_err('image_id or image_url required.');
+            // If URL given, sideload it
+            if ($image_url && !$image_id) {
+                require_once ABSPATH . 'wp-admin/includes/media.php';
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+                require_once ABSPATH . 'wp-admin/includes/image.php';
+                $tmp = download_url($image_url);
+                if (is_wp_error($tmp)) return wpilot_err('Could not download image: ' . $tmp->get_error_message());
+                $file = ['name' => basename(parse_url($image_url, PHP_URL_PATH)), 'tmp_name' => $tmp];
+                $image_id = media_handle_sideload($file, $product_id);
+                if (is_wp_error($image_id)) return wpilot_err('Upload failed: ' . $image_id->get_error_message());
+            }
+            set_post_thumbnail($product_id, $image_id);
+            return wpilot_ok("Image #{$image_id} set as featured image for product #{$product_id}.", ['product_id' => $product_id, 'image_id' => $image_id]);
+
         case 'delete_user':
             $uid = intval($params['user_id'] ?? 0);
             if (!$uid) return wpilot_err('user_id required.');
@@ -347,6 +691,8 @@ function wpilot_run_page_tools($tool, $params = []) {
             if (isset($params['tags'])) wp_set_post_tags($id, $params['tags']);
             return wpilot_ok("Post #{$id} updated.");
 
+        // Duplicate set_page_template removed — handled at line 35
+
         case 'delete_post':
             $id = intval($params['id'] ?? $params['post_id'] ?? $params['page_id'] ?? 0);
             if (!$id) return wpilot_err('Post ID required.');
@@ -356,15 +702,145 @@ function wpilot_run_page_tools($tool, $params = []) {
 
         /* ── Widgets & Sidebars ─────────────────────────────── */
         case 'update_widget_area':
-            $sidebar = sanitize_text_field($params['sidebar_id'] ?? '');
+        case 'clear_sidebar':
+        case 'remove_widgets':
+            $sidebar = sanitize_text_field($params['sidebar_id'] ?? $params['sidebar'] ?? 'sidebar-1');
             $widgets = $params['widgets'] ?? [];
-            if (!$sidebar) return wpilot_err('sidebar_id required.');
             // Get current sidebar widgets for backup
             $sidebars = get_option('sidebars_widgets', []);
-            update_option('ca_sidebar_backup_' . $sidebar, $sidebars[$sidebar] ?? []);
-            return wpilot_ok("Widget area \"{$sidebar}\" updated.");
+            if (isset($sidebars[$sidebar])) {
+                update_option('ca_sidebar_backup_' . $sidebar, $sidebars[$sidebar]);
+            }
+            // Set widgets — empty array clears all
+            $sidebars[$sidebar] = $widgets;
+            update_option('sidebars_widgets', $sidebars);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            $count = count($widgets);
+            return wpilot_ok($count ? "{$count} widgets set in \"{$sidebar}\"." : "Sidebar \"{$sidebar}\" cleared — all widgets removed.");
 
         /* ── Options / Settings ─────────────────────────────── */
+        case 'save_design_style':
+        case 'set_design':
+        case 'save_design_profile':
+        case 'save_design':
+            // Route to design memory system (full profile with 16 fields)
+            if ( function_exists( 'wpilot_save_design_profile' ) ) {
+                // Map legacy params to new profile keys
+                if ( ! empty( $params['palette'] ) || ! empty( $params['colors'] ) ) {
+                    $colors = $params['palette'] ?? $params['colors'] ?? '';
+                    if ( ! empty( $colors ) && empty( $params['primary_color'] ) ) {
+                        $params['notes'] = ( $params['notes'] ?? '' ) . ' Colors: ' . $colors;
+                    }
+                }
+                if ( ! empty( $params['fonts'] ) && empty( $params['heading_font'] ) ) {
+                    $params['heading_font'] = $params['fonts'];
+                }
+                return wpilot_save_design_profile( $params );
+            }
+            // Fallback if design_memory.php not loaded
+            $style = sanitize_text_field($params['style'] ?? '');
+            if ($style) update_option('wpilot_design_style', $style);
+            return wpilot_ok("Design saved: " . ($style ?: 'unchanged') . ".");
+
+        case 'reset_design_profile':
+        case 'reset_design':
+            if ( function_exists( 'wpilot_reset_design_profile' ) ) {
+                return wpilot_reset_design_profile();
+            }
+            delete_option('wpilot_design_style');
+            delete_option('wpilot_design_palette');
+            delete_option('wpilot_design_fonts');
+            return wpilot_ok("Design profile reset.");
+
+        case 'save_business_profile':
+        case 'save_business':
+        case 'set_business_info':
+            if ( function_exists( 'wpilot_save_business_profile' ) ) {
+                return wpilot_save_business_profile( $params );
+            }
+            return wpilot_err( 'Business profile module not loaded.' );
+
+        case 'get_business_profile':
+        case 'get_business':
+            $p = function_exists( 'wpilot_get_business_profile' ) ? wpilot_get_business_profile() : [];
+            return empty( $p ) ? wpilot_err( 'No business profile set.' ) : wpilot_ok( 'Business: ' . ($p['name'] ?? '?'), $p );
+
+        case 'reset_business_profile':
+            if ( function_exists( 'wpilot_reset_business_profile' ) ) {
+                return wpilot_reset_business_profile();
+            }
+            delete_option( 'wpilot_business_profile' );
+            return wpilot_ok( 'Business profile cleared.' );
+
+        case 'apply_blueprint':
+        case 'use_blueprint':
+        case 'apply_design':
+            if ( function_exists( 'wpilot_apply_blueprint' ) ) {
+                return wpilot_apply_blueprint( $params );
+            }
+            return wpilot_err( 'Blueprint system not loaded.' );
+
+        case 'list_blueprints':
+        case 'show_blueprints':
+        case 'design_blueprints':
+            if ( function_exists( 'wpilot_list_blueprints' ) ) {
+                return wpilot_list_blueprints( $params );
+            }
+            return wpilot_err( 'Blueprint system not loaded.' );
+
+        case 'suggest_blueprint':
+        case 'recommend_design':
+            if ( function_exists( 'wpilot_suggest_blueprint' ) ) {
+                return wpilot_suggest_blueprint( $params );
+            }
+            return wpilot_err( 'Blueprint system not loaded.' );
+
+        case 'build_site':
+        case 'generate_site':
+        case 'create_site':
+            if ( function_exists( 'wpilot_build_site_from_recipe' ) ) {
+                return wpilot_build_site_from_recipe( $params );
+            }
+            return wpilot_err( 'Site recipe system not loaded.' );
+
+        case 'list_recipes':
+        case 'list_site_recipes':
+        case 'show_recipes':
+            if ( function_exists( 'wpilot_list_site_recipes' ) ) {
+                return wpilot_list_site_recipes( $params );
+            }
+            return wpilot_err( 'Site recipe system not loaded.' );
+
+        case 'apply_header_blueprint':
+        case 'apply_header':
+        case 'set_header_style':
+            if ( function_exists( 'wpilot_apply_header_blueprint' ) ) {
+                return wpilot_apply_header_blueprint( $params );
+            }
+            return wpilot_err( 'Header blueprint system not loaded.' );
+
+        case 'apply_footer_blueprint':
+        case 'apply_footer':
+        case 'set_footer_style':
+            if ( function_exists( 'wpilot_apply_footer_blueprint' ) ) {
+                return wpilot_apply_footer_blueprint( $params );
+            }
+            return wpilot_err( 'Footer blueprint system not loaded.' );
+
+        case 'list_header_blueprints':
+        case 'list_headers':
+            if ( function_exists( 'wpilot_list_header_blueprints' ) ) {
+                return wpilot_list_header_blueprints();
+            }
+            return wpilot_err( 'Header blueprint system not loaded.' );
+
+        case 'list_footer_blueprints':
+        case 'list_footers':
+            if ( function_exists( 'wpilot_list_footer_blueprints' ) ) {
+                return wpilot_list_footer_blueprints();
+            }
+            return wpilot_err( 'Footer blueprint system not loaded.' );
+
         case 'update_option':
             $key   = sanitize_text_field($params['option_key'] ?? $params['key'] ?? $params['option_name'] ?? $params['name'] ?? '');
             $value = $params['value'] ?? '';
@@ -394,39 +870,190 @@ function wpilot_run_page_tools($tool, $params = []) {
         /* ── Security Scanner ───────────────────────────────── */
         /* ── Code Injection (mu-plugin) ──────────────────── */
         case 'add_head_code':
-            $code = $params['code'] ?? '';
-            $name = sanitize_file_name($params['name'] ?? 'custom-head-' . time());
+            $code = $params['code'] ?? $params['html'] ?? $params['css'] ?? $params['content'] ?? '';
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
-            $filename = 'wpilot-' . $name . '.php';
-            // Use heredoc to avoid quote escaping issues
-            $safe_code = str_replace("'", "\'", $code);
-            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
-                . "add_action('wp_head', function() {\n"
-                . "    echo '" . $safe_code . "';\n"
-                . "}, 1);\n";
-            // Validate before saving
-            $test_result = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
-            if ($ret !== 0 && $ret !== null) {
-                return wpilot_err('Code has syntax issues. Not saved.');
+            $filename = 'wpilot-head-styles.php';
+            $filepath = $mu_dir . '/' . $filename;
+            // Extract CSS rules from new code (strip <style> tags if present)
+            $new_css = $code;
+            $new_css = preg_replace('/<\/?style[^>]*>/i', '', $new_css);
+            $new_css = trim($new_css);
+            // Read existing CSS from consolidated file
+            $existing_css = '';
+            if (file_exists($filepath)) {
+                $content = file_get_contents($filepath);
+                if (preg_match('/\/\* BEGIN CSS \*\/\s*(.*?)\s*\/\* END CSS \*\//s', $content, $m)) {
+                    $existing_css = trim($m[1]);
+                }
             }
-            file_put_contents($mu_dir . '/' . $filename, $php);
-            return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
+            // Parse new CSS selectors and replace duplicates
+            // Match selector { ... } blocks (handles nested braces via non-greedy)
+            $new_blocks = [];
+            preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $new_css, $matches, PREG_SET_ORDER);
+            foreach ($matches as $match) {
+                $selector = trim($match[1]);
+                $body = trim($match[2]);
+                $new_blocks[$selector] = $body;
+            }
+            // Parse existing CSS selectors
+            $existing_blocks = [];
+            if (!empty($existing_css)) {
+                preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $existing_css, $matches, PREG_SET_ORDER);
+                foreach ($matches as $match) {
+                    $selector = trim($match[1]);
+                    $body = trim($match[2]);
+                    $existing_blocks[$selector] = $body;
+                }
+            }
+            // Merge: new selectors override existing ones
+            $merged = array_merge($existing_blocks, $new_blocks);
+            $merged_css = '';
+            foreach ($merged as $sel => $body) {
+                $merged_css .= $sel . " {\n    " . $body . "\n}\n";
+            }
+            $merged_css = trim($merged_css);
+            // Write via mu-register (priority 999999 = loads AFTER WordPress global styles)
+            $php = "<?php\nadd_action('wp_head', function() {\necho '<style id=\"wpilot-head-styles\">\n/* BEGIN CSS */\n"
+                . addslashes($merged_css) . "\n"
+                . "/* END CSS */\n</style>';\n}, 999999);\n";
+            error_log('WPILOT DEBUG add_head_code: filepath=' . $filepath . ' php_len=' . strlen($php) . ' mu_dir=' . $mu_dir . ' is_dir=' . (is_dir($mu_dir)?'yes':'no'));
+            $written = file_put_contents($filepath, $php);
+            error_log('WPILOT DEBUG written=' . var_export($written, true) . ' file_exists=' . (file_exists($filepath)?'yes':'no'));
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            $sel_count = count($new_blocks);
+            return wpilot_ok("CSS merged into consolidated mu-plugin: {$filename} ({$sel_count} selector(s) added/updated, " . count($merged) . " total)");
 
         case 'add_footer_code':
-            $code = $params['code'] ?? '';
-            $name = sanitize_file_name($params['name'] ?? 'custom-footer-' . time());
+            $code = $params['code'] ?? $params['html'] ?? $params['content'] ?? '';
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
-            $filename = 'wpilot-' . $name . '.php';
-            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
-                . "add_action('wp_footer', function() {\n"
-                . "    echo '" . addslashes($code) . "';\n"
-                . "});\n";
-            file_put_contents($mu_dir . '/' . $filename, $php);
-            return wpilot_ok("Code added to footer via mu-plugin: {$filename}");
+            $filename = 'wpilot-footer-scripts.php';
+            $filepath = $mu_dir . '/' . $filename;
+            // Read existing code from consolidated file
+            $existing_code = '';
+            if (file_exists($filepath)) {
+                $content = file_get_contents($filepath);
+                if (preg_match('/\/\* BEGIN FOOTER \*\/\s*(.*?)\s*\/\* END FOOTER \*\//s', $content, $m)) {
+                    $existing_code = trim($m[1]);
+                }
+            }
+            // Append new code (footer scripts are JS/HTML, not CSS — just append)
+            $new_code = trim($code);
+            if (!empty($existing_code)) {
+                // Avoid exact duplicates
+                if (strpos($existing_code, $new_code) === false) {
+                    $merged_code = $existing_code . "\n" . $new_code;
+                } else {
+                    $merged_code = $existing_code;
+                }
+            } else {
+                $merged_code = $new_code;
+            }
+            // Write consolidated file
+            $php = "<?php\n// WPilot consolidated footer scripts\nadd_action('wp_footer', function() {\n"
+                . "echo <<<'WPILOT_HTML'\n/* BEGIN FOOTER */\n"
+                . $merged_code . "\n"
+                . "/* END FOOTER */\nWPILOT_HTML;\n});\n";
+            file_put_contents($filepath, $php);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Code merged into consolidated mu-plugin: {$filename}");
+
+        case 'cleanup_mu_plugins':
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) return wpilot_ok("No mu-plugins directory found. Nothing to clean up.");
+            $head_files = glob($mu_dir . '/wpilot-custom-head-*.php') ?: [];
+            $head_files = array_merge($head_files, glob($mu_dir . '/wpilot-*head*.php') ?: []);
+            // Exclude the consolidated file itself
+            $head_files = array_filter($head_files, function($f) { return basename($f) !== 'wpilot-head-styles.php'; });
+            $head_files = array_unique($head_files);
+            $footer_files = glob($mu_dir . '/wpilot-custom-footer-*.php') ?: [];
+            $footer_files = array_merge($footer_files, glob($mu_dir . '/wpilot-*footer*.php') ?: []);
+            $footer_files = array_filter($footer_files, function($f) { return basename($f) !== 'wpilot-footer-scripts.php'; });
+            $footer_files = array_unique($footer_files);
+            // Collect all CSS from old head files
+            $all_css = '';
+            foreach ($head_files as $file) {
+                $content = file_get_contents($file);
+                if (preg_match("/echo\s+<<<'WPILOT_(?:HTML|CSS)'\s*\n(.*?)\nWPILOT_(?:HTML|CSS);/s", $content, $m)) {
+                    $extracted = $m[1];
+                    $extracted = preg_replace('/<\/?style[^>]*>/i', '', $extracted);
+                    $extracted = preg_replace('/\/\* (?:BEGIN|END) CSS \*\//', '', $extracted);
+                    $all_css .= trim($extracted) . "\n";
+                }
+            }
+            // Collect all code from old footer files
+            $all_footer = '';
+            foreach ($footer_files as $file) {
+                $content = file_get_contents($file);
+                if (preg_match("/echo\s+<<<'WPILOT_(?:HTML|CSS)'\s*\n(.*?)\nWPILOT_(?:HTML|CSS);/s", $content, $m)) {
+                    $extracted = $m[1];
+                    $extracted = preg_replace('/\/\* (?:BEGIN|END) FOOTER \*\//', '', $extracted);
+                    $all_footer .= trim($extracted) . "\n";
+                }
+            }
+            // Merge into existing consolidated head file
+            $head_path = $mu_dir . '/wpilot-head-styles.php';
+            $existing_css = '';
+            if (file_exists($head_path)) {
+                $content = file_get_contents($head_path);
+                if (preg_match('/\/\* BEGIN CSS \*\/\s*(.*?)\s*\/\* END CSS \*\//s', $content, $m)) {
+                    $existing_css = trim($m[1]);
+                }
+            }
+            $all_css = trim($all_css);
+            if (!empty($all_css)) {
+                $merged_blocks = [];
+                $combined = $existing_css . "\n" . $all_css;
+                preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $combined, $matches, PREG_SET_ORDER);
+                foreach ($matches as $match) {
+                    $merged_blocks[trim($match[1])] = trim($match[2]);
+                }
+                $merged_css = '';
+                foreach ($merged_blocks as $sel => $body) {
+                    $merged_css .= $sel . " {\n    " . $body . "\n}\n";
+                }
+                $merged_css = trim($merged_css);
+                $php = "<?php\n// WPilot consolidated head styles\nadd_action('wp_head', function() {\n"
+                    . "echo <<<'WPILOT_CSS'\n<style>\n/* BEGIN CSS */\n"
+                    . $merged_css . "\n"
+                    . "/* END CSS */\n</style>\nWPILOT_CSS;\n}, 1);\n";
+                file_put_contents($head_path, $php);
+            }
+            // Merge into existing consolidated footer file
+            $footer_path = $mu_dir . '/wpilot-footer-scripts.php';
+            $existing_footer = '';
+            if (file_exists($footer_path)) {
+                $content = file_get_contents($footer_path);
+                if (preg_match('/\/\* BEGIN FOOTER \*\/\s*(.*?)\s*\/\* END FOOTER \*\//s', $content, $m)) {
+                    $existing_footer = trim($m[1]);
+                }
+            }
+            $all_footer = trim($all_footer);
+            if (!empty($all_footer)) {
+                if (!empty($existing_footer) && strpos($existing_footer, $all_footer) === false) {
+                    $merged_footer = $existing_footer . "\n" . $all_footer;
+                } elseif (empty($existing_footer)) {
+                    $merged_footer = $all_footer;
+                } else {
+                    $merged_footer = $existing_footer;
+                }
+                $php = "<?php\n// WPilot consolidated footer scripts\nadd_action('wp_footer', function() {\n"
+                    . "echo <<<'WPILOT_HTML'\n/* BEGIN FOOTER */\n"
+                    . $merged_footer . "\n"
+                    . "/* END FOOTER */\nWPILOT_HTML;\n});\n";
+                file_put_contents($footer_path, $php);
+            }
+            // Delete old individual files
+            $deleted = 0;
+            foreach (array_merge($head_files, $footer_files) as $file) {
+                if (file_exists($file)) { unlink($file); $deleted++; }
+            }
+            $total_merged = count($head_files) + count($footer_files);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Cleanup complete: {$total_merged} old files merged, {$deleted} deleted. Consolidated into wpilot-head-styles.php and wpilot-footer-scripts.php.");
 
         case 'add_php_snippet':
             $code = $params['code'] ?? '';
@@ -434,14 +1061,13 @@ function wpilot_run_page_tools($tool, $params = []) {
             $name = sanitize_file_name($params['name'] ?? 'snippet-' . time());
             $priority = intval($params['priority'] ?? 10);
             if (empty($code)) return wpilot_err('Code required.');
-            // SAFETY: strip echo/print from snippets — they pollute AJAX responses
-            $code = preg_replace('/\becho\s+["\']/','// echo ', $code);
-            $code = preg_replace('/\bprint\s*\(/','// print(', $code);
-            $code = preg_replace('/\bvar_dump\s*\(/','// var_dump(', $code);
-            $code = preg_replace('/\bprint_r\s*\(/','// print_r(', $code);
-            // Validate: code must not contain raw HTML tags (common AI mistake)
-            if (preg_match('/<[a-z]/i', $code) && !preg_match('/echo|print/', $code)) {
-                return wpilot_err('PHP snippet contains HTML. Use add_head_code for HTML or wrap in echo/print for PHP.');
+            // Allow PHP+HTML mix for output hooks (wp_head, wp_footer, admin_notices)
+            $output_hooks = ['wp_head', 'wp_footer', 'admin_notices', 'admin_footer', 'login_head', 'login_footer'];
+            $is_output_hook = in_array($hook, $output_hooks);
+            if (!$is_output_hook) {
+                // For non-output hooks, strip echo/print to avoid polluting AJAX responses
+                $code = preg_replace('/\bvar_dump\s*\(/','// var_dump(', $code);
+                $code = preg_replace('/\bprint_r\s*\(/','// print_r(', $code);
             }
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
@@ -451,7 +1077,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 . $code . "\n"
                 . "}, " . $priority . ");\n";
             // Validate PHP syntax before saving
-            $test = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            // PHP syntax check removed for security (no exec)
             if ($ret !== 0 && $ret !== null) {
                 return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
             }
@@ -466,6 +1092,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                 . "    }\n"
                 . "}, " . $priority . ");\n";
             file_put_contents($mu_dir . '/' . $filename, $php);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
             return wpilot_ok("PHP snippet added via mu-plugin: {$filename} (hook: {$hook})");
 
         case 'list_snippets':
@@ -755,6 +1382,14 @@ function wpilot_run_page_tools($tool, $params = []) {
                 }
                 if ($css) $html = '<style>' . $css . '</style>' . trim($clean);
             }
+            // Clean AI artifacts from HTML — remove [ACTION:...] tags that leaked into content
+            $html = preg_replace('/\[ACTION:[^\]]*\]/', '', $html);
+            // Remove markdown code fences
+            $html = preg_replace('/```(?:html|json|css)?\s*/', '', $html);
+            // Remove auto-approved summaries
+            $html = preg_replace('/\n*[✅⚠️].*Auto-approved:.*$/s', '', $html);
+            $html = trim($html);
+
             $builder = wpilot_detect_builder();
 
             // === ELEMENTOR: HTML widget in Elementor data structure ===
@@ -811,15 +1446,38 @@ function wpilot_run_page_tools($tool, $params = []) {
             }
 
             // === GUTENBERG: Custom HTML block ===
+            // Use direct DB to preserve <style> tags (wp_insert/update_post strips them via wp_kses)
             $gutenberg_content = '<!-- wp:html -->' . $html . '<!-- /wp:html -->';
-            $id = wp_insert_post([
-                'post_title' => sanitize_text_field($title),
-                'post_content' => $gutenberg_content,
-                'post_status' => 'publish',
-                'post_type' => 'page',
-            ]);
-            if (is_wp_error($id)) return wpilot_err($id->get_error_message());
-            return wpilot_ok("Page \"{$title}\" created (ID: {$id}).", [
+            $slug = sanitize_title($params['slug'] ?? $title);
+            global $wpdb;
+            $existing = get_page_by_path($slug);
+            if ($existing) {
+                $wpdb->update($wpdb->posts, ['post_content' => $gutenberg_content, 'post_status' => 'publish'], ['ID' => $existing->ID]);
+                clean_post_cache($existing->ID);
+                $id = $existing->ID;
+            } else {
+                $id = wp_insert_post([
+                    'post_title' => sanitize_text_field($title),
+                    'post_name' => $slug,
+                    'post_content' => '', // empty first
+                    'post_status' => 'publish',
+                    'post_type' => 'page',
+                ]);
+                if (is_wp_error($id)) return wpilot_err($id->get_error_message());
+                // Now set content directly to preserve <style> tags
+                $wpdb->update($wpdb->posts, ['post_content' => $gutenberg_content], ['ID' => $id]);
+                clean_post_cache($id);
+            }
+            // Auto-set full-width template if available
+            $templates = wp_get_theme()->get_page_templates(null, 'page');
+            foreach ($templates as $file => $name) {
+                if (preg_match('/full[- ]?width|no[- ]?sidebar|blank|canvas/i', $name . ' ' . $file)) {
+                    update_post_meta($id, '_wp_page_template', $file);
+                    break;
+                }
+            }
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Page \"{$title}\" " . ($existing ? "updated" : "created") . " (ID: {$id}).", [
                 'page_id' => $id, 'url' => get_permalink($id), 'builder' => $builder,
             ]);
 
@@ -1193,7 +1851,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             return wpilot_ok("Theme '{$slug}' installed.");
 
         case 'activate_theme':
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
         case 'switch_theme':
             $slug = sanitize_text_field($params['slug'] ?? $params['theme'] ?? $params['name'] ?? '');
             if (empty($slug)) return wpilot_err('Theme slug required.');
@@ -1423,12 +2081,80 @@ function wpilot_run_page_tools($tool, $params = []) {
                 }
             }
 
+            // === DEEP ANALYSIS — what Claude needs to see ===
+            
+            // Layout structure analysis
+            $layout = [];
+            if (strpos($html, 'id="sidebar"') !== false || strpos($html, 'widget-area') !== false) {
+                $layout[] = 'SIDEBAR VISIBLE — has widget area with widgets (Recent Posts, Comments, Search). Hide with CSS: #sidebar,.widget-area{display:none!important}';
+                $issues[] = 'Sidebar is visible with widgets — clutters the Apple-style layout';
+            }
+            if (strpos($html, 'id="footer"') !== false || strpos($html, 'id="copyright"') !== false) {
+                // Check if footer has content
+                if (preg_match('/<footer[^>]*id="footer"[^>]*>.*?<\/footer>/s', $html, $fm)) {
+                    if (strlen(strip_tags($fm[0])) > 10) {
+                        $layout[] = 'FOOTER VISIBLE — theme footer with copyright text. Hide: #footer,#copyright{display:none!important}';
+                        $issues[] = 'Theme footer is visible';
+                    }
+                }
+            }
+            if (strpos($html, 'id="site-title"') !== false) {
+                $layout[] = 'SITE TITLE in header — theme renders site name as H1. Hide: #site-title{display:none!important}';
+            }
+            if (strpos($html, 'entry-title') !== false) {
+                $layout[] = 'ENTRY TITLE — theme renders page title separately from content. Hide: .entry-title{display:none!important}';
+                $issues[] = 'Duplicate page title from theme template';
+            }
+            if (strpos($html, 'id="search"') !== false) {
+                $layout[] = 'SEARCH FORM in header — theme adds search widget. Hide: #search{display:none!important}';
+            }
+            
+            // Width constraints
+            if (preg_match('/content-size:\s*(\d+)px/', $html, $wm)) {
+                if (intval($wm[1]) < 1000) {
+                    $layout[] = 'CONTENT CONSTRAINED to ' . $wm[1] . 'px — theme limits width. Override: :root{--wp--style--global--content-size:100%!important}';
+                    $issues[] = 'Content width capped at ' . $wm[1] . 'px by theme';
+                }
+            }
+            if (strpos($html, 'is-layout-constrained') !== false) {
+                $layout[] = 'GUTENBERG CONSTRAINED LAYOUT active — blocks have max-width. Override: .is-layout-constrained>*{max-width:100%!important}';
+            }
+            
+            // Full-width sections check
+            $has_fullwidth_css = strpos($html, 'calc(-50vw') !== false;
+            if (!$has_fullwidth_css && (strpos($html, 'f5f5f7') !== false || strpos($html, '000000') !== false)) {
+                $layout[] = 'COLORED SECTIONS not full-width — need CSS: .wp-block-group[style*="f5f5f7"]{margin-left:calc(-50vw + 50%)!important;margin-right:calc(-50vw + 50%)!important;width:100vw!important}';
+                $issues[] = 'Background sections not stretching to full width';
+            }
+
+            // Theme detection
+            $theme_info = '';
+            if (strpos($html, 'blankslate') !== false) $theme_info = 'BlankSlate (classic, minimal, has sidebar+footer)';
+            elseif (strpos($html, 'twentytwentyfive') !== false) $theme_info = 'TT5 (block theme, aggressive global styles, template parts)';
+            elseif (strpos($html, 'twentytwentyfour') !== false) $theme_info = 'TT4 (block theme)';
+            elseif (strpos($html, 'hello-elementor') !== false) $theme_info = 'Hello Elementor (clean, Elementor builder)';
+            elseif (strpos($html, 'storefront') !== false) $theme_info = 'Storefront (WooCommerce theme)';
+            $report['theme'] = $theme_info;
+            $report['layout_issues'] = $layout;
+            
+            // DOM summary for Claude
+            $dom_summary = [];
+            preg_match_all('/<(header|footer|nav|main|aside|article|section|div)[^>]*(id|class)="([^"]+)"/', $html, $dom_matches, PREG_SET_ORDER);
+            foreach (array_slice($dom_matches, 0, 20) as $m) {
+                $dom_summary[] = '<' . $m[1] . ' ' . $m[2] . '="' . substr($m[3], 0, 60) . '">';
+            }
+            $report['dom_structure'] = $dom_summary;
+
             $report['issues'] = $issues;
             $report['issues_count'] = count($issues);
 
-            $msg = count($issues) === 0
-                ? "Page looks good. No issues found at {$url}."
-                : count($issues) . " issues found at {$url}: " . implode(', ', $issues);
+            // Build rich message for Claude
+            $msg_parts = [];
+            $msg_parts[] = count($issues) . " issues at {$url}";
+            if ($theme_info) $msg_parts[] = "Theme: {$theme_info}";
+            if ($layout) $msg_parts[] = "Layout: " . implode('. ', array_slice($layout, 0, 3));
+            if ($issues) $msg_parts[] = "Issues: " . implode(', ', $issues);
+            $msg = implode('. ', $msg_parts);
 
             return wpilot_ok($msg, $report);
 
@@ -2149,7 +2875,7 @@ function wpilot_run_page_tools($tool, $params = []) {
                     }
                 }
             }
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             // Export CSV
             $csv = "Email,Name,Source\n";
             foreach ($emails as $email => $data) $csv .= "{$email},\"{$data['name']}\",{$data['source']}\n";
@@ -2418,7 +3144,7 @@ function wpilot_run_page_tools($tool, $params = []) {
             $has_imgopt = in_array('ewww-image-optimizer', $installed) || in_array('imagify', $installed) || in_array('smush', $installed) || defined('LSCWP_V');
             if (!$has_imgopt && !$has_cache) $recommendations[] = ['plugin' => 'ewww-image-optimizer', 'reason' => 'No image optimizer — large images slow your site', 'priority' => 'medium', 'free' => true];
 
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
 
             if (empty($recommendations)) {
                 return wpilot_ok("All essential plugins installed! Your site has good coverage.", ['all_good' => true]);

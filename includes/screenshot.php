@@ -39,7 +39,7 @@ function wpilot_take_screenshot( $url, $options = [] ) {
         wp_mkdir_p(WPILOT_SCREENSHOT_DIR);
     }
 
-    // Clean old screenshots (keep last 50)
+    // Clean old screenshots (keep last 10, delete >24h old)
     wpilot_cleanup_screenshots();
 
     // Generate unique filename
@@ -57,7 +57,7 @@ function wpilot_take_screenshot( $url, $options = [] ) {
     }
 
     // Build safe argument list (no shell interpolation)
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $budget = max(1000, $delay * 1000);
     $args = [
         $chrome,
@@ -287,12 +287,16 @@ function wpilot_compare_screenshots( $before_path, $after_path ) {
 function wpilot_cleanup_screenshots() {
     if (!file_exists(WPILOT_SCREENSHOT_DIR)) return;
 
-    $files = glob(WPILOT_SCREENSHOT_DIR . '/*.png');
-    if (count($files) <= 50) return;
-
+    $files = glob(WPILOT_SCREENSHOT_DIR . '/*.{png,jpg}', GLOB_BRACE);
+    // Delete screenshots older than 24 hours
+    foreach ($files as $f) {
+        if (filemtime($f) < time() - 86400) @unlink($f);
+    }
+    // Keep max 10 most recent
+    $files = glob(WPILOT_SCREENSHOT_DIR . '/*.{png,jpg}', GLOB_BRACE);
+    if (count($files) <= 10) return;
     usort($files, function($a, $b) { return filemtime($a) - filemtime($b); });
-
-    $to_delete = array_slice($files, 0, count($files) - 50);
+    $to_delete = array_slice($files, 0, count($files) - 10);
     foreach ($to_delete as $f) {
         @unlink($f);
     }

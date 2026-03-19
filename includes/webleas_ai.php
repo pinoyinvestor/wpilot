@@ -59,7 +59,7 @@ function wpilot_smart_answer( $message, $mode = 'chat', $context = [], $history 
 
     // ── Route 3: Claude (full power, kunden betalar) ──────────
     if ( ! wpilot_is_connected() ) {
-        return new WP_Error('no_connection', 'No AI source available. Connect a Claude API key in Settings.');
+        return new WP_Error('no_connection', function_exists('wpilot_t') ? wpilot_t('oauth_connect_title') : 'Connect your Claude account to get started.');
     }
 
     $reply = wpilot_call_claude( $message, $mode, $context, $history );
@@ -89,7 +89,7 @@ function wpilot_smart_answer( $message, $mode = 'chat', $context = [], $history 
     ];
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Query WPilot AI server ─────────────────────────────────────
 function wpilot_query_webleas_ai( $message, $mode, $context = [] ) {

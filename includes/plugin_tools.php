@@ -1224,7 +1224,7 @@ function wpilot_cache_enable($p) {
 //  SMTP — WP Mail SMTP, Post SMTP, FluentSMTP
 // ══════════════════════════════════════════════════════════════
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 function wpilot_smtp_configure($p) {
     $host = sanitize_text_field($p['host'] ?? '');
@@ -1598,7 +1598,7 @@ function wpilot_multilingual_translate_page($p) {
     return wpilot_ok("Translated page created: \"{$translated_title}\" ({$lang}, ID: {$new_id}). Linked to original #{$page_id}.", ['id'=>$new_id]);
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 function wpilot_multilingual_bulk_translate($p) {
     $lang = sanitize_text_field($p['language'] ?? 'en');
     $post_type = sanitize_text_field($p['post_type'] ?? 'page');
@@ -1962,7 +1962,7 @@ function wpilot_cf7_build_mail_body( $fields ) {
     return implode( "\n", $lines );
 }
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 function wpilot_cf7_create_form( $p ) {
     if ( ! wpilot_cf7_installed() ) {

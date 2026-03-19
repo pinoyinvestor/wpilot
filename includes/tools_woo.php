@@ -430,7 +430,7 @@ function wpilot_run_woo_tools($tool, $params = []) {
             ]);
 
         // ═══ SALES REPORTS & ANALYTICS ═══
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
         case 'sales_report':
         case 'revenue_report':
         case 'woo_sales_report':
@@ -460,7 +460,7 @@ function wpilot_run_woo_tools($tool, $params = []) {
                 'total_revenue' => $total_revenue, 'total_orders' => $total_orders, 'total_items' => $total_items,
                 'avg_order_value' => $avg_order, 'currency' => $currency,
                 'by_status' => $by_status,
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
                 'top_products' => array_slice($by_product, 0, 10, true),
                 'daily_revenue' => array_slice($by_day, -14, null, true),
             ]);
@@ -557,7 +557,7 @@ function wpilot_run_woo_tools($tool, $params = []) {
                 ]) . "\n";
             }
             $upload = wp_upload_dir();
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             $file = $upload['basedir'] . '/wpilot-orders-export.csv';
             file_put_contents($file, $csv);
             return wpilot_ok("Exported " . count($orders) . " orders.", ['download_url' => $upload['baseurl'] . '/wpilot-orders-export.csv', 'count' => count($orders)]);
@@ -780,7 +780,7 @@ function wpilot_run_woo_tools($tool, $params = []) {
                 if ($ts) update_post_meta($id, 'date_expires', $ts);
             }
             // Usage limits
-            // Built by Christos Ferlachidis & Daniel Hedenberg
+            // Built by Weblease
             if (isset($params['usage_limit'])) update_post_meta($id, 'usage_limit', intval($params['usage_limit']));
             if (isset($params['usage_limit_per_user'])) update_post_meta($id, 'usage_limit_per_user', intval($params['usage_limit_per_user']));
             // Free shipping

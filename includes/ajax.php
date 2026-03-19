@@ -15,12 +15,25 @@ function wpilot_parse_actions( $text ) {
     // Flexible: matches [ACTION: tool], [ACTION: tool | label], [ACTION: tool | label | desc | icon]
     if ( preg_match_all( '/\[ACTION:\s*([^\]\|]+?)(?:\|([^\]\|]*?))?(?:\|([^\]\|]*?))?(?:\|([^\]]*?))?\]/', $text, $m, PREG_SET_ORDER ) ) {
         foreach ( $m as $match ) {
+            $label = trim( $match[2] ?? '' );
+            // Try to extract inline JSON from label (e.g. "Installing plugin slug: wordfence")
+            $inline_params = [];
+            if ( preg_match('/slug[:\s]+["\']?([a-z0-9\-_]+)["\']?/i', $label, $sp) ) {
+                $inline_params['slug'] = $sp[1];
+            }
+            // Also extract common param patterns from label
+            if ( preg_match('/(?:post|page|product)[_\s]*(?:id|ID)[:\s]+(\d+)/i', $label, $ip) ) {
+                $inline_params['post_id'] = intval($ip[1]);
+            }
+            if ( preg_match('/(?:price|pris)[:\s]+\$?(\d+(?:\.\d+)?)/i', $label, $pp) ) {
+                $inline_params['price'] = $pp[1];
+            }
             $actions[] = [
                 'tool'        => trim( $match[1] ),
-                'label'       => trim( $match[2] ),
+                'label'       => $label,
                 'description' => trim( $match[3] ?? "" ),
                 'icon'        => trim( $match[4] ?? "" ),
-                'params'      => [],
+                'params'      => $inline_params,
             ];
         }
     }
@@ -33,8 +46,17 @@ add_action( 'wp_ajax_ca_chat', function () {
     if ( ! wpilot_user_has_access() ) wp_send_json_error( 'You don\'t have WPilot access. Ask your admin to grant it.', 403 );
     if ( wpilot_is_locked() )       wp_send_json_error( 'Free limit reached. Please activate your license.' );
 
+    // Rate limit check (server-defined limits per plan)
+    if ( function_exists( 'wpilot_check_rate_limit' ) ) {
+        $rate_check = wpilot_check_rate_limit();
+        if ( is_wp_error( $rate_check ) ) {
+            wp_send_json_error( $rate_check->get_error_message() );
+        }
+    }
+
     $message = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
     $mode    = sanitize_text_field( wp_unslash( $_POST['mode']    ?? 'chat' ) );
+    $session_key = sanitize_text_field( wp_unslash( $_POST["session_key"] ?? "" ) );
     $history_raw = json_decode( wp_unslash( $_POST['history'] ?? '[]' ), true ) ?: [];
     // Sanitize history entries
     $history = array_map( function($msg) {
@@ -46,8 +68,31 @@ add_action( 'wp_ajax_ca_chat', function () {
     $context = json_decode( wp_unslash( $_POST['context'] ?? '{}' ), true ) ?: [];
 
     if ( empty( $message ) ) wp_send_json_error( 'Empty message.' );
-    // Always build fresh context so the AI sees the current site state
-    $context = wpilot_build_context( $mode === 'chat' ? 'general' : $mode );
+
+    // Load heavy modules (API, tools, context, brain) before processing
+    if ( function_exists( 'wpilot_load_heavy' ) ) wpilot_load_heavy();
+
+    // Get page context from bubble (which page the user is currently viewing)
+    $bubble_ctx = json_decode( wp_unslash( $_POST['context'] ?? '{}' ), true ) ?: [];
+    $current_page = '';
+    if ( ! empty( $bubble_ctx['post_id'] ) && intval($bubble_ctx['post_id']) > 0 ) {
+        $pid = intval( $bubble_ctx['post_id'] );
+        $current_page = "[USER IS ON: \"{$bubble_ctx['page']}\" (ID:{$pid}, URL:{$bubble_ctx['url']})]";
+    } elseif ( ! empty( $bubble_ctx['url'] ) ) {
+        $current_page = "[USER IS ON: {$bubble_ctx['url']}]";
+    }
+    // Prepend page location to message so AI knows WHERE the user is
+    if ( $current_page ) {
+        $message = $current_page . "\n" . $message;
+    }
+
+    // Smart context: only build heavy context when the message needs it
+    $needs_context = ($mode !== 'chat');
+    if ( !$needs_context ) {
+        $msg_check = strtolower($message);
+        $needs_context = preg_match('/produkt|product|sida|page|order|design|bygg|build|shop|plugin|tema|theme|css|meny|menu|woo|seo|säkerhet|secur|prestanda|perform|analys|knapp|button|logg|logo|bild|image|text|rubrik|heading|färg|color|flytta|move|mitt|center|snygg|pretty|ändra|change|ta bort|remove|fixa|fix/u', $msg_check);
+    }
+    $context = $needs_context ? wpilot_build_context($needs_context === true ? 'general' : $mode) : [];
 
     // ── Smart routing: Brain → WPilot AI → Claude ─────────────
     $result = wpilot_smart_answer( $message, $mode, $context, $history );
@@ -58,13 +103,17 @@ add_action( 'wp_ajax_ca_chat', function () {
     $mem_id   = is_array($result) ? ($result['memory_id'] ?? null) : null;
 
     // Only count against prompt limit if Claude was used
-    if ( $source === 'claude' ) wpilot_bump_prompts();
+    if ( $source === 'claude' ) { wpilot_bump_prompts(); if (function_exists('wpilot_bump_rate_limit')) wpilot_bump_rate_limit(); }
 
-    $actions = wpilot_parse_actions( $response );
-    if (empty($actions) && function_exists("wpilot_parse_compact_actions")) $actions = wpilot_parse_compact_actions($response);
-    if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($actions, $response);
+    // Primary parser: wpilot_parse_ai_actions extracts actions + code block params
+    $actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($response) : [];
+    // Fallback to legacy parser if new one found nothing
+    if (empty($actions)) {
+        $actions = wpilot_parse_actions($response);
+        if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($actions, $response);
+    }
 
-    // Collect training data (before history — uses $actions early)
+    // Collect data
     $pair_id = null;
     if ( function_exists('wpilot_collect_exchange') && $source === 'claude' ) {
         $tools_used  = array_map(function($a) { return $a['tool']; }, $actions);
@@ -77,63 +126,222 @@ add_action( 'wp_ajax_ca_chat', function () {
         ]);
     }
 
-    // ── Auto-approve: execute all actions, collect results, append summary ──
+    // ── Auto-approve: execute all actions via standalone executor ──
     $auto_summary = '';
+    $ok_count = 0;
     if ( wpilot_user_can_admin() && wpilot_auto_approve() && ! empty( $actions ) ) {
-        $total      = count( $actions );
-        $ok_count   = 0;
-        $result_lines = [];
+        $exec_result = function_exists('wpilot_auto_execute_actions')
+            ? wpilot_auto_execute_actions($actions)
+            : null;
 
-        foreach ( $actions as &$a ) {
-            $tool   = $a['tool'];
-            $params = $a['params'] ?? [];
-            $label  = $a['label'] ?? $tool;
+        if ($exec_result) {
+            $ok_count     = $exec_result['ok_count'];
+            $total        = $exec_result['total'];
+            $result_lines = [];
 
-            // Log backup before execution
-            $backup_id = function_exists('wpilot_backup_log') ? wpilot_backup_log( $tool, $params ) : null;
-
-            // Execute
-            $r = wpilot_safe_run_tool( $tool, $params );
-
-            if ( ! empty( $r['success'] ) ) {
-                $ok_count++;
-                $result_lines[] = $label . ': OK';
-                $a['auto_status']    = 'done';
-                $a['auto_backup_id'] = $backup_id;
-
-                // Activity log
-                if ( function_exists('wpilot_log_activity') ) {
-                    wpilot_log_activity( $tool, '[Auto] ' . $label, $r['message'] ?? '', $backup_id, 'ok' );
+            // Map execution results back onto $actions for status tracking
+            foreach ($exec_result['results'] as $ri => $res) {
+                if (isset($actions[$ri])) {
+                    $actions[$ri]['auto_status']    = $res['status'];
+                    $actions[$ri]['auto_backup_id'] = $res['backup_id'];
+                    if ($res['status'] === 'failed') {
+                        $actions[$ri]['auto_error'] = $res['message'];
+                    }
                 }
-            } else {
-                $err_msg        = $r['message'] ?? 'Failed';
-                $result_lines[] = $label . ': ✕ ' . $err_msg;
-                $a['auto_status'] = 'failed';
-                $a['auto_error']  = $err_msg;
+                $status_label = ($res['status'] === 'done') ? 'OK' : ('✕ ' . $res['message']);
+                $result_lines[] = $res['label'] . ': ' . $status_label;
+            }
 
-                if ( function_exists('wpilot_log_activity') ) {
-                    wpilot_log_activity( $tool, '[Auto] ' . $label, $err_msg, $backup_id, 'error' );
+            $summary_emoji = ($ok_count === $total) ? '✅' : '⚠️';
+            $auto_summary  = "\n\n" . $summary_emoji . ' Auto-approved: ' . $ok_count . '/' . $total . ' actions completed';
+            if (!empty($result_lines)) {
+                $auto_summary .= ' — ' . implode(', ', $result_lines);
+            }
+            $response .= $auto_summary;
+        }
+    }
+
+    // ── Auto-verify: after design changes, send a follow-up to check & fix ──
+    $design_tools = ['create_html_page','update_page_content','append_page_content','add_head_code','add_footer_code','add_php_snippet'];
+    $did_design = false;
+    $failed_any = false;
+    foreach ($actions as $a) {
+        if (in_array($a['tool'], $design_tools) && ($a['auto_status'] ?? '') === 'done') $did_design = true;
+        if (($a['auto_status'] ?? '') === 'failed') $failed_any = true;
+    }
+    // If design was done and something failed, auto-retry the failed action
+    if ($failed_any && $source === 'claude' && wpilot_auto_approve()) {
+        $failed_tools = [];
+        foreach ($actions as $a) {
+            if (($a['auto_status'] ?? '') === 'failed') {
+                $failed_tools[] = $a['tool'] . ' (' . ($a['auto_error'] ?? 'unknown') . ')';
+            }
+        }
+        // Build smart retry message that tells AI exactly what went wrong and how to fix
+        $retry_parts = [];
+        foreach ($actions as $a) {
+            if (($a['auto_status'] ?? '') === 'failed') {
+                $err = $a['auto_error'] ?? 'unknown';
+                $tool = $a['tool'];
+                // Suggest fix based on error pattern
+                if (strpos($err, 'not found') !== false || strpos($err, 'not installed') !== false) {
+                    $retry_parts[] = "{$tool} failed: {$err}. Try plugin_install first, then retry.";
+                } elseif (strpos($err, 'required') !== false) {
+                    $retry_parts[] = "{$tool} failed: {$err}. The params were empty — include all required params in your JSON.";
+                } elseif (strpos($err, 'not allowed') !== false) {
+                    $retry_parts[] = "{$tool} failed: {$err}. Use a different tool or approach.";
+                } else {
+                    $retry_parts[] = "{$tool} failed: {$err}. Fix and retry.";
                 }
             }
         }
-        unset( $a );
-
-        // Build summary line appended to AI response
-        $summary_emoji  = ( $ok_count === $total ) ? '✅' : '⚠️';
-        $auto_summary   = "\n\n" . $summary_emoji . ' Auto-approved: ' . $ok_count . '/' . $total . ' actions completed';
-        if ( ! empty( $result_lines ) ) {
-            $auto_summary .= ' — ' . implode( ', ', $result_lines );
+        $retry_msg = "FAILED ACTIONS — fix each one:\n" . implode("\n", $retry_parts) . "\n\nIMPORTANT: Only retry the failed actions. Don't repeat successful ones.";
+        $retry_result = wpilot_call_claude($retry_msg, $mode, $context, array_merge($history, [
+            ['role' => 'assistant', 'content' => $response],
+            ['role' => 'user', 'content' => $retry_msg],
+        ]));
+        if (!is_wp_error($retry_result)) {
+            $retry_text = is_array($retry_result) ? $retry_result['text'] : $retry_result;
+            $retry_actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($retry_text) : [];
+            if (empty($retry_actions)) {
+                $retry_actions = wpilot_parse_actions($retry_text);
+                if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($retry_actions, $retry_text);
+            }
+            $retry_exec = function_exists('wpilot_auto_execute_actions') ? wpilot_auto_execute_actions($retry_actions) : null;
+            if ($retry_exec) {
+                foreach ($retry_exec['results'] as $ri => $res) {
+                    if (isset($retry_actions[$ri])) {
+                        $retry_actions[$ri]['auto_status'] = $res['status'];
+                    }
+                }
+                $ok_count += $retry_exec['ok_count'];
+            }
+            $actions = array_merge($actions, $retry_actions);
+            $response .= "\n\n🔄 Auto-retry: " . count($retry_actions) . " actions attempted.";
         }
-        $response .= $auto_summary;
     }
 
-    // Persist history after auto-approve so response & action statuses are final
+    // ── Auto-continue: if Claude did get_page but no replace, send page content back ──
+    $did_get_page = false;
+    $did_replace = false;
+    $get_page_result = '';
+    foreach ($actions as $a) {
+        if ($a['tool'] === 'get_page' && ($a['auto_status'] ?? '') === 'done') {
+            $did_get_page = true;
+            $pid = intval($a['params']['id'] ?? 0);
+            if ($pid) $get_page_result = get_post_field('post_content', $pid);
+        }
+        if (in_array($a['tool'], ['replace_in_page', 'update_page_content'])) $did_replace = true;
+    }
+    if ($did_get_page && !$did_replace && !empty($get_page_result) && $source === 'claude' && wpilot_auto_approve()) {
+        // Claude read the page but didn't replace — send the content back so it can act
+        $cont_msg = "The user asked: " . $message . "\n\nHere is the page content you requested:\n```html\n" . substr($get_page_result, 0, 3000) . "\n```\nNow execute the replace_in_page with the EXACT text from above. Use JSON with search and replace keys.";
+
+        $cont_result = wpilot_call_claude($cont_msg, $mode, [], array_merge($history, [
+            ['role' => 'assistant', 'content' => $response],
+            ['role' => 'user', 'content' => $cont_msg],
+        ]));
+        if (!is_wp_error($cont_result)) {
+            $cont_text = is_array($cont_result) ? $cont_result['text'] : $cont_result;
+            $cont_actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($cont_text) : [];
+            if (empty($cont_actions)) {
+                $cont_actions = wpilot_parse_actions($cont_text);
+                if (function_exists('wpilot_enhance_action_params')) wpilot_enhance_action_params($cont_actions, $cont_text);
+            }
+            $cont_exec = function_exists('wpilot_auto_execute_actions') ? wpilot_auto_execute_actions($cont_actions) : null;
+            if ($cont_exec) {
+                foreach ($cont_exec['results'] as $ri => $res) {
+                    if (isset($cont_actions[$ri])) {
+                        $cont_actions[$ri]['auto_status'] = $res['status'];
+                        $cont_actions[$ri]['auto_backup_id'] = $res['backup_id'] ?? null;
+                        if ($res['status'] === 'failed') $cont_actions[$ri]['auto_error'] = $res['message'];
+                    }
+                }
+                $ok_count += $cont_exec['ok_count'];
+            }
+            $actions = array_merge($actions, $cont_actions);
+            $response .= "\n\n Auto-continued with page content:\n" . $cont_text;
+        }
+    }
+
+    // ── Auto-continue: if the AI planned multiple phases, continue to next phase ──
+    $has_phases = preg_match('/Phase \d|Step \d|Next:|Part \d/i', $response);
+    $all_succeeded = !$failed_any && $ok_count > 0;
+    if ($has_phases && $all_succeeded && $source === 'claude' && wpilot_auto_approve()) {
+        $continue_count = intval(get_transient('wpilot_auto_continue_' . get_current_user_id()) ?: 0);
+        if ($continue_count < 3) { // Max 3 auto-continues per conversation
+            set_transient('wpilot_auto_continue_' . get_current_user_id(), $continue_count + 1, 300);
+            $results_summary = implode(', ', $result_lines);
+            $cont_msg = "Phase complete. Results: {$results_summary}. Continue to the NEXT phase. Don't repeat what's done.";
+            $cont_result = wpilot_call_claude($cont_msg, $mode, [], array_merge($history, [
+                ['role' => 'assistant', 'content' => $response],
+                ['role' => 'user', 'content' => $cont_msg],
+            ]));
+            if (!is_wp_error($cont_result)) {
+                $cont_text = is_array($cont_result) ? $cont_result['text'] : $cont_result;
+                $cont_actions = function_exists('wpilot_parse_ai_actions') ? wpilot_parse_ai_actions($cont_text) : [];
+                if (empty($cont_actions)) {
+                    $cont_actions = wpilot_parse_actions($cont_text);
+                    if (function_exists("wpilot_enhance_action_params")) wpilot_enhance_action_params($cont_actions, $cont_text);
+                }
+                $cont_exec = function_exists('wpilot_auto_execute_actions') ? wpilot_auto_execute_actions($cont_actions) : null;
+                if ($cont_exec) {
+                    foreach ($cont_exec['results'] as $ri => $res) {
+                        if (isset($cont_actions[$ri])) {
+                            $cont_actions[$ri]['auto_status'] = $res['status'];
+                        }
+                    }
+                }
+                $actions = array_merge($actions, $cont_actions);
+                $response .= "\n\n➡️ Auto-continued to next phase:\n" . $cont_text;
+            }
+        }
+    }
+
+    // ── Save action log — persistent memory of what's been done ──
+    // Save what the customer asked (compressed)
+    $request_log = get_option('wpilot_request_log', []);
+    $request_log[] = [
+        'q' => substr($message, 0, 150),
+        'actions' => count($actions),
+        'ok' => $ok_count ?? 0,
+        'time' => current_time('Y-m-d H:i'),
+    ];
+    if (count($request_log) > 30) $request_log = array_slice($request_log, -30);
+    update_option('wpilot_request_log', $request_log, false);
+
+    $action_log = get_option('wpilot_action_log', []);
+    foreach ($actions as $a) {
+        $action_log[] = [
+            'tool' => $a['tool'],
+            'status' => $a['auto_status'] ?? 'pending',
+            'label' => substr($a['label'] ?? '', 0, 120),
+            'time' => current_time('Y-m-d H:i'),
+            'params_keys' => array_keys($a['params'] ?? []),
+        ];
+    }
+    // Keep last 50 actions
+    if (count($action_log) > 50) $action_log = array_slice($action_log, -50);
+    update_option('wpilot_action_log', $action_log, false);
+
+    // Persist to session (DB-backed, auto-expires)
+    if ( $session_key && function_exists('wpilot_session_add_message') ) {
+        wpilot_session_add_message( $session_key, 'user', $message );
+        wpilot_session_add_message( $session_key, 'assistant', $response );
+    }
+    // Legacy: also keep in wp_options for backwards compat
     $hist   = get_option( 'ca_chat_history', [] );
     $hist[] = ['role'=>'user',      'content'=>$message,  'time'=>current_time('H:i'), 'mode'=>$mode];
     $hist[] = ['role'=>'assistant', 'content'=>$response, 'time'=>current_time('H:i'),
                'actions'=>$actions, 'source'=>$source, 'memory_id'=>$mem_id, 'id'=>'msg_'.uniqid()];
-    if ( count($hist) > 60 ) $hist = array_slice($hist,-60);
+    if ( count($hist) > 20 ) $hist = array_slice($hist,-20);
     update_option( 'ca_chat_history', $hist, false );
+
+    // Session remaining time
+    $session_remaining = 0;
+    if ( $session_key && function_exists('wpilot_session_remaining') ) {
+        $session_remaining = wpilot_session_remaining( $session_key );
+    }
 
     wp_send_json_success( [
         'response'      => $response,
@@ -146,6 +354,8 @@ add_action( 'wp_ajax_ca_chat', function () {
         'locked'        => wpilot_is_locked(),
         'savings'       => wpilot_estimate_savings(),
         'pair_id'       => $pair_id ?? null,
+        'session_key'   => $session_key,
+        'session_ttl'   => $session_remaining,
     ] );
 } );
 
@@ -192,14 +402,6 @@ add_action( 'wp_ajax_ca_save_setting', function () {
 } );
 
 // ── Save API key (admin only) ──────────────────────────────────
-add_action( 'wp_ajax_ca_save_api_key', function () {
-    check_ajax_referer( 'ca_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized.', 403 );
-    if ( ! wpilot_user_can_admin() ) wp_send_json_error( 'Unauthorized.' );
-    $key = sanitize_text_field( wp_unslash( $_POST['key'] ?? '' ) );
-    update_option( 'ca_api_key', function_exists('wpilot_encrypt') ? wpilot_encrypt($key) : $key );
-    wp_send_json_success( 'Saved.' );
-} );
 
 // ── Clear history (admin only) ─────────────────────────────────
 add_action( 'wp_ajax_ca_clear_history', function () {
@@ -289,14 +491,14 @@ add_action( 'wp_ajax_ca_restore_backup', function () {
 
 // ── Smart site scan — AI proactively reviews installed plugins ──
 add_action('wp_ajax_wpi_smart_scan', function() {
+    check_ajax_referer('ca_nonce','nonce');
     // Check for missing essential plugins during scan
     if (function_exists('wpilot_run_tool')) {
         $recs = wpilot_run_tool('recommend_plugins', []);
         if (!empty($recs['recommendations'])) {
-            $_SESSION['wpilot_recommendations'] = $recs['recommendations'];
+            set_transient('wpilot_recommendations_' . get_current_user_id(), $recs['recommendations'], 300);
         }
     }
-    check_ajax_referer('ca_nonce','nonce');
     if ( ! wpilot_user_has_access() ) wp_send_json_error('You don\'t have WPilot access. Ask your admin to grant it.', 403);
     if (!wpilot_is_connected()) wp_send_json_error('Not connected');
     if (wpilot_is_locked()) wp_send_json_error('Free limit reached. Please activate your license.');
@@ -326,7 +528,7 @@ add_action( 'wp_ajax_wpi_load_history', function () {
     wp_send_json_success( $history );
 } );
 
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // ── Save custom instruction (admin only) ───────────────────────
 add_action( 'wp_ajax_wpi_save_instruction', function () {
@@ -417,7 +619,7 @@ add_action('wp_ajax_wpi_send_feedback', function() {
     ];
     update_option('wpilot_feedbacks', $feedbacks);
 
-    // Send to weblease.se
+    
     $response = wp_remote_post('https://weblease.se/plugin/feedback', [
         'timeout' => 15,
         'headers' => ['Content-Type' => 'application/json'],
@@ -458,6 +660,7 @@ add_action('wp_ajax_wpi_check_replies', function() {
 add_action('wp_ajax_wpilot_subscribe', 'wpilot_handle_subscribe');
 add_action('wp_ajax_nopriv_wpilot_subscribe', 'wpilot_handle_subscribe');
 function wpilot_handle_subscribe() {
+    check_ajax_referer('ca_nonce', 'nonce');
     $email = sanitize_email($_POST['email'] ?? '');
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         wp_send_json_error(['message' => 'Valid email required.']);
@@ -475,9 +678,57 @@ function wpilot_handle_subscribe() {
     }
     $subscribers[$email] = ['date' => date('Y-m-d H:i:s'), 'ip' => $ip, 'source' => 'popup'];
     update_option('wpilot_subscribers', $subscribers);
-    // Also create WP user if they don't exist
-    if (!email_exists($email)) {
-        wp_create_user($email, wp_generate_password(), $email);
-    }
     wp_send_json_success(['message' => 'Subscribed! Check your email.', 'email' => $email]);
 }
+// ── Session: start new chat ────────────────────────────────────
+add_action( 'wp_ajax_wpilot_new_session', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    if ( ! wpilot_user_has_access() ) wp_send_json_error( 'Access denied.', 403 );
+    $session = wpilot_start_session();
+    // Built by Weblease
+    wp_send_json_success( $session );
+} );
+
+// ── Session: load messages ─────────────────────────────────────
+add_action( 'wp_ajax_wpilot_load_session', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    if ( ! wpilot_user_has_access() ) wp_send_json_error( 'Access denied.', 403 );
+    $key = sanitize_text_field( $_POST['session_key'] ?? '' );
+    if ( ! $key ) {
+        // Get current active session or return empty
+        $session = wpilot_get_session();
+        if ( $session ) {
+            $msgs = json_decode( $session->messages, true ) ?: [];
+            wp_send_json_success( [
+                'session_key' => $session->session_key,
+                'messages'    => $msgs,
+                'ttl'         => wpilot_session_remaining( $session->session_key ),
+            ] );
+        }
+        wp_send_json_success( [ 'session_key' => '', 'messages' => [], 'ttl' => 0 ] );
+    }
+    $msgs = wpilot_session_messages( $key );
+    wp_send_json_success( [
+        'session_key' => $key,
+        'messages'    => $msgs,
+        'ttl'         => wpilot_session_remaining( $key ),
+    ] );
+} );
+
+// ── Session: check if alive (heartbeat) ────────────────────────
+add_action( 'wp_ajax_wpilot_session_ping', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    $key = sanitize_text_field( $_POST['session_key'] ?? '' );
+    if ( ! $key ) wp_send_json_success( [ 'alive' => false, 'ttl' => 0 ] );
+    $alive = wpilot_session_alive( $key );
+    $ttl   = $alive ? wpilot_session_remaining( $key ) : 0;
+    wp_send_json_success( [ 'alive' => $alive, 'ttl' => $ttl ] );
+} );
+
+// ── Session: end current ───────────────────────────────────────
+add_action( 'wp_ajax_wpilot_end_session', function () {
+    check_ajax_referer( 'ca_nonce', 'nonce' );
+    $key = sanitize_text_field( $_POST['session_key'] ?? '' );
+    if ( $key ) wpilot_end_session( $key );
+    wp_send_json_success();
+} );

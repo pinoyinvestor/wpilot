@@ -1,9 +1,35 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+// ── Cache busting — auto-clear after every change ──
+function wpilot_bust_cache() {
+    // Bust WordPress object cache
+    wp_cache_flush();
+    // Bust LiteSpeed Cache
+    if ( class_exists('LiteSpeed_Cache_API') ) {
+        LiteSpeed_Cache_API::purge_all();
+    }
+    // Bust WP Super Cache
+    if ( function_exists('wp_cache_clear_cache') ) {
+        wp_cache_clear_cache();
+    }
+    // Bust W3 Total Cache
+    if ( function_exists('w3tc_flush_all') ) {
+        w3tc_flush_all();
+    }
+    // Bust browser cache by updating a version timestamp
+    update_option('wpilot_cache_ver', time(), false);
+}
+
+// Add cache version to all enqueued styles/scripts
+add_filter('style_loader_tag', function($html) {
+    $ver = get_option('wpilot_cache_ver', '1');
+    return str_replace('.css?', ".css?wv={$ver}&", str_replace(".css'", ".css?wv={$ver}'", $html));
+}, 99);
+
 // ── Core helpers — wrapped with function_exists to avoid conflicts ──
 if ( ! function_exists( 'wpilot_is_connected' ) ) {
-    function wpilot_is_connected() { $k = get_option('ca_api_key', ''); return ! empty($k); }
+    function wpilot_is_connected() { return function_exists("wpilot_oauth_is_connected") && wpilot_oauth_is_connected(); }
 }
 if ( ! function_exists( 'wpilot_theme' ) ) {
     function wpilot_theme() { return get_option( 'wpilot_theme', 'dark' ); }
@@ -29,7 +55,7 @@ if ( ! function_exists( 'wpilot_err' ) ) {
 }
 
 // ── SEO Frontend Output (lightweight — always loaded for all visitors) ──
-// Built by Christos Ferlachidis & Daniel Hedenberg
+// Built by Weblease
 
 // Apply custom robots.txt if configured
 add_filter( 'robots_txt', function( $output, $public ) {
@@ -37,6 +63,18 @@ add_filter( 'robots_txt', function( $output, $public ) {
     if ( ! empty( $custom ) ) return $custom;
     return $output;
 }, 10, 2 );
+
+// Output custom head code injected by WPilot tools
+add_action( 'wp_head', function() {
+    $head = get_option( 'wpilot_head_code', '' );
+    if ( $head ) echo $head . "\n";
+}, 5 );
+
+// Output custom footer scripts injected by WPilot tools
+add_action( 'wp_footer', function() {
+    $scripts = get_option( 'wpilot_footer_scripts', '' );
+    if ( $scripts ) echo $scripts . "\n";
+}, 99 );
 
 // Output schema markup, Open Graph and Twitter Card tags in <head>
 add_action( 'wp_head', function() {
@@ -117,7 +155,7 @@ add_action( 'admin_notices', function () {
         <p style="margin:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13.5px">
             <strong style="font-size:14px">⚡ WPilot <span style="font-weight:400;color:#888">powered by Claude AI</span></strong>
             <span style="color:#777">—</span>
-            <span>Connect your Claude API key to start designing and building your site live with AI.</span>
+            <span>Connect your Claude account to start building your site with AI.</span>
             <a href="<?= esc_url( admin_url( 'admin.php?page=' . CA_SLUG . '-settings' ) ) ?>" style="font-weight:700;color:#5B8DEF;white-space:nowrap">⚙️ Connect now</a>
         </p>
     </div>
@@ -197,12 +235,12 @@ add_action('admin_bar_menu', function($bar) {
         'id'    => 'aib-status',
         'title' => '<span style="color:'.$color.'">'.$icon.' AI</span>',
         'href'  => $url,
-        'meta'  => ['title' => $connected ? 'WPilot ready' : 'WPilot — connect API key'],
+        'meta'  => ['title' => $connected ? 'WPilot ready' : 'WPilot — connect Claude'],
     ]);
     if ($connected) {
         $bar->add_node(['parent'=>'aib-status','id'=>'aib-status-chat','title'=>'💬 Open AI Chat','href'=>admin_url('admin.php?page='.CA_SLUG.'-chat')]);
         $bar->add_node(['parent'=>'aib-status','id'=>'aib-status-brain','title'=>'🧠 WPilot Brain','href'=>admin_url('admin.php?page='.CA_SLUG.'-brain')]);
     } else {
-        $bar->add_node(['parent'=>'aib-status','id'=>'aib-status-setup','title'=>'🔑 Connect API key →','href'=>admin_url('admin.php?page='.CA_SLUG.'-settings')]);
+        $bar->add_node(['parent'=>'aib-status','id'=>'aib-status-setup','title'=>'🔑 Connect Claude →','href'=>admin_url('admin.php?page='.CA_SLUG.'-settings')]);
     }
 }, 100);

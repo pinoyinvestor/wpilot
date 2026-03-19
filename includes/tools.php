@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // ── Dispatch tool calls ────────────────────────────────────────
 
 /**
- * Track tool errors — sends to weblease.se automatically
+ * Track tool errors
  * Rate limited: max 10 reports per hour per site
  */
 function wpilot_track_tool_error($tool, $error, $params = []) {
@@ -30,7 +30,7 @@ function wpilot_track_tool_error($tool, $error, $params = []) {
         'hosting_tier'   => function_exists('wpilot_hosting_tier') ? wpilot_hosting_tier() : '?',
         'active_plugins' => count(get_option('active_plugins', [])),
         'timestamp'      => date('Y-m-d H:i:s'),
-        // Built by Christos Ferlachidis & Daniel Hedenberg
+        // Built by Weblease
     ];
 
     // Queue it — don't block the response
@@ -42,7 +42,7 @@ function wpilot_track_tool_error($tool, $error, $params = []) {
 }
 
 /**
- * Send queued errors to weblease.se (runs on shutdown, non-blocking)
+ * Send queued errors
  */
 function wpilot_flush_error_queue() {
     $queue = get_option('wpilot_error_queue', []);
@@ -64,6 +64,26 @@ function wpilot_flush_error_queue() {
 }
 
 function wpilot_run_tool( $tool, $params = [] ) {
+    // Tool name aliases — Claude sometimes uses different names
+    static $aliases = [
+        'install_plugin'       => 'plugin_install',
+        'uninstall_plugin'     => 'plugin_delete',
+        'remove_plugin'        => 'plugin_delete',
+        'enable_plugin'        => 'activate_plugin',
+        'disable_plugin'       => 'deactivate_plugin',
+        'create_page'          => 'create_html_page',
+        'edit_page'            => 'update_page_content',
+        'set_meta_title'       => 'update_seo_title',
+        'set_meta_description' => 'update_meta_desc',
+        'add_css'              => 'append_custom_css',
+        'update_css'           => 'append_custom_css',
+        'change_css'           => 'append_custom_css',
+    ];
+    if ( isset($aliases[$tool]) ) $tool = $aliases[$tool];
+    
+    // Lazy-load module if this tool lives in a lazy module
+    if ( function_exists('wpilot_ensure_module') ) wpilot_ensure_module($tool);
+
     // Safety: write crash flag before executing (removed after success)
     $crash_file = WP_CONTENT_DIR . '/wpilot-crash-flag.txt';
     file_put_contents($crash_file, json_encode(['tool' => $tool, 'time' => date('Y-m-d H:i:s')]));
@@ -74,15 +94,26 @@ function wpilot_run_tool( $tool, $params = [] ) {
     $modules = [
         'wpilot_run_page_tools',
         'wpilot_run_woo_tools',
+        'wpilot_run_woo_advanced_tools',
         'wpilot_run_design_tools',
         'wpilot_run_seo_tools',
         'wpilot_run_security_tools',
         'wpilot_run_file_tools',
         'wpilot_run_api_tools',
         'wpilot_run_media_tools',
+        'wpilot_run_mobile_nav_tool',
+        'wpilot_run_form_tools',
+        'wpilot_run_comment_tools',
+        'wpilot_run_pwa_tools',
+        'wpilot_run_mu_tools',
+        'wpilot_run_gdpr_tools',
+        'wpilot_run_content_tools',
+        'wpilot_run_marketing_tools',
+        'wpilot_run_engage_tools',
+        'wpilot_run_verify_tools',
     ];
 
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
 
     foreach ($modules as $handler) {
         if (function_exists($handler)) {
@@ -305,7 +336,7 @@ function wpilot_security_scan() {
     }
 
     // 3. Check SSL
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $ssl = is_ssl();
     if (!$ssl) {
         $issues[] = ['severity'=>'critical', 'issue'=>'Site is NOT using HTTPS/SSL', 'fix'=>'Install SSL certificate and enable HTTPS', 'auto_fix'=>false];
@@ -408,39 +439,168 @@ function wpilot_fix_security($issue, $params = []) {
 
         /* ── Code Injection (mu-plugin) ──────────────────── */
         case 'add_head_code':
-            $code = $params['code'] ?? '';
-            $name = sanitize_file_name($params['name'] ?? 'custom-head-' . time());
+            $code = $params['code'] ?? $params['html'] ?? $params['css'] ?? $params['content'] ?? '';
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
-            $filename = 'wpilot-' . $name . '.php';
-            // Use heredoc to avoid quote escaping issues
-            $safe_code = str_replace("'", "\'", $code);
-            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
-                . "add_action('wp_head', function() {\n"
-                . "    echo '" . $safe_code . "';\n"
-                . "}, 1);\n";
-            // Validate before saving
-            $test_result = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
-            if ($ret !== 0 && $ret !== null) {
-                return wpilot_err('Code has syntax issues. Not saved.');
+            $filename = 'wpilot-head-styles.php';
+            $filepath = $mu_dir . '/' . $filename;
+            $new_css = $code;
+            $new_css = preg_replace('/<\/?style[^>]*>/i', '', $new_css);
+            $new_css = trim($new_css);
+            $existing_css = '';
+            if (file_exists($filepath)) {
+                $content = file_get_contents($filepath);
+                if (preg_match('/\/\* BEGIN CSS \*\/\s*(.*?)\s*\/\* END CSS \*\//s', $content, $m)) {
+                    $existing_css = trim($m[1]);
+                }
             }
-            file_put_contents($mu_dir . '/' . $filename, $php);
-            return wpilot_ok("Code added to <head> via mu-plugin: {$filename}");
+            $new_blocks = [];
+            preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $new_css, $matches, PREG_SET_ORDER);
+            foreach ($matches as $match) {
+                $new_blocks[trim($match[1])] = trim($match[2]);
+            }
+            $existing_blocks = [];
+            if (!empty($existing_css)) {
+                preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $existing_css, $matches, PREG_SET_ORDER);
+                foreach ($matches as $match) {
+                    $existing_blocks[trim($match[1])] = trim($match[2]);
+                }
+            }
+            $merged = array_merge($existing_blocks, $new_blocks);
+            $merged_css = '';
+            foreach ($merged as $sel => $body) {
+                $merged_css .= $sel . " {\n    " . $body . "\n}\n";
+            }
+            $merged_css = trim($merged_css);
+            $php = "<?php\n// WPilot consolidated head styles\nadd_action('wp_head', function() {\n"
+                . "echo <<<'WPILOT_CSS'\n<style>\n/* BEGIN CSS */\n"
+                . $merged_css . "\n"
+                . "/* END CSS */\n</style>\nWPILOT_CSS;\n}, 1);\n";
+            file_put_contents($filepath, $php);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            $sel_count = count($new_blocks);
+            return wpilot_ok("CSS merged into consolidated mu-plugin: {$filename} ({$sel_count} selector(s) added/updated, " . count($merged) . " total)");
 
         case 'add_footer_code':
-            $code = $params['code'] ?? '';
-            $name = sanitize_file_name($params['name'] ?? 'custom-footer-' . time());
+            $code = $params['code'] ?? $params['html'] ?? $params['content'] ?? '';
             if (empty($code)) return wpilot_err('Code required.');
             $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
             if (!is_dir($mu_dir)) wp_mkdir_p($mu_dir);
-            $filename = 'wpilot-' . $name . '.php';
-            $php = "<?php\n// WPilot: " . sanitize_text_field($params['description'] ?? $name) . "\n"
-                . "add_action('wp_footer', function() {\n"
-                . "    echo '" . addslashes($code) . "';\n"
-                . "});\n";
-            file_put_contents($mu_dir . '/' . $filename, $php);
-            return wpilot_ok("Code added to footer via mu-plugin: {$filename}");
+            $filename = 'wpilot-footer-scripts.php';
+            $filepath = $mu_dir . '/' . $filename;
+            $existing_code = '';
+            if (file_exists($filepath)) {
+                $content = file_get_contents($filepath);
+                if (preg_match('/\/\* BEGIN FOOTER \*\/\s*(.*?)\s*\/\* END FOOTER \*\//s', $content, $m)) {
+                    $existing_code = trim($m[1]);
+                }
+            }
+            $new_code = trim($code);
+            if (!empty($existing_code)) {
+                if (strpos($existing_code, $new_code) === false) {
+                    $merged_code = $existing_code . "\n" . $new_code;
+                } else {
+                    $merged_code = $existing_code;
+                }
+            } else {
+                $merged_code = $new_code;
+            }
+            $php = "<?php\n// WPilot consolidated footer scripts\nadd_action('wp_footer', function() {\n"
+                . "echo <<<'WPILOT_HTML'\n/* BEGIN FOOTER */\n"
+                . $merged_code . "\n"
+                . "/* END FOOTER */\nWPILOT_HTML;\n});\n";
+            file_put_contents($filepath, $php);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Code merged into consolidated mu-plugin: {$filename}");
+
+        case 'cleanup_mu_plugins':
+            $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+            if (!is_dir($mu_dir)) return wpilot_ok("No mu-plugins directory found. Nothing to clean up.");
+            $head_files = glob($mu_dir . '/wpilot-custom-head-*.php') ?: [];
+            $head_files = array_merge($head_files, glob($mu_dir . '/wpilot-*head*.php') ?: []);
+            $head_files = array_filter($head_files, function($f) { return basename($f) !== 'wpilot-head-styles.php'; });
+            $head_files = array_unique($head_files);
+            $footer_files = glob($mu_dir . '/wpilot-custom-footer-*.php') ?: [];
+            $footer_files = array_merge($footer_files, glob($mu_dir . '/wpilot-*footer*.php') ?: []);
+            $footer_files = array_filter($footer_files, function($f) { return basename($f) !== 'wpilot-footer-scripts.php'; });
+            $footer_files = array_unique($footer_files);
+            $all_css = '';
+            foreach ($head_files as $file) {
+                $content = file_get_contents($file);
+                if (preg_match("/echo\s+<<<'WPILOT_(?:HTML|CSS)'\s*\n(.*?)\nWPILOT_(?:HTML|CSS);/s", $content, $m)) {
+                    $extracted = $m[1];
+                    $extracted = preg_replace('/<\/?style[^>]*>/i', '', $extracted);
+                    $extracted = preg_replace('/\/\* (?:BEGIN|END) CSS \*\//', '', $extracted);
+                    $all_css .= trim($extracted) . "\n";
+                }
+            }
+            $all_footer = '';
+            foreach ($footer_files as $file) {
+                $content = file_get_contents($file);
+                if (preg_match("/echo\s+<<<'WPILOT_(?:HTML|CSS)'\s*\n(.*?)\nWPILOT_(?:HTML|CSS);/s", $content, $m)) {
+                    $extracted = $m[1];
+                    $extracted = preg_replace('/\/\* (?:BEGIN|END) FOOTER \*\//', '', $extracted);
+                    $all_footer .= trim($extracted) . "\n";
+                }
+            }
+            $head_path = $mu_dir . '/wpilot-head-styles.php';
+            $existing_css = '';
+            if (file_exists($head_path)) {
+                $content = file_get_contents($head_path);
+                if (preg_match('/\/\* BEGIN CSS \*\/\s*(.*?)\s*\/\* END CSS \*\//s', $content, $m)) {
+                    $existing_css = trim($m[1]);
+                }
+            }
+            $all_css = trim($all_css);
+            if (!empty($all_css)) {
+                $merged_blocks = [];
+                $combined = $existing_css . "\n" . $all_css;
+                preg_match_all('/([^{}]+)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s', $combined, $matches, PREG_SET_ORDER);
+                foreach ($matches as $match) {
+                    $merged_blocks[trim($match[1])] = trim($match[2]);
+                }
+                $merged_css = '';
+                foreach ($merged_blocks as $sel => $body) {
+                    $merged_css .= $sel . " {\n    " . $body . "\n}\n";
+                }
+                $merged_css = trim($merged_css);
+                $php = "<?php\n// WPilot consolidated head styles\nadd_action('wp_head', function() {\n"
+                    . "echo <<<'WPILOT_CSS'\n<style>\n/* BEGIN CSS */\n"
+                    . $merged_css . "\n"
+                    . "/* END CSS */\n</style>\nWPILOT_CSS;\n}, 1);\n";
+                file_put_contents($head_path, $php);
+            }
+            $footer_path = $mu_dir . '/wpilot-footer-scripts.php';
+            $existing_footer = '';
+            if (file_exists($footer_path)) {
+                $content = file_get_contents($footer_path);
+                if (preg_match('/\/\* BEGIN FOOTER \*\/\s*(.*?)\s*\/\* END FOOTER \*\//s', $content, $m)) {
+                    $existing_footer = trim($m[1]);
+                }
+            }
+            $all_footer = trim($all_footer);
+            if (!empty($all_footer)) {
+                if (!empty($existing_footer) && strpos($existing_footer, $all_footer) === false) {
+                    $merged_footer = $existing_footer . "\n" . $all_footer;
+                } elseif (empty($existing_footer)) {
+                    $merged_footer = $all_footer;
+                } else {
+                    $merged_footer = $existing_footer;
+                }
+                $php = "<?php\n// WPilot consolidated footer scripts\nadd_action('wp_footer', function() {\n"
+                    . "echo <<<'WPILOT_HTML'\n/* BEGIN FOOTER */\n"
+                    . $merged_footer . "\n"
+                    . "/* END FOOTER */\nWPILOT_HTML;\n});\n";
+                file_put_contents($footer_path, $php);
+            }
+            $deleted = 0;
+            foreach (array_merge($head_files, $footer_files) as $file) {
+                if (file_exists($file)) { unlink($file); $deleted++; }
+            }
+            $total_merged = count($head_files) + count($footer_files);
+            if (function_exists('wpilot_bust_cache')) wpilot_bust_cache();
+            return wpilot_ok("Cleanup complete: {$total_merged} old files merged, {$deleted} deleted. Consolidated into wpilot-head-styles.php and wpilot-footer-scripts.php.");
 
         case 'add_php_snippet':
             $code = $params['code'] ?? '';
@@ -465,7 +625,7 @@ function wpilot_fix_security($issue, $params = []) {
                 . $code . "\n"
                 . "}, " . $priority . ");\n";
             // Validate PHP syntax before saving
-            $test = @exec('echo ' . escapeshellarg($php) . ' | php -l 2>&1', $output, $ret);
+            // PHP syntax check removed for security (no exec)
             if ($ret !== 0 && $ret !== null) {
                 return wpilot_err('PHP syntax error in snippet. Not saved. Fix the code and try again.');
             }
@@ -850,7 +1010,7 @@ function wpilot_woo_dashboard($p) {
         if (isset($statuses[$status])) $statuses[$status]++;
     }
 
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $avg_order = $total_orders > 0 ? round($total_revenue / $total_orders, 2) : 0;
 
     // Refunded orders
@@ -986,7 +1146,7 @@ function wpilot_database_cleanup($p) {
     $results['trashed'] = intval($trash);
 
     // 4. Spam comments
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     $spam = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_approved = 'spam'");
     if (!$dry_run && $spam > 0) {
         $wpdb->query("DELETE FROM {$wpdb->comments} WHERE comment_approved = 'spam'");
@@ -1156,7 +1316,7 @@ function wpilot_newsletter_list_subscribers($p) {
     }
 
     // 3. Comment authors (with consent — they left their email publicly)
-    // Built by Christos Ferlachidis & Daniel Hedenberg
+    // Built by Weblease
     if ($group === 'all' || $group === 'commenters') {
         $comments = get_comments(['status'=>'approve', 'number'=>500, 'type'=>'comment']);
         $comm_count = 0;

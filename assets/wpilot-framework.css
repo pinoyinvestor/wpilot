@@ -1,0 +1,153 @@
+/* ═══════════════════════════════════════════════════════
+   WPILOT FRAMEWORK — Complete responsive design system
+   One file. No patches. No spaghetti.
+═══════════════════════════════════════════════════════ */
+
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap");
+
+/* ─── VARIABLES ─── */
+html:root {
+  --c-pri: #d4899a;
+  --c-pri-dark: #c07080;
+  --c-sec: #b8a0c8;
+  --c-accent: #e8c4cd;
+  --c-bg: #fffaf9;
+  --c-bg-alt: #fdf5f7;
+  --c-bg-alt2: #f7f0fc;
+  --c-text: #3d2a30;
+  --c-muted: #9a7d85;
+  --c-border: #f0dde3;
+  --c-white: #fff;
+  --f-head: "Playfair Display", serif;
+  --f-body: "DM Sans", sans-serif;
+  --r: 10px;
+  --r-pill: 50px;
+  --shadow: 0 4px 24px rgba(212,137,154,0.1);
+  --shadow-hover: 0 12px 32px rgba(212,137,154,0.2);
+  --transition: all 0.3s ease;
+  --max-w: 1200px;
+  --section-pad: clamp(60px, 10vw, 120px) clamp(16px, 4vw, 40px);
+}
+
+/* ─── BASE ─── */
+html body { background: var(--c-bg) !important; color: var(--c-text) !important; font-family: var(--f-body) !important; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+
+/* ─── TYPOGRAPHY ─── */
+html body h1, html body h2, html body h3, html body h4, html body h5, html body h6, html body .wp-block-heading { font-family: var(--f-head) !important; color: var(--c-text) !important; line-height: 1.2; letter-spacing: -0.02em; }
+html body h1 { font-size: clamp(2.2rem, 5vw, 3.8rem); }
+html body h2 { font-size: clamp(1.6rem, 4vw, 2.6rem); }
+html body h3 { font-size: clamp(1.2rem, 3vw, 1.8rem); }
+html body p { font-size: clamp(0.95rem, 1.5vw, 1.1rem); line-height: 1.75; }
+html body a { color: var(--c-pri); transition: var(--transition); }
+html body a:hover { color: var(--c-pri-dark); }
+
+/* ─── SECTIONS ─── */
+html body .wp-block-group { padding: var(--section-pad); max-width: 100%; }
+html body .wp-block-group .wp-block-group { padding: 0; }
+html body .entry-content > .wp-block-group { margin-left: calc(-50vw + 50%); margin-right: calc(-50vw + 50%); width: 100vw; }
+
+/* ─── COLUMNS ─── */
+html body .wp-block-columns { gap: clamp(16px, 3vw, 32px) !important; max-width: var(--max-w); margin: 0 auto; }
+html body .wp-block-column { padding: clamp(16px, 2vw, 24px); text-align: center; }
+
+/* ─── BUTTONS ─── */
+html body .wp-block-button__link, html body .wp-element-button, html body .woocommerce a.button, html body .woocommerce button.button, html body .wc-block-components-button, html body input[type="submit"] { background: var(--c-pri) !important; color: var(--c-white) !important; border: none !important; border-radius: var(--r-pill) !important; padding: 14px 36px !important; font-family: var(--f-body) !important; font-size: 0.88rem !important; font-weight: 600 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; text-decoration: none !important; display: inline-block; transition: var(--transition) !important; cursor: pointer; }
+html body .wp-block-button__link:hover, html body .woocommerce a.button:hover, html body .woocommerce button.button:hover { background: var(--c-pri-dark) !important; transform: translateY(-2px); box-shadow: var(--shadow-hover) !important; }
+html body .wp-block-button.is-style-outline .wp-block-button__link { background: transparent !important; color: var(--c-pri) !important; border: 2px solid var(--c-pri) !important; }
+html body .wp-block-button.is-style-outline .wp-block-button__link:hover { background: var(--c-pri) !important; color: var(--c-white) !important; }
+
+/* ─── IMAGES ─── */
+html body .wp-block-image img { border-radius: var(--r) !important; }
+
+/* ─── SEPARATORS ─── */
+html body .wp-block-separator { border-color: var(--c-border) !important; opacity: 1 !important; }
+
+/* ─── WOOCOMMERCE ─── */
+html body .woocommerce .price { color: var(--c-pri) !important; font-weight: 600; }
+html body .woocommerce .onsale { background: var(--c-sec) !important; color: var(--c-white) !important; border-radius: var(--r-pill) !important; }
+html body .woocommerce-loop-product__title { font-family: var(--f-head) !important; }
+html body .woocommerce .products .product { border-radius: var(--r); transition: var(--transition); }
+html body .woocommerce .products .product:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+
+/* ─── HEADER ─── */
+#wpilot-header { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; z-index: 999999 !important; background: var(--c-bg) !important; border-bottom: 1px solid var(--c-border) !important; box-shadow: 0 2px 12px rgba(212,137,154,0.08) !important; }
+body.has-wpilot-header { padding-top: 72px !important; }
+#wpilot-header .wpilot-header-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1400px; margin: 0 auto; height: 72px; padding: 0 40px; }
+#wpilot-header .wpilot-logo-text { font-family: var(--f-head) !important; color: var(--c-pri) !important; font-size: 1.6rem !important; font-weight: 700; }
+#wpilot-header nav ul { display: flex; gap: 28px; list-style: none; }
+#wpilot-header nav ul li a { color: var(--c-text) !important; font-family: var(--f-body) !important; font-size: 0.88rem !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; text-decoration: none; transition: var(--transition); }
+#wpilot-header nav ul li a:hover { color: var(--c-pri) !important; }
+#wpilot-header .wpilot-header-cta { background: var(--c-pri) !important; color: var(--c-white) !important; border-radius: var(--r-pill) !important; padding: 10px 24px !important; font-size: 0.85rem !important; font-weight: 600; }
+#wpilot-header .wpilot-right-group { display: flex; align-items: center; gap: 24px; margin-left: auto; }
+#wpilot-header .wpilot-hamburger { display: flex; align-items: center; color: var(--c-text, #333); background:none; border:none; cursor:pointer; padding:8px; }
+
+/* ─── FOOTER ─── */
+#wpilot-footer { background: var(--c-bg-alt) !important; color: var(--c-muted) !important; border-top: 1px solid var(--c-border) !important; }
+#wpilot-footer a { color: var(--c-text) !important; }
+#wpilot-footer a:hover { color: var(--c-pri) !important; }
+
+/* ─── MOBILE MENU ─── */
+.wpilot-mobile-menu .wpilot-mobile-nav { background: var(--c-bg) !important; }
+.wpilot-mobile-menu .wpilot-mobile-nav ul li a { color: var(--c-text) !important; border-bottom: 1px solid var(--c-border); }
+.wpilot-mobile-menu .wpilot-mobile-nav ul li a:hover { color: var(--c-pri) !important; }
+.wpilot-mobile-menu .wpilot-header-cta-mobile { background: var(--c-pri) !important; color: var(--c-white) !important; border-radius: var(--r-pill) !important; }
+
+/* ─── KILL STOREFRONT ─── */
+#masthead, .site-header:not(#wpilot-header), .storefront-primary-navigation, .storefront-secondary-navigation, .storefront-handheld-footer-bar, .menu-toggle, .storefront-sticky-add-to-cart, #colophon, .site-footer:not(#wpilot-footer), .site-info { display: none !important; }
+
+/* ─── BANNER ─── */
+body:has(#wpilot-top-banner) #wpilot-header { top: 42px !important; }
+body:has(#wpilot-top-banner).has-wpilot-header { padding-top: 114px !important; }
+
+/* ─── DESKTOP (>768px) ─── */
+@media (min-width: 769px) {
+  #wpilot-header .wpilot-hamburger { display: none !important; }
+  #wpilot-header nav.wpilot-desktop-nav { display: flex !important; }
+}
+
+/* ─── MOBILE (<=768px) ─── */
+@media (max-width: 768px) {
+  html:root { --section-pad: 48px 16px; }
+  #wpilot-header .wpilot-hamburger { display: flex !important; }
+  #wpilot-header nav.wpilot-desktop-nav { display: none !important; }
+  #wpilot-header .wpilot-header-cta { display: none !important; }
+  #wpilot-header .wpilot-header-inner { padding: 0 16px; height: 64px; }
+  body.has-wpilot-header { padding-top: 64px !important; }
+  html body .wp-block-columns { flex-direction: column !important; }
+  html body .wp-block-column { flex-basis: 100% !important; min-width: 100% !important; }
+  html body .wp-block-buttons { flex-direction: column !important; gap: 12px !important; }
+  html body .wp-block-button__link { display: block !important; text-align: center !important; width: 100% !important; }
+}
+
+/* ─── SMALL MOBILE (<=480px) ─── */
+@media (max-width: 480px) {
+  html:root { --section-pad: 40px 12px; }
+  html body h1 { font-size: 2rem !important; }
+  html body h2 { font-size: 1.5rem !important; }
+}
+
+/* ─── DISABLE CONFLICTS ─── */
+body.has-wpilot-header .wpilot-mn-trigger, body.has-wpilot-header #wpilotMnHeader { display: none !important; }
+
+/* Hide page titles - theme shows them automatically */
+.entry-title, .page-title, .entry-header .entry-title, h1.entry-title { display: none !important; }
+
+
+/* ─── FULL WIDTH FIX — override WordPress content-size ─── */
+:root {
+  --wp--style--global--content-size: 100% !important;
+  --wp--style--global--wide-size: 100% !important;
+}
+.is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)) {
+  max-width: 100% !important;
+}
+.wp-site-blocks, .entry-content, .site-content, .page-content {
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+body, html {
+  overflow-x: hidden;
+}
