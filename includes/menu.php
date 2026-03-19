@@ -22,7 +22,7 @@ add_action( 'admin_menu', function () {
     $pages = [
         [ CA_SLUG,               'Dashboard',       'wpilot_page_dashboard'    ],
         [ CA_SLUG.'-mcp',        'Claude Code',     'wpilot_page_mcp_admin'    ],
-        [ CA_SLUG.'-settings',   'Settings',        'wpilot_page_settings'     ],
+        [ CA_SLUG.'-mcp',   'Settings',        'wpilot_page_settings'     ],
         [ CA_SLUG.'-license',    'License',         'wpilot_page_license'      ],
         [ CA_SLUG.'-restore',    'History',         'wpilot_page_restore'      ],
     ];
@@ -62,7 +62,7 @@ function wpilot_wrap( $title, $icon, $html, $narrow = false ) {
         $tl = ['free'=>'Free','pro'=>'⚡ Pro','team'=>'👥 Team','lifetime'=>'🏆 Lifetime'];
         echo '<span class="ca-status-pill ca-status-ok">● '.esc_html($tl[$t] ?? ucfirst($t)).'</span>';
     } else {
-        echo '<span class="ca-status-pill ca-status-off">○ Not Connected — <a href="'.esc_url(admin_url('admin.php?page='.CA_SLUG.'-settings')).'">Connect →</a></span>';
+        echo '<span class="ca-status-pill ca-status-off">○ Not Connected — <a href="'.esc_url(admin_url('admin.php?page='.CA_SLUG.'-mcp')).'">Connect →</a></span>';
     }
     echo '</div>';
     echo '<div class="ca-content">'.$html.'</div>';
@@ -97,7 +97,7 @@ function wpilot_page_dashboard() {
             <strong>Connect Claude AI to get started</strong>
             <p>Connect Claude AI to get started. WPilot can set it up automatically — just click Connect Now.</p>
         </div>
-        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-settings') ) ?>" class="ca-btn ca-btn-primary">Connect Now →</a>
+        <a href="<?= esc_url( admin_url('admin.php?page='.CA_SLUG.'-mcp') ) ?>" class="ca-btn ca-btn-primary">Connect Now →</a>
     </div>
     <?php elseif ( ! $lic && $used >= CA_FREE_LIMIT ): ?>
     <div class="ca-alert ca-alert-danger ca-onboard-banner">
@@ -137,7 +137,7 @@ function wpilot_page_dashboard() {
         $cards = [
             [CA_SLUG.'-chat',     '💬', 'Chat with AI',      'Design, build, and fix your site by chatting'],
             [CA_SLUG.'-analyze',  '🔍', 'Site Analysis',     'Full report on SEO, speed, and design'],
-            [CA_SLUG.'-settings', '⚙️', 'Connect Account',   'Connect your Claude AI account'],
+            [CA_SLUG.'-mcp', '⚙️', 'Connect Account',   'Connect your Claude AI account'],
             [CA_SLUG.'-license',  '🔑', 'Your Plan',         'Manage your WPilot subscription'],
             [CA_SLUG.'-restore',  '🔄', 'Undo Changes',      'Restore anything the AI changed'],
         ];

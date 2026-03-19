@@ -42,7 +42,7 @@ add_filter("style_loader_tag", function($html, $handle) {
 
 // ── Core helpers — wrapped with function_exists to avoid conflicts ──
 if ( ! function_exists( 'wpilot_is_connected' ) ) {
-    function wpilot_is_connected() { return !empty(get_option("ca_api_key","")); }
+    function wpilot_is_connected() { return !empty(get_option("ca_api_key","")) || !empty(get_option("wpilot_mcp_api_key_hash","")); }
 }
 if ( ! function_exists( 'wpilot_theme' ) ) {
     function wpilot_theme() { return get_option( 'wpilot_theme', 'dark' ); }
@@ -242,7 +242,7 @@ add_action('admin_bar_menu', function($bar) {
     if ( !current_user_can('manage_options') ) return;
     $connected = wpilot_is_connected();
     $icon      = $connected ? '⚡' : '⚠️';
-    $url       = admin_url('admin.php?page='.CA_SLUG.($connected ? '' : '-settings'));
+    $url       = admin_url('admin.php?page='.CA_SLUG.($connected ? '' : '-mcp'));
     $color     = $connected ? '#10b981' : '#f59e0b';
     $bar->add_node([
         'id'    => 'aib-status',
