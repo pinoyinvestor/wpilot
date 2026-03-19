@@ -75,7 +75,6 @@ define( 'WPI_LICENSE_VALIDATE_URL',    'https://weblease.se/ai-license/validate'
 define( 'WPI_STRIPE_PUBLISHABLE_KEY',   '' );  // loaded from get_option() in helpers
 define( 'WPI_LICENSE_SERVER',    'https://weblease.se/ai-license' );
 define( 'CA_SLUG',       'wpilot' );
-define( 'CA_MONTHLY_PRICE',          9    );   // Alias for bubble.php
 define( 'WPI_WEBLEAS_ENDPOINT',      'https://weblease.se/ai-query' );  // WPilot AI server (moved from webleas_ai.php)
 define( 'CA_MODEL',      'claude-sonnet-4-6' );
 define( 'CA_MODEL_FAST', 'claude-haiku-4-5-20251001' ); // 10x cheaper for simple tasks
@@ -87,13 +86,10 @@ $_wpilot_core = [
     'includes/i18n.php',
     'includes/license.php',
     'includes/tracking.php',
-    'includes/bubble.php',
     'includes/ajax.php',
-    'includes/sessions.php',
     'includes/shield.php',
     // 'includes/oauth.php', // OAuth abandoned — using MCP
     // 'includes/mcp_server_v2.php', // replaced by v3
-    'includes/brain_ajax.php',
     'includes/mcp_auth.php',
     // 'includes/mcp_server.php', // replaced by v3
     // 'includes/mcp_tool_registry.php', // replaced by grouped tools
@@ -103,8 +99,7 @@ $_wpilot_core = [
     'includes/mcp_undo.php',
     'includes/mcp_grouped_tools.php',
     'includes/mcp_safeguards.php',
-    'includes/mcp_server_v3.php',
-];
+    'includes/mcp_server_v3.php'];
 foreach ( $_wpilot_core as $f ) {
     require_once CA_PATH . $f;
 }
@@ -154,8 +149,7 @@ function wpilot_register_lazy_modules() {
         'data_prep'      => ['wpilot_export_training', 'wpilot_classify_intent', 'training_stats', 'export_training_data'],
         'site_types'     => ['wpilot_detect_site_type', 'wpilot_default_pages'],
         'tools_snippets' => ['wpilot_tools_snippets'],
-        'upgrade'        => ['wpilot_check_updates'],
-    ];
+        'upgrade'        => ['wpilot_check_updates']];
 }
 
 /**
@@ -242,9 +236,6 @@ add_action( 'template_redirect', function() {
 register_activation_hook( __FILE__, function () {
     wpilot_load_heavy();
     // Explicitly load modules needed for activation
-    require_once CA_PATH . "includes/brain.php";
-    require_once CA_PATH . "includes/collector.php";
-    require_once CA_PATH . "includes/shadow.php";
     add_option( 'wpilot_theme',               'dark' );
     add_option( 'wpilot_auto_approve',        'no' );
     add_option( 'wpilot_prompts_used',        0 );
@@ -276,16 +267,9 @@ function wpilot_asset_suffix() {
 }
 
 // ── Shared enqueue helper ─────────────────────────────────────
-function wpilot_enqueue_bubble() {
-    // Assets always load - features are gated in JS
-    $sfx = wpilot_asset_suffix();
-    wp_enqueue_style(  'aib-bubble', CA_URL . "assets/bubble{$sfx}.css", [], CA_VERSION );
-    wp_enqueue_script( 'aib-bubble', CA_URL . "assets/bubble{$sfx}.js",  ['jquery'], CA_VERSION, true );
-}
 
-// ── Admin: bubble + full plugin UI ────────────────────────────
+// ── Admin: plugin UI ──────────────────────────────────────────
 add_action( 'admin_enqueue_scripts', function ( $hook ) {
-    wpilot_enqueue_bubble();
     // Full admin UI only on our plugin pages
     if ( strpos( $hook, CA_SLUG ) !== false ) {
         $sfx = wpilot_asset_suffix();
@@ -313,31 +297,17 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
             'page_title'  => get_admin_page_title(),
             'i18n'        => [
                 'error_no_account' => 'Connect your Claude account to continue',
-                'add_account'      => 'Connect Claude',
-            ],
+                'add_account'      => 'Connect Claude'],
             'strings'     => [
                 'thinking'  => wpilot_t('thinking'),
                 'error'     => wpilot_t('error'),
                 'apply'     => wpilot_t('apply'),
                 'skip'      => wpilot_t('skip'),
                 'undo'      => wpilot_t('undo'),
-                'analyzing' => wpilot_t('analyzing'),
-            ],
-        ]);
+                'analyzing' => wpilot_t('analyzing')]]);
     }
 } );
 
-// ── Frontend: bubble on all public pages for logged-in users ──
-add_action( 'wp_enqueue_scripts', function () {
-    // Framework CSS — loads on ALL pages for ALL visitors (not just logged in)
-    // This is the site's design system. Priority 999 = loads AFTER theme CSS.
-    if ( file_exists( CA_PATH . 'assets/wpilot-framework.css' ) ) {
-        wp_enqueue_style( 'wpilot-framework', CA_URL . 'assets/wpilot-framework.css', [], CA_VERSION );
-    }
-    // Bubble only for logged-in users
-    if ( ! is_user_logged_in() ) return;
-    wpilot_enqueue_bubble();
-}, 999 );
 // Execute scheduled WPilot actions
 add_action('wpilot_run_scheduled', function($id) {
     $scheduled = get_option('wpilot_scheduled_actions', []);
@@ -376,8 +346,7 @@ add_action('rest_api_init', function() {
             }
             return new WP_REST_Response(['ok' => true, 'slug' => $slug], 200);
         },
-        'permission_callback' => '__return_true',
-    ]);
+        'permission_callback' => '__return_true']);
 });
 /**
  * Memory guard — check if we have enough RAM for an operation
@@ -474,8 +443,7 @@ function wpilot_check_for_updates($transient) {
 
     $response = wp_remote_get('https://weblease.se/plugin/update-check', [
         'timeout' => 10,
-        'headers' => ['Accept' => 'application/json'],
-    ]);
+        'headers' => ['Accept' => 'application/json']]);
 
     if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
         return $transient;
@@ -496,8 +464,7 @@ function wpilot_check_for_updates($transient) {
             'package'     => $update->download_url,
             'tested'      => $update->tested ?? '',
             'requires'    => $update->requires ?? '6.0',
-            'requires_php' => $update->requires_php ?? '7.4',
-        ];
+            'requires_php' => $update->requires_php ?? '7.4'];
     }
 
     return $transient;
@@ -530,13 +497,10 @@ function wpilot_plugin_info($result, $action, $args) {
         'sections'      => [
             'description'  => $update->sections->description ?? '',
             'installation' => $update->sections->installation ?? '',
-            'changelog'    => $update->changelog ?? '',
-        ],
+            'changelog'    => $update->changelog ?? ''],
         'banners' => [
             'high' => $update->banner_high ?? '',
-            'low'  => $update->banner_low ?? '',
-        ],
-    ];
+            'low'  => $update->banner_low ?? '']];
 }
 // Show admin notice for missing essential plugins (once per week)
 add_action('admin_notices', function() {

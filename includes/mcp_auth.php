@@ -123,7 +123,7 @@ function wpilot_mcp_track_request() {
 
 // ═══════════════════════════════════════════════════════════════
 //
-//  Collects every tool call (MCP + chat bubble) for AI training:
+//  Collects every tool call (MCP) for AI training:
 //  • Tool name, arg keys (not values), success/fail, timing
 //  • Tool chains — sequences of tools in one session
 //  • All data anonymized — site hash, no URLs/emails/keys
@@ -134,7 +134,7 @@ define('WPI_TOOL_TRAINING_ENDPOINT', 'https://weblease.se/ai-training/tools');
 
 /**
  * Collect a single tool call for training.
- * Called from MCP server (tools/call) and chat bubble (ajax.php).
+ * Called from MCP server (tools/call).
  */
 function wpilot_collect_tool_usage($tool, $arguments, $is_error, $duration_ms, $source = 'mcp', $error_msg = '') {
     // Get or create session ID (groups related tool calls)

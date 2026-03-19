@@ -246,7 +246,7 @@ function wpilot_page_chat() {
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     </button>
                 </div>
-                <div class="ca-input-hint">Enter to send · Shift+Enter for new line · Alt+C for bubble</div>
+                <div class="ca-input-hint">Enter to send · Shift+Enter for new line</div>
             </div>
         </main>
     </div>
@@ -535,13 +535,13 @@ function wpilot_page_instructions() {
 // GETTING STARTED GUIDE
 // ══════════════════════════════════════════════════════════════
 function wpilot_page_guide() {
-    \$conn = wpilot_is_connected();
+    $conn = wpilot_is_connected();
     ob_start(); ?>
 
     <div class="ca-hero-box" style="margin-bottom:28px">
         <h2>Getting started with WPilot</h2>
         <p style="font-size:14px;color:var(--ca-text2);margin:8px 0 0">WPilot connects your WordPress site to Claude AI via MCP. Follow these steps to get started.</p>
-        <?php if (\$conn): ?>
+        <?php if ($conn): ?>
         <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <span style="background:rgba(16,185,129,.15);color:#6ee7b7;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700">Connected — you are ready!</span>
         </div>
@@ -593,10 +593,10 @@ function wpilot_page_guide() {
             ["Content", "Write, translate, and edit text"],
             ["Forms", "Create contact and signup forms"],
             ["Marketing", "Popups, CTAs, social proof"],
-        ] as [\$title, \$desc]): ?>
+        ] as [$title, $desc]): ?>
         <div class="ca-card" style="padding:16px">
-            <strong style="font-size:13px;color:var(--ca-text)"><?= esc_html(\$title) ?></strong>
-            <p style="font-size:12px;color:var(--ca-text2);margin:4px 0 0;line-height:1.5"><?= esc_html(\$desc) ?></p>
+            <strong style="font-size:13px;color:var(--ca-text)"><?= esc_html($title) ?></strong>
+            <p style="font-size:12px;color:var(--ca-text2);margin:4px 0 0;line-height:1.5"><?= esc_html($desc) ?></p>
         </div>
         <?php endforeach; ?>
     </div>
@@ -605,9 +605,9 @@ function wpilot_page_guide() {
     <div class="ca-card" style="padding:20px;margin-bottom:28px">
         <p style="font-size:13px;color:var(--ca-text2);line-height:1.8;margin:0">
             <strong style="color:var(--ca-text)">Free:</strong> 20 prompts, no credit card needed<br>
-            <strong style="color:var(--ca-text)">Pro:</strong> \$9/month, unlimited prompts, 1 site<br>
-            <strong style="color:var(--ca-text)">Team:</strong> \$29/month, unlimited prompts, 3 sites<br>
-            <strong style="color:var(--ca-text)">Lifetime:</strong> \$149 one-time, unlimited forever
+            <strong style="color:var(--ca-text)">Pro:</strong> $9/month, unlimited prompts, 1 site<br>
+            <strong style="color:var(--ca-text)">Team:</strong> $29/month, unlimited prompts, 3 sites<br>
+            <strong style="color:var(--ca-text)">Lifetime:</strong> $149 one-time, unlimited forever
         </p>
         <p style="font-size:12px;color:var(--ca-text3);margin:12px 0 0">Note: You also need a Claude account from Anthropic. Claude has its own pricing at <a href="https://anthropic.com/pricing" target="_blank" style="color:#4F7EFF">anthropic.com/pricing</a>.</p>
     </div>
@@ -722,7 +722,7 @@ function wpilot_page_settings() {
         <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:20px;text-align:center;margin-bottom:14px">
             <div style="font-size:32px;margin-bottom:8px">&#10003;</div>
             <strong style="color:#10B981;font-size:16px">Claude connected</strong>
-            <p style="font-size:13px;color:var(--ca-text2,#5E6E91);margin-top:6px">WPilot is ready. Open the chat bubble to start building.</p>
+            <p style="font-size:13px;color:var(--ca-text2,#5E6E91);margin-top:6px">WPilot is ready. Connect via MCP to start building.</p>
         </div>
         <div style="text-align:center">
             <button class="ca-btn ca-btn-ghost" id="wpilotDisconnect" style="font-size:12px;color:var(--ca-danger,#EF4444)">Disconnect</button>
