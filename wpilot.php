@@ -75,7 +75,7 @@ define( 'WPI_LICENSE_VALIDATE_URL',    'https://weblease.se/ai-license/validate'
 define( 'WPI_STRIPE_PUBLISHABLE_KEY',   '' );  // loaded from get_option() in helpers
 define( 'WPI_LICENSE_SERVER',    'https://weblease.se/ai-license' );
 define( 'CA_SLUG',       'wpilot' );
-define( 'WPI_WEBLEAS_ENDPOINT',      'https://weblease.se/ai-query' );  // WPilot AI server (moved from webleas_ai.php)
+define( 'WPI_WEBLEAS_ENDPOINT',      'https://weblease.se/ai-query' );  // WPilot AI server (moved from weblease_ai.php)
 define( 'CA_MODEL',      'claude-sonnet-4-6' );
 define( 'CA_MODEL_FAST', 'claude-haiku-4-5-20251001' ); // 10x cheaper for simple tasks
 
@@ -122,7 +122,7 @@ function wpilot_load_heavy() {
     $dir = plugin_dir_path(__FILE__) . 'includes/';
 
     // Core modules — always needed for chat
-    $core = ['mu_consolidator', 'brain', 'business_profile', 'api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_woo_advanced', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'tools_forms', 'tools_comments', 'tools_gdpr', 'tools_content', 'tools_marketing', 'tools_engage', 'backup', 'activity_log', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes', 'header_footer_blueprints', 'webleas_ai', 'collector', 'shadow', 'pwa', 'verify_agent'];
+    $core = ['mu_consolidator', 'brain', 'business_profile', 'api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_woo_advanced', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'tools_forms', 'tools_comments', 'tools_gdpr', 'tools_content', 'tools_marketing', 'tools_engage', 'backup', 'activity_log', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes', 'header_footer_blueprints', 'weblease_ai', 'collector', 'shadow', 'pwa', 'verify_agent'];
     foreach ($core as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;
@@ -145,7 +145,7 @@ function wpilot_register_lazy_modules() {
         'screenshot'     => ['screenshot', 'take_screenshot', 'analyze_design', 'visual_review', 'design_review', 'check_visual_bugs', 'visual_debug', 'compare_before_after', 'screenshot_before', 'screenshot_history', 'responsive_check', 'multi_device_screenshot'],
         'templates'      => ['list_templates', 'apply_template', 'use_template'],
         'brain'          => ['wpilot_brain_', 'wpilot_smart_answer'],
-        'webleas_ai'     => ['wpilot_check_license'],
+        'weblease_ai'     => ['wpilot_check_license'],
         'data_prep'      => ['wpilot_export_training', 'wpilot_classify_intent', 'training_stats', 'export_training_data'],
         'site_types'     => ['wpilot_detect_site_type', 'wpilot_default_pages'],
         'tools_snippets' => ['wpilot_tools_snippets'],
@@ -195,7 +195,7 @@ function wpilot_load_all_modules() {
     $mem_free_mb = ($mem_limit > 0) ? round(($mem_limit - $mem_used) / 1048576) : 999;
 
     // Always load these (needed for chat)
-    $essential = ['brain', 'collector', 'shadow', 'webleas_ai', 'plugin_tools', 'blueprint', 'parser_fix'];
+    $essential = ['brain', 'collector', 'shadow', 'weblease_ai', 'plugin_tools', 'blueprint', 'parser_fix'];
     foreach ($essential as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;
