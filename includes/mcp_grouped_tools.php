@@ -748,6 +748,22 @@ function wpilot_mcp_grouped_tool_definitions() {
         ],
     ];
 
+
+    // ── Debug & Diagnostics ──────────────────────────────────
+    $tools[] = [
+        'name' => 'debug',
+        'description' => 'Diagnose WordPress issues. health=full check, errors=PHP log, check_page=test URL, config=WP settings, cache=status, fix=common fixes.',
+        'inputSchema' => [
+            'type' => 'object',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => ['health','errors','clear_errors','check_page','config','cache','fix'], 'description' => 'Diagnostic action'],
+                'url' => ['type' => 'string', 'description' => 'URL to check (for check_page)'],
+                'lines' => ['type' => 'integer', 'description' => 'Error log lines (max 100)'],
+                'issue' => ['type' => 'string', 'description' => 'Fix: permalinks, transients, cache, all'],
+            ],
+            'required' => ['action'],
+        ],
+    ];
     $cached = $tools;
     return $tools;
 }
@@ -762,6 +778,11 @@ function wpilot_mcp_grouped_tool_definitions() {
  * Returns the result from wpilot_run_tool().
  */
 function wpilot_mcp_route_tool( $tool_name, $args ) {
+
+    // Direct handler for debug tool
+    if ($tool_name === 'debug' && function_exists('wpilot_tool_debug')) {
+        return wpilot_tool_debug($args);
+    }
     $action = $args['action'] ?? '';
 
     // Remove 'action' from args before passing to individual tool
@@ -1181,6 +1202,15 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'confirm'     => 'confirm_booking',
             'settings'    => 'booking_settings',
             'stats'       => 'booking_stats',
+        ],
+        'debug' => [
+            'health'       => 'wpilot_tool_debug',
+            'errors'       => 'wpilot_tool_debug',
+            'clear_errors' => 'wpilot_tool_debug',
+            'check_page'   => 'wpilot_tool_debug',
+            'config'       => 'wpilot_tool_debug',
+            'cache'        => 'wpilot_tool_debug',
+            'fix'          => 'wpilot_tool_debug',
         ],
         'maintenance' => [
             'enable'  => 'enable_maintenance',

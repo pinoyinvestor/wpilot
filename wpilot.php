@@ -125,7 +125,7 @@ function wpilot_load_heavy() {
     $dir = plugin_dir_path(__FILE__) . 'includes/';
 
     // Core modules — always needed for chat
-    $core = ['mu_consolidator', 'brain', 'business_profile', 'api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_woo_advanced', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'tools_forms', 'tools_comments', 'tools_gdpr', 'tools_content', 'tools_marketing', 'tools_engage', 'backup', 'activity_log', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes', 'header_footer_blueprints', 'weblease_ai', 'collector', 'shadow', 'pwa', 'verify_agent'];
+    $core = ['mu_consolidator', 'brain', 'business_profile', 'api', 'context', 'safeguard', 'tools', 'tools_pages', 'tools_woo', 'tools_woo_advanced', 'tools_design', 'tools_seo', 'tools_security', 'tools_files', 'tools_api', 'tools_media', 'tools_forms', 'tools_comments', 'tools_gdpr', 'tools_content', 'tools_marketing', 'tools_engage', 'backup', 'activity_log', 'parser_fix', 'design_memory', 'design_blueprints', 'site_recipes', 'header_footer_blueprints', 'weblease_ai', 'collector', 'shadow', 'pwa', 'verify_agent', 'tools_debug'];
     foreach ($core as $m) {
         $f = $dir . $m . '.php';
         if (file_exists($f)) require_once $f;
