@@ -535,253 +535,88 @@ function wpilot_page_instructions() {
 // GETTING STARTED GUIDE
 // ══════════════════════════════════════════════════════════════
 function wpilot_page_guide() {
-    $conn = wpilot_is_connected();
+    \$conn = wpilot_is_connected();
     ob_start(); ?>
 
-    <!-- Hero -->
     <div class="ca-hero-box" style="margin-bottom:28px">
-        <h2>🚀 Kom igång med WPilot</h2>
-        <p style="font-size:14px;color:var(--ca-text2);margin:8px 0 0">WPilot använder Claude AI. Du behöver ett Claude-konto från Anthropic. Om din server stödjer det installerar allt automatiskt — annars kan du koppla manuellt.</p>
-        <?php if ($conn): ?>
+        <h2>Getting started with WPilot</h2>
+        <p style="font-size:14px;color:var(--ca-text2);margin:8px 0 0">WPilot connects your WordPress site to Claude AI via MCP. Follow these steps to get started.</p>
+        <?php if (\$conn): ?>
         <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-            <span style="background:rgba(16,185,129,.15);color:#6ee7b7;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700">✅ Claude är kopplat — du är redo!</span>
-            <a href="<?= esc_url(admin_url("admin.php?page=".CA_SLUG."-chat")) ?>" class="ca-btn ca-btn-primary ca-btn-sm">Öppna chatten →</a>
+            <span style="background:rgba(16,185,129,.15);color:#6ee7b7;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700">Connected — you are ready!</span>
         </div>
         <?php endif; ?>
     </div>
+    <!-- Built by Weblease -->
+    <div class="ca-section-lbl" style="margin-bottom:16px">Setup — 3 simple steps</div>
 
-    <!-- Step-by-step -->
-    <div class="ca-section-lbl" style="margin-bottom:16px">Steg-för-steg — 4 enkla steg</div>
-
-    <?php
-    $step_data = [
-        [
-            "num"   => "1",
-            "icon"  => "🌐",
-            "title" => "Skapa ett konto på Anthropic",
-            "time"  => "2 min",
-            "url"   => "https://anthropic.com",
-            "link"  => "Gå till anthropic.com →",
-            "done"  => false,
-            "desc"  => "Anthropic är företaget bakom Claude AI — samma AI som driver WPilot. Du behöver ett konto på deras plattform för att få en Claude-konto.",
-            "note"  => "Viktigt: Har du redan ett claude.ai-konto (den vanliga chatten)? Det räcker INTE. API-nycklar är ett separat system på anthropic.com.",
-            "steps" => [
-                "Öppna anthropic.com i en ny flik",
-                "Klicka på \"Sign Up\" uppe till höger",
-                "Fyll i e-post och lösenord",
-                "Verifiera din e-postadress",
-                "Logga in på konsolen",
-            ],
-        ],
-        [
-            "num"   => "2",
-            "icon"  => "🔑",
-            "title" => "Skapa din Claude-konto",
-            "time"  => "1 min",
-            "url"   => "https://anthropic.com",
-            "link"  => "Gå till Claude Accounts →",
-            "done"  => false,
-            "desc"  => "Claude-konton är det som låter WPilot prata med Claude. Den är unik för dig och ska aldrig delas med någon.",
-            "note"  => "Nyckeln visas bara EN gång. Kopiera den direkt och spara den någonstans säkert — om du missar det måste du skapa en ny.",
-            "steps" => [
-                "I Anthropic Console — klicka på \"Claude Accounts\" i vänstermenyn",
-                "Klicka på den orange knappen \"Create Key\"",
-                "Ge nyckeln ett namn, t.ex. \"WPilot – Min Sajt\"",
-                "Klicka \"Create Key\"",
-                "Kopiera nyckeln (börjar med sk-ant-api03-...)",
-                "Spara den på ett säkert ställe",
-            ],
-        ],
-        [
-            "num"   => "3",
-            "icon"  => "💳",
-            "title" => "Lägg till betalning hos Anthropic",
-            "time"  => "2 min",
-            "url"   => "https://anthropic.com",
-            "link"  => "Gå till Billing →",
-            "done"  => false,
-            "desc"  => "Claude API faktureras per användning direkt av Anthropic. Du behöver ett Claude-konto med betalning kopplad.",
-            "note"  => "Börja med $5. Det räcker i månader för normal användning.",
-            "steps" => [
-                "Klicka på \"Billing\" i vänstermenyn",
-                "Klicka \"Add payment method\"",
-                "Fyll i kortuppgifter",
-                "Klicka \"Manage account\" och välj $5 eller $10",
-                "Tips: Sätt ett månatligt spending limit på $10 så det aldrig spårar iväg",
-            ],
-            "costs" => [
-                ["Snabb fråga / fix",         "~0,05 kr"],
-                ["Normal konversation",       "0,10–0,50 kr"],
-                ["Full sajt-analys",          "0,50–1,50 kr"],
-                ["Intensiv build-session",    "5–20 kr"],
-            ],
-        ],
-        [
-            "num"   => "4",
-            "icon"  => "⚡",
-            "title" => "Klistra in nyckeln i WPilot",
-            "time"  => "30 sek",
-            "url"   => admin_url("admin.php?page=".CA_SLUG."-settings"),
-            "link"  => "Öppna Inställningar →",
-            "done"  => $conn,
-            "desc"  => "Om din server stödjer det installerar allt automatiskt. Annars klistrar du in din Claude-konto här. Nyckeln lagras bara på din server.",
-            "steps" => [
-                "Klicka på \"Inställningar\" i WPilot-menyn till vänster",
-                "Klistra in din Claude-konto i fältet \"Claude Account\"",
-                "Klicka \"Test & Save\"",
-                "Du ser en grön bekräftelse: \"✅ Connected\"",
-                "Klar! Öppna chatten och börja bygga.",
-            ],
-        ],
-    ];
-
-    foreach ($step_data as $i => $s):
-        $done = $s["done"] || ($i < 3 && $conn);
-    ?>
-    <div class="ca-guide-step-v2 <?= $done ? "done" : "" ?>" style="margin-bottom:16px">
-        <div style="display:flex;gap:16px;align-items:flex-start">
-
-            <!-- Step number -->
-            <div style="flex-shrink:0;width:40px;height:40px;border-radius:50%;background:<?= $done ? "#10b981" : "var(--ca-accent)" ?>;display:flex;align-items:center;justify-content:center;font-size:<?= $done ? "18px" : "16px" ?>;font-weight:900;color:#fff">
-                <?= $done ? "✓" : $s["num"] ?>
+    <div style="display:flex;flex-direction:column;gap:16px;margin-bottom:28px">
+        <div class="ca-card" style="padding:24px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                <span style="background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">1</span>
+                <strong style="font-size:15px;color:var(--ca-text,#fff)">Get Claude</strong>
             </div>
-
-            <!-- Content -->
-            <div style="flex:1;min-width:0">
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
-                    <span style="font-size:16px;font-weight:800;color:var(--ca-text)"><?= $s["icon"] ?> <?= esc_html($s["title"]) ?></span>
-                    <span style="font-size:11px;color:var(--ca-text3);background:var(--ca-bg);padding:2px 8px;border-radius:4px">⏱ <?= $s["time"] ?></span>
-                    <?php if($done): ?>
-                    <span style="font-size:11px;color:#6ee7b7;background:rgba(16,185,129,.12);padding:2px 8px;border-radius:4px">✅ Klar</span>
-                    <?php endif; ?>
-                </div>
-
-                <p style="font-size:13px;color:var(--ca-text2);margin:0 0 10px;line-height:1.6"><?= esc_html($s["desc"]) ?></p>
-
-                <!-- Substeps -->
-                <div style="background:var(--ca-bg);border-radius:8px;padding:14px 16px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:700;color:var(--ca-text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Så här gör du:</div>
-                    <?php foreach ($s["steps"] as $si => $step): ?>
-                    <div style="display:flex;gap:10px;padding:4px 0;font-size:13px;color:var(--ca-text2)">
-                        <span style="flex-shrink:0;width:18px;height:18px;background:var(--ca-accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;margin-top:1px"><?= $si+1 ?></span>
-                        <span><?= esc_html($step) ?></span>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <!-- Cost table (step 3 only) -->
-                <?php if (!empty($s["costs"])): ?>
-                <div style="background:var(--ca-bg);border-radius:8px;padding:14px 16px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:700;color:var(--ca-text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Vad kostar det?</div>
-                    <?php foreach ($s["costs"] as [$what,$cost]): ?>
-                    <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:var(--ca-text2);border-bottom:1px solid var(--ca-border)">
-                        <span><?= esc_html($what) ?></span>
-                        <strong style="color:var(--ca-text)"><?= esc_html($cost) ?></strong>
-                    </div>
-                    <?php endforeach; ?>
-                    <div style="font-size:12px;color:var(--ca-text3);margin-top:8px">💡 $5 räcker i månader för normal användning. Börja alltid med $5.</div>
-                </div>
-                <?php endif; ?>
-
-                <!-- Warning note -->
-                <?php if (!empty($s["note"])): ?>
-                <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px 14px;font-size:12.5px;color:#fcd34d;line-height:1.6;margin-bottom:10px">
-                    ⚠️ <?= esc_html($s["note"]) ?>
-                </div>
-                <?php endif; ?>
-
-                <!-- CTA button -->
-                <?php if (!$done): ?>
-                <a href="<?= esc_url($s["url"]) ?>" target="<?= ( strpos($s["url"], "http") === 0 ) ? "_blank" : "_self" ?>"
-                   class="ca-btn ca-btn-primary ca-btn-sm" rel="noopener">
-                    <?= esc_html($s["link"]) ?>
-                </a>
-                <?php endif; ?>
-            </div>
+            <p style="font-size:13px;color:var(--ca-text2);line-height:1.6;margin:0">Download <a href="https://claude.ai/download" target="_blank" style="color:#4F7EFF">Claude Desktop</a> (free, Mac/Windows/Linux) or install <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" style="color:#4F7EFF">Claude Code</a> via terminal. You need a Claude account from <a href="https://anthropic.com" target="_blank" style="color:#4F7EFF">Anthropic</a>.</p>
         </div>
-    </div>
-    <?php endforeach; ?>
 
-    <div style="margin-bottom:28px"></div>    <!-- Costs guide -->
-    <div class="ca-section-lbl">Understanding Costs</div>
-    <div class="ca-card" style="margin-bottom:16px">
-        <h3>💳 What does it cost to use Claude AI?</h3>
-        <p class="ca-card-sub">Anthropic charges per message based on usage. You need a Claude account with billing enabled — not a flat subscription.</p>
-        <div class="ca-warn-box" style="margin-bottom:14px">
-            <strong>Important:</strong> A regular claude.ai chat subscription (Pro, Max etc.) is separate from API access. You need an Claude account from anthropic.com with billing enabled.
-        </div>
-        <div class="ca-two-col">
-            <div>
-                <div class="ca-section-lbl">Typical costs</div>
-                <?php foreach ([
-                    ['Quick question / fix',   '$0.005',  '~0.05 kr'],
-                    ['Normal conversation',    '$0.01–0.05', '0.10–0.50 kr'],
-                    ['Full site analysis',     '$0.05–0.15', '0.50–1.50 kr'],
-                    ['Intensive build session','$0.50–2.00', '5–20 kr'],
-                ] as [$what,$usd,$sek]): ?>
-                <div class="ca-info-row">
-                    <span><?= esc_html($what) ?></span>
-                    <strong><?= esc_html($usd) ?> (<?= esc_html($sek) ?>)</strong>
-                </div>
-                <?php endforeach; ?>
+        <div class="ca-card" style="padding:24px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                <span style="background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">2</span>
+                <strong style="font-size:15px;color:var(--ca-text,#fff)">Connect your site</strong>
             </div>
-            <div>
-                <div class="ca-section-lbl">Recommended starting budget</div>
-                <?php foreach ([
-                    ['$5 (~55 kr)',  'Casual use — lasts months for occasional sessions'],
-                    ['$10 (~110 kr)','Regular use — lasts a month of active building'],
-                    ['$25 (~270 kr)','Heavy use — intensive daily development sessions'],
-                ] as [$amt,$desc]): ?>
-                <div class="ca-info-row">
-                    <strong><?= esc_html($amt) ?></strong>
-                    <span style="text-align:right;max-width:180px"><?= esc_html($desc) ?></span>
-                </div>
-                <?php endforeach; ?>
-            </div>
+            <p style="font-size:13px;color:var(--ca-text2);line-height:1.6;margin:0 0 12px">Go to <strong>WPilot &gt; Settings</strong> and copy the MCP Server URL. Then add it to your Claude client:</p>
+            <ul style="font-size:13px;color:var(--ca-text2);line-height:1.8;margin:0;padding-left:20px">
+                <li><strong>Claude Desktop:</strong> Settings &rarr; Connectors &rarr; Add custom connector</li>
+                <li><strong>Claude Code:</strong> <code>claude mcp add wpilot --transport streamable-http URL</code></li>
+            </ul>
         </div>
-        <div class="ca-info-box" style="margin-top:14px">
-            <strong>Tip:</strong> Set a monthly spending limit in <a href="https://anthropic.com" target="_blank" rel="noopener">Anthropic billing</a> so it never goes over what you want. You'll get an email warning before you run out.
+
+        <div class="ca-card" style="padding:24px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                <span style="background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">3</span>
+                <strong style="font-size:15px;color:var(--ca-text,#fff)">Start building</strong>
+            </div>
+            <p style="font-size:13px;color:var(--ca-text2);line-height:1.6;margin:0">Just talk to Claude. Try: <em style="color:var(--ca-text,#fff)">"Analyze my site and suggest improvements"</em> or <em style="color:var(--ca-text,#fff)">"Build a modern homepage for my business"</em></p>
         </div>
     </div>
 
-    <!-- Features overview -->
-    <div class="ca-section-lbl">What you can do with WPilot</div>
-    <div class="ca-feature-grid" style="margin-bottom:24px">
+    <div class="ca-section-lbl" style="margin-bottom:16px">What can WPilot do?</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:28px">
         <?php foreach ([
-            ['💬','Chat','Ask Claude anything about your site — it knows your pages, plugins, SEO data and builder'],
-            ['🔍','Analyze','Get a full site analysis with prioritized fixes for SEO, design, plugins and content'],
-            ['🏗️','Build','Create pages, sections, menus and content — Claude adapts to your page builder'],
-            ['📈','SEO','Audit and fix title tags, meta descriptions, heading structure and alt texts'],
-            ['🔌','Plugins','Identify conflicts, overlap and unused plugins — manage them from one place'],
-            ['🖼️','Media','Auto-generate alt texts for all images — improves both SEO and accessibility'],
-            ['🛒','WooCommerce','Improve products, categories, pricing and checkout with AI assistance'],
-            ['↩️','Restore','Every AI change is backed up — undo anything with one click'],
-        ] as [$ico,$t,$d]): ?>
-        <div class="ca-feature-item">
-            <div class="ca-fi-icon"><?= $ico ?></div>
-            <div class="ca-fi-title"><?= esc_html($t) ?></div>
-            <div class="ca-fi-desc"><?= esc_html($d) ?></div>
+            ["Pages", "Create, edit, and manage pages with AI"],
+            ["Design", "Colors, fonts, layouts, and CSS"],
+            ["SEO", "Meta titles, descriptions, schema, sitemap"],
+            ["WooCommerce", "Products, shipping, payments, checkout"],
+            ["Plugins", "Install, activate, and configure plugins"],
+            ["Security", "Scan vulnerabilities, add headers"],
+            ["Media", "Upload and manage images"],
+            ["Content", "Write, translate, and edit text"],
+            ["Forms", "Create contact and signup forms"],
+            ["Marketing", "Popups, CTAs, social proof"],
+        ] as [\$title, \$desc]): ?>
+        <div class="ca-card" style="padding:16px">
+            <strong style="font-size:13px;color:var(--ca-text)"><?= esc_html(\$title) ?></strong>
+            <p style="font-size:12px;color:var(--ca-text2);margin:4px 0 0;line-height:1.5"><?= esc_html(\$desc) ?></p>
         </div>
         <?php endforeach; ?>
     </div>
 
-    <!-- Legal -->
-    <div class="ca-section-lbl">Legal & transparency</div>
-    <div class="ca-legal-box">
-        <div class="ca-legal-row"><span class="ca-legal-ico">⚡</span><div><strong>What is WPilot?</strong> A WordPress plugin by Weblease that connects your site to Claude AI — letting you design, build and improve your site through a chat interface.</div></div>
-        <div class="ca-legal-row"><span class="ca-legal-ico">🤖</span><div><strong>Powered by Claude AI</strong> — Claude is made by Anthropic. WPilot is the plugin; Anthropic provides the AI. We are not affiliated with or endorsed by Anthropic.</div></div>
-        <div class="ca-legal-row"><span class="ca-legal-ico">🔑</span><div><strong>Your own Claude account</strong> — All AI responses come from your own Anthropic account. Your key is stored on your server only. Weblease never sees your conversations.</div></div>
-        <div class="ca-legal-row"><span class="ca-legal-ico">👁️</span><div><strong>Review before applying</strong> — Claude always explains what it plans to do and asks for confirmation before major changes. You are always in control.</div></div>
-        <div class="ca-legal-row"><span class="ca-legal-ico">📋</span><div><strong>Anthropic's policies apply</strong> — Since this plugin uses the Claude API, Anthropic's usage rules apply to your account. <a href="https://www.anthropic.com/legal/usage-policy" target="_blank" rel="noopener">Anthropic Usage Policy →</a> · <a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">Privacy Policy →</a></div></div>
-        <div class="ca-legal-row"><span class="ca-legal-ico">⚠️</span><div><strong>No warranty</strong> — This software is provided "as is" without warranties. The developer is not liable for damages resulting from AI-generated content. Always use Restore History to undo unwanted changes.</div></div>
+    <div class="ca-section-lbl" style="margin-bottom:16px">Pricing</div>
+    <div class="ca-card" style="padding:20px;margin-bottom:28px">
+        <p style="font-size:13px;color:var(--ca-text2);line-height:1.8;margin:0">
+            <strong style="color:var(--ca-text)">Free:</strong> 20 prompts, no credit card needed<br>
+            <strong style="color:var(--ca-text)">Pro:</strong> \$9/month, unlimited prompts, 1 site<br>
+            <strong style="color:var(--ca-text)">Team:</strong> \$29/month, unlimited prompts, 3 sites<br>
+            <strong style="color:var(--ca-text)">Lifetime:</strong> \$149 one-time, unlimited forever
+        </p>
+        <p style="font-size:12px;color:var(--ca-text3);margin:12px 0 0">Note: You also need a Claude account from Anthropic. Claude has its own pricing at <a href="https://anthropic.com/pricing" target="_blank" style="color:#4F7EFF">anthropic.com/pricing</a>.</p>
     </div>
 
-    <?php wpilot_wrap( 'Getting Started', '📖', ob_get_clean(), true );
+    <?php
+    echo ob_get_clean();
 }
 
-// ══════════════════════════════════════════════════════════════
-// SETTINGS
-// ══════════════════════════════════════════════════════════════
+
 function wpilot_page_settings() {
     // Handle terminal key generation/revocation
     if (isset($_POST['wpilot_mcp_action']) && wp_verify_nonce($_POST['_wpnonce'], 'wpilot_mcp_action')) {
@@ -811,45 +646,45 @@ function wpilot_page_settings() {
         ?>
 
         <div style="font-size:48px;margin-bottom:16px">&#9889;</div>
-        <h2 style="font-size:24px;font-weight:800;margin-bottom:8px;color:var(--ca-text,#fff)">Anslut Claude</h2>
+        <h2 style="font-size:24px;font-weight:800;margin-bottom:8px;color:var(--ca-text,#fff)">Connect Claude</h2>
         <p style="font-size:15px;color:var(--ca-text2,#5E6E91);margin-bottom:28px;line-height:1.6">
-            Koppla din Claude-app till din WordPress-sida.<br>
-            Claude kan sedan bygga, designa och hantera din hemsida.
+            Connect your Claude app to your WordPress site.<br>
+            Claude can then build, design, and manage your website.
         </p>
 
         <!-- Step 1 -->
         <div style="background:var(--ca-bg3,#0B0E18);border:1px solid var(--ca-border2,#1a1a2e);border-radius:14px;padding:24px;margin-bottom:20px;text-align:left">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
                 <span style="background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0">1</span>
-                <span style="font-size:15px;font-weight:600;color:var(--ca-text,#fff)">Ladda ner Claude Desktop</span>
+                <span style="font-size:15px;font-weight:600;color:var(--ca-text,#fff)">Download Claude Desktop</span>
             </div>
             <a href="https://claude.ai/download" target="_blank" style="display:block;width:100%;padding:14px;background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:15px;text-align:center;text-decoration:none;cursor:pointer;transition:all .3s">
-                Ladda ner Claude &rarr;
+                Download Claude &rarr;
             </a>
-            <p style="font-size:12px;color:var(--ca-text3,#3E4A6D);margin-top:10px;text-align:center">Gratis. Finns till Mac, Windows och Linux.</p>
+            <p style="font-size:12px;color:var(--ca-text3,#3E4A6D);margin-top:10px;text-align:center">Free. Available for Mac, Windows, and Linux.</p>
         </div>
 
         <!-- Step 2 -->
         <div style="background:var(--ca-bg3,#0B0E18);border:1px solid var(--ca-border2,#1a1a2e);border-radius:14px;padding:24px;margin-bottom:20px;text-align:left">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
                 <span style="background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0">2</span>
-                <span style="font-size:15px;font-weight:600;color:var(--ca-text,#fff)">Koppla din hemsida</span>
+                <span style="font-size:15px;font-weight:600;color:var(--ca-text,#fff)">Connect your site</span>
             </div>
             <p style="font-size:13px;color:var(--ca-text2,#5E6E91);margin-bottom:12px;line-height:1.5">
-                &Ouml;ppna Claude Desktop &rarr; Inst&auml;llningar &rarr; Connectors &rarr; "Add custom connector"
+                Open Claude Desktop &rarr; Settings &rarr; Connectors &rarr; "Add custom connector"
             </p>
             <div style="margin-bottom:8px">
-                <label style="font-size:12px;font-weight:600;color:var(--ca-text2,#5E6E91);display:block;margin-bottom:4px">Namn:</label>
+                <label style="font-size:12px;font-weight:600;color:var(--ca-text2,#5E6E91);display:block;margin-bottom:4px">Name:</label>
                 <div style="display:flex;gap:8px">
                     <input type="text" value="WPilot" readonly style="flex:1;padding:10px 14px;background:var(--ca-bg,#050608);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text,#fff);font-size:14px;font-family:monospace">
-                    <button onclick="navigator.clipboard.writeText('WPilot');this.textContent='&#10003;';setTimeout(()=>this.textContent='Kopiera',1500)" style="padding:10px 16px;background:var(--ca-bg4,#111);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text2);font-size:13px;cursor:pointer;white-space:nowrap">Kopiera</button>
+                    <button onclick="navigator.clipboard.writeText('WPilot');this.textContent='&#10003;';setTimeout(()=>this.textContent='Kopiera',1500)" style="padding:10px 16px;background:var(--ca-bg4,#111);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text2);font-size:13px;cursor:pointer;white-space:nowrap">Copy</button>
                 </div>
             </div>
             <div>
                 <label style="font-size:12px;font-weight:600;color:var(--ca-text2,#5E6E91);display:block;margin-bottom:4px">Server URL:</label>
                 <div style="display:flex;gap:8px">
                     <input type="text" value="<?= esc_attr($mcp_url) ?>" readonly id="wpilotMcpUrl" style="flex:1;padding:10px 14px;background:var(--ca-bg,#050608);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text,#fff);font-size:13px;font-family:monospace;overflow:hidden;text-overflow:ellipsis">
-                    <button onclick="navigator.clipboard.writeText(document.getElementById('wpilotMcpUrl').value);this.textContent='&#10003;';setTimeout(()=>this.textContent='Kopiera',1500)" style="padding:10px 16px;background:var(--ca-bg4,#111);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text2);font-size:13px;cursor:pointer;white-space:nowrap">Kopiera</button>
+                    <button onclick="navigator.clipboard.writeText(document.getElementById('wpilotMcpUrl').value);this.textContent='&#10003;';setTimeout(()=>this.textContent='Kopiera',1500)" style="padding:10px 16px;background:var(--ca-bg4,#111);border:1px solid var(--ca-border2,#333);border-radius:8px;color:var(--ca-text2);font-size:13px;cursor:pointer;white-space:nowrap">Copy</button>
                 </div>
             </div>
         </div>
@@ -858,13 +693,13 @@ function wpilot_page_settings() {
         <div style="background:var(--ca-bg3,#0B0E18);border:1px solid var(--ca-border2,#1a1a2e);border-radius:14px;padding:24px;text-align:left">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
                 <span style="background:linear-gradient(135deg,#5B7FFF,#7C5CFC);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0">3</span>
-                <span style="font-size:15px;font-weight:600;color:var(--ca-text,#fff)">B&ouml;rja bygga</span>
+                <span style="font-size:15px;font-weight:600;color:var(--ca-text,#fff)">Start building</span>
             </div>
             <p style="font-size:14px;color:var(--ca-text2,#5E6E91);line-height:1.6">
-                Skriv i Claude: <strong style="color:var(--ca-text,#fff)">"Bygg en modern hemsida f&ouml;r mitt f&ouml;retag"</strong>
+                Type in Claude: <strong style="color:var(--ca-text,#fff)">"Build a modern website for my business"</strong>
             </p>
             <p style="font-size:13px;color:var(--ca-text3,#3E4A6D);margin-top:8px">
-                Claude kan bygga sidor, &auml;ndra design, installera plugins, fixa SEO — allt p&aring; din WordPress-sida.
+                Claude can build pages, change designs, install plugins, fix SEO — everything on your WordPress site.
             </p>
         </div>
     </div>
@@ -1138,7 +973,7 @@ function wpilot_page_license() {
         msg.textContent = 'Verifying…';
         jQuery.post(ajaxurl, {action:'ca_activate_license',nonce:CA.nonce,key:key}, function(r) {
             if (r.success) { msg.style.color='#10b981'; msg.textContent='✅ '+r.data.message; setTimeout(()=>location.reload(),1500); }
-            else { msg.style.color='#ef4444'; msg.textContent='❌ '+(r.data||'Ogiltig nyckel'); }
+            else { msg.style.color='#ef4444'; msg.textContent='❌ '+(r.data||'Invalid key'); }
         });
     }
     function wpiStartCheckout(plan) {

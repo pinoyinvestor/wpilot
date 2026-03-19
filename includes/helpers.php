@@ -22,14 +22,15 @@ function wpilot_bust_cache() {
 }
 
 // Add cache version to all enqueued styles/scripts
-add_filter('style_loader_tag', function($html) {
-    $ver = get_option('wpilot_cache_ver', '1');
-    return str_replace('.css?', ".css?wv={$ver}&", str_replace(".css'", ".css?wv={$ver}'", $html));
-}, 99);
+add_filter("style_loader_tag", function($html, $handle) {
+    if (strpos($handle, "wpilot") === false && strpos($handle, "ca-") === false) return $html;
+    $ver = get_option("wpilot_cache_ver", "1");
+    return str_replace(".css?", ".css?wv={$ver}&", str_replace(".css'", ".css?wv={$ver}'", $html));
+}, 99, 2);
 
 // ── Core helpers — wrapped with function_exists to avoid conflicts ──
 if ( ! function_exists( 'wpilot_is_connected' ) ) {
-    function wpilot_is_connected() { return function_exists("wpilot_oauth_is_connected") && wpilot_oauth_is_connected(); }
+    function wpilot_is_connected() { return !empty(get_option("ca_api_key","")); }
 }
 if ( ! function_exists( 'wpilot_theme' ) ) {
     function wpilot_theme() { return get_option( 'wpilot_theme', 'dark' ); }
