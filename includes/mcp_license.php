@@ -75,6 +75,6 @@ function wpilot_mcp_free_tools() {
  * Check if a grouped tool is available for the current license tier.
  */
 function wpilot_mcp_tool_allowed_for_tier( $tool_name, $tier ) {
-    if ( in_array( $tier, [ 'pro', 'team', 'lifetime' ], true ) ) return true;
+    if ( in_array( $tier, [ 'pro', 'team', 'lifetime', 'admin', 'client', 'viewer' ], true ) ) return true;
     return in_array( $tool_name, wpilot_mcp_free_tools(), true );
 }

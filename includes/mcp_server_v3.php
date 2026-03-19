@@ -52,6 +52,11 @@ function wpilot_mcp3_auth( $request ) {
 
     // Built by Weblease
 
+    // Fallback: token in URL query string (for Claude Desktop connectors)
+    if ( ! $token ) {
+        $token = $request->get_param( "token" );
+    }
+
     // Fallback: X-WPilot-Token header
     if ( ! $token ) {
         $token = $request->get_header( 'X-WPilot-Token' );
