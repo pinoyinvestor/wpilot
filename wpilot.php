@@ -518,7 +518,7 @@ add_action('admin_notices', function() {
     if (!in_array('wordfence', $installed) && !in_array('sucuri-scanner', $installed)) $missing[] = 'Security';
 
     if (!empty($missing)) {
-        echo '<div class="notice notice-warning is-dismissible"><p><strong>WPilot:</strong> Your site is missing essential plugins: ' . implode(', ', $missing) . '. <a href="' . admin_url('admin.php?page=wpilot-chat') . '">Ask WPilot to install them</a></p></div>';
+        echo '<div class="notice notice-warning is-dismissible"><p><strong>WPilot:</strong> Your site is missing essential plugins: ' . implode(', ', $missing) . '. <a href="' . admin_url('admin.php?page=wpilot-mcp') . '">Ask WPilot to install them</a></p></div>';
     }
     set_transient('wpilot_plugin_check', 1, WEEK_IN_SECONDS);
 }); // wpilot_missing_plugins_notice

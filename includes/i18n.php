@@ -49,7 +49,7 @@ function wpilot_te( $key ) {
 function wpilot_strings() {
     return [
         // ── Bubble OAuth UI ──────────────────────────────────
-        'oauth_connect_title' => ['sv' => 'Anslut ditt Claude-konto', 'en' => 'Connect console.anthropic.com'],
+        'oauth_connect_title' => ['sv' => 'Anslut ditt Claude-konto', 'en' => 'Connect your Claude account'],
         'oauth_connect_desc' => ['sv' => 'Logga in med ditt Claude-konto for att komma igang.', 'en' => 'Sign in with console.anthropic.com to get started.'],
         'oauth_connect_btn' => ['sv' => 'Anslut Claude-konto', 'en' => 'Connect Claude account'],
         'oauth_step1' => ['sv' => '1. Logga in pa Claude i det nya fonstret', 'en' => '1. Sign in to Claude in the new window'],
@@ -82,7 +82,7 @@ function wpilot_strings() {
         // ── Settings page ──────────────────────────────────────
         'connect_warning_title' => [
             'sv' => 'Koppla ditt Claude-konto för att komma igång',
-            'en' => 'Connect console.anthropic.com to get started',
+            'en' => 'Connect your Claude account to get started',
             'de' => 'Du benötigst Anthropic API-Account – kein normales Abonnement',
             'fr' => 'Vous avez besoin de compte API Anthropic — pas d\'un abonnement classique',
             'es' => 'Necesitas cuenta de la API de Anthropic — no una suscripción normal',
@@ -590,7 +590,7 @@ function wpilot_strings() {
 
         // ── Connect API section ────────────────────────────────
         'connect_api_title' => [
-            'sv'=>'Koppla ditt Claude-konto','en'=>'Connect console.anthropic.com','de'=>'Claude API-Schlüssel verbinden',
+            'sv'=>'Koppla ditt Claude-konto','en'=>'Connect your Claude account','de'=>'Claude API-Schlüssel verbinden',
             'fr'=>'Connecter la clé API Claude','es'=>'Conectar clave API de Claude','nb'=>'Koble til Claude API-nøkkel',
             'da'=>'Tilslut Claude API-nøgle','fi'=>'Yhdistä Claude API-avain','nl'=>'Claude API-sleutel verbinden',
             'pl'=>'Połącz klucz API Claude','pt'=>'Conectar chave API Claude','it'=>'Connetti chiave API Claude',
