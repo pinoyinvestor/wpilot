@@ -779,10 +779,51 @@ function wpilot_mcp_grouped_tool_definitions() {
  */
 function wpilot_mcp_route_tool( $tool_name, $args ) {
 
+    // Direct handlers for tools with dedicated functions
+    $direct_handlers = [
+        'debug'  => 'wpilot_tool_debug',
+    ];
+
+    // WooCommerce direct handlers
+    $woo_direct = [
+        'woo_create_product'          => 'wpilot_woo_create_product',
+        'woo_update_store_settings'   => 'wpilot_woo_update_store_settings',
+        'woo_enable_payment'          => 'wpilot_woo_enable_payment',
+        'woo_configure_email'         => 'wpilot_woo_configure_email',
+        'woo_setup_checkout'          => 'wpilot_woo_setup_checkout',
+        'woo_set_tax_rate'            => 'wpilot_woo_set_tax_rate',
+        'woo_create_shipping_class'   => 'wpilot_woo_create_shipping_class',
+        'woo_update_shipping_zone'    => 'wpilot_woo_update_shipping_zone',
+    ];
+
+    // Other direct handlers
+    $other_direct = [
+        'plugin_install'              => 'wpilot_plugin_install_from_repo',
+        'cache_enable'                => 'wpilot_cache_enable',
+        'cache_purge'                 => 'wpilot_cache_purge',
+        'cache_configure'             => 'wpilot_cache_configure',
+        'smtp_configure'              => 'wpilot_smtp_configure',
+        'backup_configure'            => 'wpilot_backup_configure',
+        'security_enable_2fa'         => 'wpilot_security_enable_2fa',
+        'security_enable_firewall'    => 'wpilot_security_enable_firewall',
+        'multilingual_setup'          => 'wpilot_multilingual_setup',
+        'multilingual_translate_page' => 'wpilot_multilingual_translate_page',
+        'multilingual_add_language'   => 'wpilot_multilingual_add_language',
+        'multilingual_set_switcher'   => 'wpilot_multilingual_set_switcher',
+        'multilingual_bulk_translate' => 'wpilot_multilingual_bulk_translate',
+        'get_option_value'            => 'wpilot_get_option_value',
+    ];
+
+    // Check grouped tool name first
+
+    // Check if the resolved individual tool has a direct handler
+    $action = $args['action'] ?? '';
+    $route_map_all = array_merge($woo_direct, $other_direct);
+
+    // Resolve the individual tool name from the route map
+    // (We need to check after the route map resolves the action)
+
     // Direct handler for debug tool
-    if ($tool_name === 'debug' && function_exists('wpilot_tool_debug')) {
-        return wpilot_tool_debug($args);
-    }
     $action = $args['action'] ?? '';
 
     // Remove 'action' from args before passing to individual tool
@@ -914,7 +955,7 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'set_location' => 'set_menu_location',
         ],
         'plugins' => [
-            'install'    => 'plugin_install',
+            'install'    => 'wpilot_plugin_install_from_repo',
             'activate'   => 'activate_plugin',
             'deactivate' => 'deactivate_plugin',
             'update'     => 'update_all_plugins',
@@ -942,7 +983,7 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'reset_password' => 'send_password_reset',
         ],
         'settings' => [
-            'get'       => 'get_option_value',
+            'get'       => 'wpilot_get_option_value',
             'update'    => 'update_option',
             'blogname'  => 'update_blogname',
             'tagline'   => 'update_tagline',
@@ -965,7 +1006,7 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'delete'          => 'delete',
         ],
         'woo_products' => [
-            'create'      => 'woo_create_product',
+            'create'      => 'wpilot_woo_create_product',
             'read'        => 'get_page',
             'update'      => 'woo_update_product',
             'delete'      => 'delete',
@@ -1001,17 +1042,17 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'zones'        => 'shipping_zones',
             'methods'      => 'shipping_zones',
             'rates'        => 'shipping_zones',
-            'classes'      => 'woo_create_shipping_class',
-            'update_zone'  => 'woo_update_shipping_zone',
-            'create_class' => 'woo_create_shipping_class',
+            'classes'      => 'wpilot_woo_create_shipping_class',
+            'update_zone'  => 'wpilot_woo_update_shipping_zone',
+            'create_class' => 'wpilot_woo_create_shipping_class',
         ],
         'woo_settings' => [
-            'store'    => 'woo_update_store_settings',
-            'checkout' => 'woo_setup_checkout',
-            'payments' => 'woo_enable_payment',
+            'store'    => 'wpilot_woo_update_store_settings',
+            'checkout' => 'wpilot_woo_setup_checkout',
+            'payments' => 'wpilot_woo_enable_payment',
             'tax'      => 'woo_tax_setup',
-            'emails'   => 'woo_configure_email',
-            'tax_rates'=> 'woo_set_tax_rate',
+            'emails'   => 'wpilot_woo_configure_email',
+            'tax_rates'=> 'wpilot_woo_set_tax_rate',
         ],
         'woo_customers' => [
             'list'   => 'list_customers',
@@ -1051,8 +1092,8 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'scan'          => 'security_scan',
             'audit'         => 'full_security_check',
             'headers'       => 'add_security_headers',
-            'firewall'      => 'security_enable_firewall',
-            'two_factor'    => 'security_enable_2fa',
+            'firewall'      => 'wpilot_security_enable_firewall',
+            'two_factor'    => 'wpilot_security_enable_2fa',
             'xmlrpc'        => 'disable_xmlrpc',
             'block_ip'      => 'block_ip',
             'unblock_ip'    => 'unblock_ip',
@@ -1060,9 +1101,9 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'failed_logins' => 'failed_logins',
         ],
         'performance' => [
-            'cache_enable'       => 'cache_enable',
-            'cache_purge'        => 'cache_purge',
-            'cache_configure'    => 'cache_configure',
+            'cache_enable'       => 'wpilot_cache_enable',
+            'cache_purge'        => 'wpilot_cache_purge',
+            'cache_configure'    => 'wpilot_cache_configure',
             'compress_images'    => 'compress_images',
             'webp'               => 'convert_all_images_webp',
             'lazy_load'          => 'enable_lazy_load',
@@ -1107,7 +1148,7 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
         'email' => [
             'send'           => 'send_email',
             'test'           => 'send_test_email',
-            'configure_smtp' => 'smtp_configure',
+            'configure_smtp' => 'wpilot_smtp_configure',
             'templates'      => 'list_email_templates',
             'list_templates' => 'list_email_templates',
         ],
@@ -1115,7 +1156,7 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'create'    => 'backup_now',
             'list'      => 'list_backups',
             'restore'   => 'restore_backup',
-            'configure' => 'backup_configure',
+            'configure' => 'wpilot_backup_configure',
         ],
         'widgets' => [
             'list'          => 'list_widgets',
@@ -1182,11 +1223,11 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
             'inventory' => 'inventory_report',
         ],
         'translations' => [
-            'setup'          => 'multilingual_setup',
-            'translate_page' => 'multilingual_translate_page',
-            'add_language'   => 'multilingual_add_language',
-            'set_switcher'   => 'multilingual_set_switcher',
-            'bulk'           => 'multilingual_bulk_translate',
+            'setup'          => 'wpilot_multilingual_setup',
+            'translate_page' => 'wpilot_multilingual_translate_page',
+            'add_language'   => 'wpilot_multilingual_add_language',
+            'set_switcher'   => 'wpilot_multilingual_set_switcher',
+            'bulk'           => 'wpilot_multilingual_bulk_translate',
         ],
         'social' => [
             'links'         => 'add_social_links',
@@ -1256,5 +1297,22 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
     }
 
     // Execute the individual tool
+    // Check if individual tool has a direct handler function
+    $all_direct = [
+        'wpilot_tool_debug', 'wpilot_woo_create_product', 'wpilot_woo_update_store_settings',
+        'wpilot_woo_enable_payment', 'wpilot_woo_configure_email', 'wpilot_woo_setup_checkout',
+        'wpilot_woo_set_tax_rate', 'wpilot_woo_create_shipping_class', 'wpilot_woo_update_shipping_zone',
+        'wpilot_plugin_install_from_repo', 'wpilot_cache_enable', 'wpilot_cache_purge',
+        'wpilot_cache_configure', 'wpilot_smtp_configure', 'wpilot_backup_configure',
+        'wpilot_security_enable_2fa', 'wpilot_security_enable_firewall',
+        'wpilot_multilingual_setup', 'wpilot_multilingual_translate_page',
+        'wpilot_multilingual_add_language', 'wpilot_multilingual_set_switcher',
+        'wpilot_multilingual_bulk_translate', 'wpilot_get_option_value',
+    ];
+
+    if ( in_array( $individual_tool, $all_direct, true ) && function_exists( $individual_tool ) ) {
+        return $individual_tool( $args );
+    }
+
     return wpilot_run_tool( $individual_tool, $params );
 }
