@@ -104,7 +104,8 @@ $_wpilot_core = [
     'includes/mcp_safeguards.php',
     'includes/mcp_server_v3.php',
     'includes/tools_debug.php',
-    'includes/tools_missing.php'];
+    'includes/tools_missing.php',
+    'includes/tools_power.php'];
 foreach ( $_wpilot_core as $f ) {
     require_once CA_PATH . $f;
 }

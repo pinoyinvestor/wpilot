@@ -764,6 +764,63 @@ function wpilot_mcp_grouped_tool_definitions() {
             'required' => ['action'],
         ],
     ];
+
+    // ── WordPress Power Tool ─────────────────────────────────
+    $tools[] = [
+        'name' => 'wordpress',
+        'description' => 'General WordPress admin — read/write options, any post type CRUD, taxonomies, users, theme mods, post meta, roles, cache flush. Covers everything not in specialized tools.',
+        'inputSchema' => [
+            'type' => 'object',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => ['get_option','set_option','get_posts','get_post','update_post','get_terms','create_term','get_users','get_theme_mods','set_theme_mod','get_meta','set_meta','post_types','taxonomies','roles','flush_rewrite','flush_cache'], 'description' => 'Operation'],
+                'name' => ['type' => 'string', 'description' => 'Option/mod/meta name'],
+                'value' => ['description' => 'Value to set'],
+                'id' => ['type' => 'integer', 'description' => 'Post/user ID'],
+                'post_type' => ['type' => 'string', 'description' => 'Post type (default: post)'],
+                'taxonomy' => ['type' => 'string', 'description' => 'Taxonomy name'],
+                'key' => ['type' => 'string', 'description' => 'Meta key'],
+                'title' => ['type' => 'string', 'description' => 'Post title'],
+                'content' => ['type' => 'string', 'description' => 'Post content'],
+                'status' => ['type' => 'string', 'description' => 'Post status'],
+                'meta' => ['type' => 'object', 'description' => 'Meta key-value pairs'],
+                'role' => ['type' => 'string', 'description' => 'User role filter'],
+                'search' => ['type' => 'string', 'description' => 'Search query'],
+                'count' => ['type' => 'integer', 'description' => 'Number of results'],
+            ],
+            'required' => ['action'],
+        ],
+    ];
+
+    // ── WooCommerce Power Tool ────────────────────────────────
+    $tools[] = [
+        'name' => 'woocommerce',
+        'description' => 'Complete WooCommerce management — products CRUD, orders, customers, coupons, categories, sales reports, stock reports, best sellers, refunds, store info. Everything for e-commerce.',
+        'inputSchema' => [
+            'type' => 'object',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => ['list_products','get_product','create_product','update_product','delete_product','list_orders','get_order','update_order','list_customers','list_coupons','list_categories','create_category','sales_report','stock_report','best_sellers','refund_order','store_info'], 'description' => 'Operation'],
+                'id' => ['type' => 'integer', 'description' => 'Product/order ID'],
+                'title' => ['type' => 'string', 'description' => 'Product name'],
+                'price' => ['type' => 'string', 'description' => 'Product price'],
+                'sale_price' => ['type' => 'string', 'description' => 'Sale price'],
+                'description' => ['type' => 'string', 'description' => 'Product description'],
+                'short_description' => ['type' => 'string', 'description' => 'Short description'],
+                'sku' => ['type' => 'string', 'description' => 'Product SKU'],
+                'stock' => ['type' => 'integer', 'description' => 'Stock quantity'],
+                'category' => ['type' => 'string', 'description' => 'Category name'],
+                'status' => ['type' => 'string', 'description' => 'Order/product status'],
+                'note' => ['type' => 'string', 'description' => 'Order note'],
+                'days' => ['type' => 'integer', 'description' => 'Report period in days'],
+                'amount' => ['type' => 'number', 'description' => 'Refund amount'],
+                'reason' => ['type' => 'string', 'description' => 'Refund reason'],
+                'count' => ['type' => 'integer', 'description' => 'Number of results'],
+                'image_url' => ['type' => 'string', 'description' => 'Product image URL'],
+                'weight' => ['type' => 'string', 'description' => 'Product weight'],
+            ],
+            'required' => ['action'],
+        ],
+    ];
+
     $cached = $tools;
     return $tools;
 }
@@ -822,6 +879,14 @@ function wpilot_mcp_route_tool( $tool_name, $args ) {
 
     // Resolve the individual tool name from the route map
     // (We need to check after the route map resolves the action)
+
+    // Direct handlers for power tools
+    if ($tool_name === 'wordpress' && function_exists('wpilot_tool_wordpress')) {
+        return wpilot_tool_wordpress($args);
+    }
+    if ($tool_name === 'woocommerce' && function_exists('wpilot_tool_woocommerce')) {
+        return wpilot_tool_woocommerce($args);
+    }
 
     // Direct handler for debug tool
     $action = $args['action'] ?? '';
