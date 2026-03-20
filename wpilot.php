@@ -207,18 +207,21 @@ function wpilot_mcp_endpoint( $request ) {
 
     $style = $token_data['style'] ?? 'simple';
 
-    // Rate limit: 60 req/min
+    // Rate limit: per-token (60 req/min) + per-IP (120 req/min)
     $ip     = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-    $rl_key = 'wpilot_rl_' . md5( $ip );
-    $count  = intval( get_transient( $rl_key ) ?: 0 );
-    if ( $count >= 60 ) {
+    $tk_key = 'wpilot_rl_' . substr( $token_data['hash'], 0, 16 );
+    $ip_key = 'wpilot_rl_ip_' . md5( $ip );
+    $tk_count = intval( get_transient( $tk_key ) ?: 0 );
+    $ip_count = intval( get_transient( $ip_key ) ?: 0 );
+    if ( $tk_count >= 60 || $ip_count >= 120 ) {
         return new WP_REST_Response([
             'jsonrpc' => '2.0',
             'error'   => [ 'code' => -32000, 'message' => 'Rate limit exceeded. Try again in a minute.' ],
             'id'      => null,
         ], 429 );
     }
-    set_transient( $rl_key, $count + 1, 60 );
+    set_transient( $tk_key, $tk_count + 1, 60 );
+    set_transient( $ip_key, $ip_count + 1, 60 );
 
     // Parse JSON-RPC
     $body   = $request->get_json_params();
@@ -497,22 +500,56 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         update_option( 'wpilot_free_requests', $used + 1 );
     }
 
+    // ── Code size limit (50KB max) ──
+    if ( strlen( $code ) > 51200 ) {
+        return wpilot_rpc_tool_result( $id, 'Code too large. Maximum 50KB.', true );
+    }
+
     // ── Security: block dangerous operations ──
     $blocked = [
+        // Shell execution
         'exec\s*\(', 'shell_exec\s*\(', 'system\s*\(', 'passthru\s*\(',
         'popen\s*\(', 'proc_open\s*\(', 'pcntl_exec\s*\(',
+        'pcntl_fork\s*\(', 'pcntl_signal',
+        // Filesystem write/delete
         'file_put_contents\s*\(', 'fwrite\s*\(', 'fopen\s*\(',
         'unlink\s*\(', 'rmdir\s*\(', 'rename\s*\(',
-        '\$wpdb\s*->\s*query\s*\(\s*["\']?\s*(DROP|TRUNCATE|ALTER)',
-        'wp-config\.php',
+        'mkdir\s*\(', 'copy\s*\(', 'symlink\s*\(', 'link\s*\(',
+        'chmod\s*\(', 'chown\s*\(', 'chgrp\s*\(',
+        'tempnam\s*\(', 'tmpfile\s*\(',
+        // Code execution / obfuscation
+        '\beval\s*\(', 'assert\s*\(', 'create_function\s*\(',
+        'call_user_func\s*\(', 'call_user_func_array\s*\(',
+        'preg_replace\s*\(\s*["\x27][^"\']*e[^"\']*["\x27]',
+        'base64_decode\s*\(', 'str_rot13\s*\(',
+        'gzinflate\s*\(', 'gzuncompress\s*\(', 'gzdecode\s*\(',
+        // Include/require (load arbitrary files)
+        '\binclude\s*\(', '\brequire\s*\(',
+        'include_once\s*\(', 'require_once\s*\(',
+        // Network (no outbound connections)
+        'curl_init\s*\(', 'curl_exec\s*\(', 'curl_multi',
+        'fsockopen\s*\(', 'stream_socket', 'socket_create',
+        'file_get_contents\s*\(\s*["\x27]https?:',
+        // Environment manipulation
+        'ini_set\s*\(', 'ini_alter\s*\(', 'putenv\s*\(',
+        'set_include_path', 'dl\s*\(',
+        'set_time_limit\s*\(', 'ignore_user_abort',
+        // Database destructive
+        '\$wpdb\s*->\s*query\s*\(\s*["\x27]?\s*(DROP|TRUNCATE|ALTER|GRANT|REVOKE|CREATE\s+USER)',
+        // Sensitive files and options
+        'wp-config\.php', '\.htaccess', '\.env',
         'wpilot_tokens',          // Can't read/modify own tokens
         'wpilot_license_key',     // Can't read license key
         'wpilot_api_key_hash',    // Legacy — block too
         'wpilot_chat_enabled',    // Chat Agent is a separate license
         'wpilot_chat_key',        // Can't generate chat keys via execute_php
         'wpilot_agent_knowledge', // Chat Agent knowledge — separate add-on
+        'wpilot_free_requests',   // Can't reset free counter
+        // Reflection/class manipulation
+        'ReflectionFunction', 'ReflectionClass',
+        // Header manipulation
+        'header\s*\(\s*["\x27]Location',
     ];
-
     foreach ( $blocked as $pattern ) {
         if ( preg_match( '/' . $pattern . '/i', $code ) ) {
             return wpilot_rpc_tool_result( $id, "Blocked for security reasons. Use WordPress functions instead.", true );
