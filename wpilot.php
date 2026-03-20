@@ -395,13 +395,70 @@ function wpilot_chat_endpoint( $request ) {
         return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
     }
 
-    // Rate limit: 30 messages per minute per session
-    $rl_key = 'wpilot_chat_rl_' . md5( $session_id );
-    $count  = intval( get_transient( $rl_key ) ?: 0 );
-    if ( $count >= 30 ) {
+    // ── Anti-spam system ──
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+    // 1. Honeypot — if hidden field is filled, it's a bot
+    $honeypot = $body['website'] ?? $body['url'] ?? '';
+    if ( ! empty( $honeypot ) ) {
+        // Silently accept but don't process — don't reveal detection
+        return new WP_REST_Response( [ 'queued' => true, 'queue_id' => 0 ], 200 );
+    }
+
+    // 2. Cooldown — minimum 3 seconds between messages per IP
+    $cooldown_key = 'wpilot_chat_cd_' . md5( $ip );
+    $last_msg = get_transient( $cooldown_key );
+    if ( $last_msg && ( time() - intval( $last_msg ) ) < 3 ) {
+        return new WP_REST_Response( [ 'error' => 'Please wait a moment before sending another message.' ], 429 );
+    }
+    set_transient( $cooldown_key, time(), 10 );
+
+    // 3. Per-session rate limit — 8 messages per minute
+    $sess_key = 'wpilot_chat_rl_' . md5( $session_id );
+    $sess_count = intval( get_transient( $sess_key ) ?: 0 );
+    if ( $sess_count >= 8 ) {
         return new WP_REST_Response( [ 'error' => 'Too many messages. Please wait a moment.' ], 429 );
     }
-    set_transient( $rl_key, $count + 1, 60 );
+    set_transient( $sess_key, $sess_count + 1, 60 );
+
+    // 4. Per-IP rate limit — 15 messages per minute (across all sessions)
+    $ip_key = 'wpilot_chat_ip_' . md5( $ip );
+    $ip_count = intval( get_transient( $ip_key ) ?: 0 );
+    if ( $ip_count >= 15 ) {
+        return new WP_REST_Response( [ 'error' => 'Rate limit exceeded.' ], 429 );
+    }
+    set_transient( $ip_key, $ip_count + 1, 60 );
+
+    // 5. Daily limit per IP — 100 messages/day
+    $daily_key = 'wpilot_chat_day_' . md5( $ip . date( 'Y-m-d' ) );
+    $daily_count = intval( get_transient( $daily_key ) ?: 0 );
+    if ( $daily_count >= 100 ) {
+        return new WP_REST_Response( [ 'error' => 'Daily message limit reached.' ], 429 );
+    }
+    set_transient( $daily_key, $daily_count + 1, 86400 );
+
+    // 6. Duplicate detection — same message from same IP within 5 min
+    $dupe_key = 'wpilot_chat_dupe_' . md5( $ip . $message );
+    if ( get_transient( $dupe_key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Duplicate message detected.' ], 429 );
+    }
+    set_transient( $dupe_key, 1, 300 );
+
+    // 7. Message length limit
+    if ( strlen( $message ) > 2000 ) {
+        return new WP_REST_Response( [ 'error' => 'Message too long. Maximum 2000 characters.' ], 400 );
+    }
+
+    // 8. Flood detection — if IP hit rate limit 3+ times today, block for 1 hour
+    $flood_key = 'wpilot_chat_flood_' . md5( $ip );
+    $flood_count = intval( get_transient( $flood_key ) ?: 0 );
+    if ( $flood_count >= 3 ) {
+        return new WP_REST_Response( [ 'error' => 'Temporarily blocked due to excessive requests.' ], 429 );
+    }
+    if ( $ip_count >= 14 || $sess_count >= 7 ) {
+        // Close to limit — increment flood counter
+        set_transient( $flood_key, $flood_count + 1, 3600 );
+    }
 
     global $wpdb;
     $table      = $wpdb->prefix . 'wpilot_chat_queue';
