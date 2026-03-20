@@ -597,7 +597,7 @@ function wpilot_notify_unanswered( $message, $session_id ) {
     // Count total pending
     global $wpdb;
     $table   = $wpdb->prefix . 'wpilot_chat_queue';
-    $pending = $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source = 'pending' AND response IS NULL" );
+    $pending = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source = %s AND response IS NULL", 'pending' ) );
 
     $subject = "[{$site_name}] {$pending} unanswered customer question" . ( $pending > 1 ? 's' : '' );
     $body_text  = "Hi!\n\n";
@@ -770,8 +770,10 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'DB_PASSWORD', 'DB_USER', 'DB_HOST', 'DB_NAME', 'DB_CHARSET',
         'AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY',
         'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT',
-        'ABSPATH', 'WPINC',
-                'WPILOT_DIR',
+        'ABSPATH', 'WPINC', 'WPILOT_DIR',
+        'WP_CONTENT_DIR', 'WP_PLUGIN_DIR', 'TEMPLATEPATH', 'STYLESHEETPATH',
+        'COOKIEHASH', 'USER_COOKIE', 'PASS_COOKIE', 'AUTH_COOKIE',
+        'SECURE_AUTH_COOKIE', 'LOGGED_IN_COOKIE',
     ];
     foreach ( $credential_blocked as $cred ) {
         if ( strpos( $code, $cred ) !== false ) {
@@ -802,19 +804,43 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'preg_replace\s*\(\s*["\x27][^"\']*e[^"\']*["\x27]',
         'base64_decode\s*\(', 'str_rot13\s*\(',
         'gzinflate\s*\(', 'gzuncompress\s*\(', 'gzdecode\s*\(',
-        // Include/require (load arbitrary files)
-        '\binclude\s*\(', '\brequire\s*\(',
-        'include_once\s*\(', 'require_once\s*\(',
-        // Network (no outbound connections)
+        // Include/require (load arbitrary files — language constructs, parens optional)
+        '\binclude\b', '\brequire\b',
+        '\binclude_once\b', '\brequire_once\b',
+        // Network (no outbound connections — block WP HTTP API too)
         'curl_init\s*\(', 'curl_exec\s*\(', 'curl_multi',
         'fsockopen\s*\(', 'stream_socket', 'socket_create',
         'file_get_contents\s*\(\s*["\x27]https?:',
+        'wp_remote_get\s*\(', 'wp_remote_post\s*\(', 'wp_remote_head\s*\(',
+        'wp_remote_request\s*\(', 'wp_safe_remote_get\s*\(', 'wp_safe_remote_post\s*\(',
+        'wp_http_request\s*\(', 'download_url\s*\(',
         // Environment manipulation
         'ini_set\s*\(', 'ini_alter\s*\(', 'putenv\s*\(',
         'set_include_path', 'dl\s*\(',
         'set_time_limit\s*\(', 'ignore_user_abort',
+        // Callback registration (persistent code execution)
+        'register_shutdown_function\s*\(', 'set_error_handler\s*\(',
+        'set_exception_handler\s*\(', 'register_tick_function\s*\(',
+        'spl_autoload_register\s*\(', '__autoload',
+        // Variable manipulation that defeats sandboxing
+        '\bextract\s*\(', '\bcompact\s*\(',
+        // Halt compiler
+        '__halt_compiler',
         // Database destructive
         '\$wpdb\s*->\s*query\s*\(\s*["\x27]?\s*(DROP|TRUNCATE|ALTER|GRANT|REVOKE|CREATE\s+USER)',
+        // Block $wpdb writes to users table (password/role changes)
+        '\$wpdb\s*->\s*(update|delete|insert|replace|query)\s*\(\s*["\x27]?\s*\$?w?p?d?b?-?>?\s*u?s?e?r?s?\s*["\x27]?\s*\$?wpdb\s*->\s*(users|usermeta)',
+        // Critical WordPress options that can break the site
+        'update_option\s*\(\s*["\x27](siteurl|home|blogname|admin_email|users_can_register|default_role|permalink_structure|template|stylesheet|active_plugins|recently_activated)',
+        // User escalation functions
+        'wp_insert_user\s*\(', 'wp_update_user\s*\(', 'wp_create_user\s*\(',
+        'wp_set_current_user\s*\(', 'wp_set_auth_cookie\s*\(',
+        'add_role\s*\(', 'remove_role\s*\(',
+        'add_cap\s*\(', 'remove_cap\s*\(',
+        'grant_super_admin\s*\(', 'revoke_super_admin\s*\(',
+        // WP Cron (schedule persistent malicious callbacks)
+        'wp_schedule_event\s*\(', 'wp_schedule_single_event\s*\(',
+        'wp_clear_scheduled_hook\s*\(',
         // Sensitive files and options
         'wp-config\.php', '\.htaccess', '\.env',
         'wpilot_tokens',          // Can't read/modify own tokens
@@ -826,10 +852,15 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'wpilot_agent_name',      // Chat Agent name — separate add-on
         'wpilot_agent_title',     // Chat Agent title — separate add-on
         'wpilot_free_requests',   // Can't reset free counter
+        'wpilot_training_consent',// Can't toggle training consent
+        'wpilot_training_queue',  // Can't tamper with training queue
         // Reflection/class manipulation
-        'ReflectionFunction', 'ReflectionClass',
+        'ReflectionFunction', 'ReflectionClass', 'ReflectionMethod',
         // Header manipulation
         'header\s*\(\s*["\x27]Location',
+        // Plugin/theme file reading
+        'get_plugin_data\s*\(', 'plugin_dir_path\s*\(',
+        'WP_PLUGIN_DIR', 'WPMU_PLUGIN_DIR',
     ];
     foreach ( $blocked as $pattern ) {
         if ( preg_match( '/' . $pattern . '/i', $code ) ) {
@@ -850,7 +881,10 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'rename', 'mkdir', 'copy', 'symlink', 'chmod', 'chown',
         'ini_set', 'putenv', 'dl', 'fsockopen', 'stream_socket_client',
         'socket_create', 'call_user_func', 'call_user_func_array',
-        'array_map', 'array_filter', 'array_walk', 'usort', 'preg_replace_callback',
+        'array_map', 'array_filter', 'array_walk', 'array_walk_recursive',
+        'usort', 'uasort', 'uksort', 'preg_replace_callback',
+        'register_shutdown_function', 'set_error_handler', 'set_exception_handler',
+        'extract', 'compact', 'wp_remote_get', 'wp_remote_post',
     ];
 
     // Tokenize and check for variable function calls: $var(...)
@@ -866,8 +900,8 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
             foreach ( $safe_var_calls as $safe ) {
                 if ( strpos( $var_name, $safe ) === 0 ) { $is_safe = true; break; }
             }
-            // Also allow $this-> method calls and chained ->method() calls
-            if ( $var_name === '$this' || $var_name === '$fn' ) continue;
+            // Also allow $this-> method calls
+            if ( $var_name === '$this' ) continue;
             if ( ! $is_safe ) {
                 // Check if it's actually a variable function (not $obj->method or $array[key])
                 $pos = strpos( $code, $call );
@@ -883,6 +917,16 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
     // Block backtick execution
     if ( preg_match( '/`[^`]+`/', $code ) ) {
         return wpilot_rpc_tool_result( $id, "Backtick execution is not allowed.", true );
+    }
+
+    // Block variable variables ($$var) — can bypass all filters
+    if ( preg_match( '/\$\$[a-zA-Z_]/', $code ) ) {
+        return wpilot_rpc_tool_result( $id, "Variable variables are not allowed for security reasons.", true );
+    }
+
+    // Block curly brace variable access ${...} — another bypass vector
+    if ( preg_match( '/\$\{/', $code ) ) {
+        return wpilot_rpc_tool_result( $id, "Dynamic variable access is not allowed for security reasons.", true );
     }
 
     // Block string concatenation of dangerous function names
@@ -911,7 +955,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         };
         $return_value = $fn();
     } catch ( \Throwable $e ) {
-        $error = $e->getMessage() . ' on line ' . $e->getLine();
+        $error = $e->getMessage();
     }
 
     $output = ob_get_clean();
@@ -1216,7 +1260,7 @@ ABOUT WPILOT:
         global $wpdb;
         $chat_table = $wpdb->prefix . 'wpilot_chat_queue';
         if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $chat_table ) ) === $chat_table ) {
-            $pending = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$chat_table} WHERE source = 'pending' AND response IS NULL" ) );
+            $pending = intval( $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$chat_table} WHERE source = %s AND response IS NULL", 'pending' ) ) );
         }
 
         $prompt .= "\n\nCHAT AGENT — ACTIVE ON THIS SITE:";
@@ -1460,7 +1504,7 @@ function wpilot_admin_page() {
     $new_style   = get_transient( 'wpilot_new_token_style' );
     $new_label   = get_transient( 'wpilot_new_token_label' );
     $site_url    = get_site_url();
-    $saved       = $_GET['saved'] ?? '';
+    $saved       = sanitize_text_field( $_GET['saved'] ?? '' );
 
     ?>
     <div class="wpilot-wrap">
