@@ -1614,14 +1614,12 @@ function wpilot_admin_page() {
             <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
                 <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Embed Code</h3>
                 <p style="font-size:13px;color:#64748b;margin:0 0 12px;">Add this script to your site (in a custom HTML block, theme footer, or via a plugin like Insert Headers and Footers):</p>
-                <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy" style="font-size:12px;line-height:1.5;white-space:pre-wrap;">&lt;script&gt;
-(function(){
-  var WPC={endpoint:"<?php echo esc_url( get_site_url() ); ?>/wp-json/wpilot/v1/chat",key:"<?php echo esc_js( $chat_key ); ?>"};
-  var s=document.createElement("script");
-  s.src="https://weblease.se/wpilot-widget.js";
-  s.onload=function(){WPilotChat.init(WPC)};
-  document.body.appendChild(s);
-})();
+                <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy" style="font-size:12px;line-height:1.5;white-space:pre-wrap;">&lt;script src="https://weblease.se/wpilot-chat.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+WPilotChat.init({
+  endpoint: "<?php echo esc_url( get_site_url() ); ?>/wp-json/wpilot/v1/chat",
+  key: "<?php echo esc_js( $chat_key ); ?>"
+});
 &lt;/script&gt;</code>
                 <span class="wpilot-code-hint">Click to copy. The widget loads asynchronously and won't slow down your site.</span>
             </div>
@@ -1719,7 +1717,8 @@ function wpilot_admin_page() {
         $training_queue = count( get_option( 'wpilot_training_queue', [] ) );
         ?>
         <div class="wpilot-card">
-            <h2>AI Training Data</h2>
+            <h2 style="cursor:pointer;user-select:none;" onclick="var c=this.parentNode.querySelector('.wpilot-training-body');c.style.display=c.style.display==='none'?'block':'none';this.querySelector('.wpilot-arr').textContent=c.style.display==='none'?'\u25B6':'\u25BC';">AI Training Data <span class="wpilot-arr" style="font-size:12px;color:#94a3b8;margin-left:6px;">\u25B6</span></h2>
+            <div class="wpilot-training-body" style="display:none;">
             <p class="subtitle">Help us build a better AI. When enabled, anonymized usage data is sent to Weblease to improve WPilot for everyone.</p>
 
             <div style="background:#f8fafc;border-radius:10px;padding:18px 22px;margin-bottom:16px;border:1px solid #f1f5f9;">
@@ -1756,6 +1755,7 @@ function wpilot_admin_page() {
                     &middot; Last sync: <?php echo esc_html( $training_stats['last'] ?? 'Never' ); ?>
                 </div>
             <?php endif; ?>
+            </div><!-- .wpilot-training-body -->
         </div>
 
         <?php if ( $saved === 'training' ): ?>
