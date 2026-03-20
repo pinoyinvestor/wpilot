@@ -676,6 +676,14 @@ function wpilot_chat_upload( $request ) {
         return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
     }
 
+    // Rate limit: 10 uploads per minute per session
+    $rl_key = 'wpilot_upload_rl_' . md5( $session_id );
+    $rl_count = intval( get_transient( $rl_key ) ?: 0 );
+    if ( $rl_count >= 10 ) {
+        return new WP_REST_Response( [ 'error' => 'Too many uploads. Please wait a moment.' ], 429 );
+    }
+    set_transient( $rl_key, $rl_count + 1, 60 );
+
     // Check file exists
     if ( empty( $_FILES['file'] ) ) {
         return new WP_REST_Response( [ 'error' => 'No file uploaded.' ], 400 );
@@ -707,6 +715,8 @@ function wpilot_chat_upload( $request ) {
         wp_mkdir_p( $chat_dir );
         // Add index.php for security
         file_put_contents( $chat_dir . '/index.php', '<?php // Silence is golden.' );
+        // Block PHP execution in upload directory
+        file_put_contents( $chat_dir . '/.htaccess', "Options -Indexes\nRemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phps\nAddType text/plain .php .phtml .php3 .php4 .php5 .php7 .phps\n<FilesMatch \"\\.(php|phtml|php3|php4|php5|php7|phps)$\">\nForceType text/plain\n</FilesMatch>" );
     }
 
     // Generate unique filename
@@ -768,6 +778,14 @@ function wpilot_chat_collect_email( $request ) {
     if ( empty( $stored_key ) || ! hash_equals( $stored_key, $key ) ) {
         return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
     }
+
+    // Rate limit: 5 email submissions per minute per session
+    $rl_key = 'wpilot_email_rl_' . md5( $session_id );
+    $rl_count = intval( get_transient( $rl_key ) ?: 0 );
+    if ( $rl_count >= 5 ) {
+        return new WP_REST_Response( [ 'error' => 'Too many requests. Please wait.' ], 429 );
+    }
+    set_transient( $rl_key, $rl_count + 1, 60 );
 
     // Validate email format
     if ( ! is_email( $email ) ) {
@@ -974,6 +992,11 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'constant', 'get_defined_constants', 'get_defined_vars', 'get_defined_functions',
         'debug_backtrace', 'debug_print_backtrace',
         'token_get_all',  // Can parse PHP source
+        // WordPress filesystem API — can read any file on disk
+        'WP_Filesystem', 'wp_filesystem', 'get_contents',
+        'get_file_data',
+        // WordPress template loading — can include arbitrary PHP files
+        'load_template', 'locate_template', 'get_template_part',
     ];
     foreach ( $file_read_blocked as $fn ) {
         if ( preg_match( '/' . $fn . '\s*\(/i', $code ) ) {
@@ -1077,6 +1100,20 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         // Plugin/theme file reading
         'get_plugin_data\s*\(', 'plugin_dir_path\s*\(',
         'WP_PLUGIN_DIR', 'WPMU_PLUGIN_DIR',
+        // Hook registration — can inject persistent code into WordPress lifecycle
+        'add_action\s*\(', 'add_filter\s*\(',
+        'do_action\s*\(', 'apply_filters\s*\(',
+        'remove_action\s*\(', 'remove_filter\s*\(',
+        // WP Cron bypass — _set_cron_array bypasses wp_schedule_event block
+        '_set_cron_array\s*\(', '_get_cron_array\s*\(',
+        'wp_reschedule_event\s*\(',
+        // Plugin management — can disable WPilot itself
+        'activate_plugin\s*\(', 'deactivate_plugins\s*\(',
+        'delete_plugins\s*\(',
+        // wp_mail — can exfiltrate data via email
+        'wp_mail\s*\(',
+        // wpdb credential properties — object props not caught by constant blocklist
+        'dbpassword', 'dbuser', 'dbhost',
     ];
     foreach ( $blocked as $pattern ) {
         if ( preg_match( '/' . $pattern . '/i', $code ) ) {
@@ -1101,12 +1138,16 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'usort', 'uasort', 'uksort', 'preg_replace_callback',
         'register_shutdown_function', 'set_error_handler', 'set_exception_handler',
         'extract', 'compact', 'wp_remote_get', 'wp_remote_post',
+        'wp_mail', 'add_action', 'add_filter', 'activate_plugin',
+        'deactivate_plugins', 'delete_plugins', 'WP_Filesystem',
+        'load_template', 'locate_template', 'get_template_part',
+        '_set_cron_array', '_get_cron_array',
     ];
 
     // Tokenize and check for variable function calls: $var(...)
     if ( preg_match( '/\$[a-zA-Z_][a-zA-Z0-9_]*\s*\(/', $code ) ) {
         // Allow known safe WordPress patterns
-        $safe_var_calls = [ '$wpdb', '$wp_query', '$wp_rewrite', '$wp_filesystem',
+        $safe_var_calls = [ '$wpdb', '$wp_query', '$wp_rewrite',
             '$product', '$order', '$post', '$term', '$user', '$widget', '$menu' ];
         $var_calls = [];
         preg_match_all( '/\$([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/', $code, $var_calls );
