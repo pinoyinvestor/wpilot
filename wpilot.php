@@ -30,6 +30,7 @@ add_action( 'admin_enqueue_scripts', 'wpilot_admin_styles' );
 // Redirect to onboarding on first activation
 register_activation_hook( __FILE__, function () {
     add_option( 'wpilot_do_activation_redirect', true );
+    wpilot_create_tables();
 });
 add_action( 'admin_init', function () {
     if ( get_option( 'wpilot_do_activation_redirect', false ) ) {
@@ -38,6 +39,59 @@ add_action( 'admin_init', function () {
         exit;
     }
 });
+
+// ══════════════════════════════════════════════════════════════
+//  DATABASE TABLES — Chat Queue & Agent Brain
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_create_tables() {
+    global $wpdb;
+    $charset = $wpdb->get_charset_collate();
+
+    $queue_table = $wpdb->prefix . 'wpilot_chat_queue';
+    $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
+
+    $sql_queue = "CREATE TABLE IF NOT EXISTS {$queue_table} (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        session_id varchar(64) NOT NULL,
+        visitor_name varchar(100) DEFAULT NULL,
+        message text NOT NULL,
+        response text DEFAULT NULL,
+        source varchar(20) NOT NULL DEFAULT 'pending',
+        created_at datetime NOT NULL,
+        responded_at datetime DEFAULT NULL,
+        read_by_owner tinyint(1) NOT NULL DEFAULT 0,
+        PRIMARY KEY (id),
+        KEY session_id (session_id),
+        KEY source (source),
+        KEY created_at (created_at)
+    ) {$charset};";
+
+    $sql_brain = "CREATE TABLE IF NOT EXISTS {$brain_table} (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        data_type varchar(50) NOT NULL DEFAULT 'custom',
+        title varchar(255) NOT NULL,
+        content longtext NOT NULL,
+        keywords text DEFAULT NULL,
+        updated_at datetime NOT NULL,
+        PRIMARY KEY (id),
+        KEY data_type (data_type)
+    ) {$charset};";
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta( $sql_queue );
+    // Built by Weblease
+    dbDelta( $sql_brain );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  HEARTBEAT — Is Claude Code online?
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_claude_is_online() {
+    $last = intval( get_option( 'wpilot_claude_last_seen', 0 ) );
+    return ( time() - $last ) < 120;
+}
 
 // ══════════════════════════════════════════════════════════════
 //  MCP REST ROUTE
@@ -53,6 +107,18 @@ function wpilot_register_routes() {
     register_rest_route( 'wpilot/v1', '/chat', [
         'methods'             => [ 'POST', 'OPTIONS' ],
         'callback'            => 'wpilot_chat_endpoint',
+        'permission_callback' => '__return_true',
+    ]);
+
+    register_rest_route( 'wpilot/v1', '/chat-status', [
+        'methods'             => 'GET',
+        'callback'            => 'wpilot_chat_status',
+        'permission_callback' => '__return_true',
+    ]);
+
+    register_rest_route( 'wpilot/v1', '/chat-poll', [
+        'methods'             => [ 'POST', 'OPTIONS' ],
+        'callback'            => 'wpilot_chat_poll',
         'permission_callback' => '__return_true',
     ]);
 }
@@ -224,6 +290,9 @@ function wpilot_mcp_endpoint( $request ) {
 
     $style = $token_data['style'] ?? 'simple';
 
+    // Heartbeat — record that Claude Code is connected
+    update_option( 'wpilot_claude_last_seen', time(), false );
+
     // Rate limit: per-token (60 req/min) + per-IP (120 req/min)
     $ip     = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $tk_key = 'wpilot_rl_' . substr( $token_data['hash'], 0, 16 );
@@ -286,7 +355,7 @@ function wpilot_rpc_tool_result( $id, $text, $is_error ) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  CHAT AGENT ENDPOINT — Visitor-facing AI chat
+//  CHAT AGENT ENDPOINT — Visitor-facing AI chat (queue-based)
 // ══════════════════════════════════════════════════════════════
 
 function wpilot_chat_endpoint( $request ) {
@@ -310,10 +379,11 @@ function wpilot_chat_endpoint( $request ) {
         return new WP_REST_Response( [ 'error' => 'Chat Agent requires a separate license. Visit weblease.se/wpilot for details.' ], 403 );
     }
 
-    $body       = $request->get_json_params();
-    $message    = sanitize_text_field( $body['message'] ?? '' );
-    $session_id = sanitize_text_field( $body['session_id'] ?? '' );
-    $key        = sanitize_text_field( $body['key'] ?? '' );
+    $body         = $request->get_json_params();
+    $message      = sanitize_text_field( $body['message'] ?? '' );
+    $session_id   = sanitize_text_field( $body['session_id'] ?? '' );
+    $key          = sanitize_text_field( $body['key'] ?? '' );
+    $visitor_name = sanitize_text_field( $body['visitor_name'] ?? '' );
 
     if ( empty( $message ) || empty( $session_id ) || empty( $key ) ) {
         return new WP_REST_Response( [ 'error' => 'Missing required fields: message, session_id, key.' ], 400 );
@@ -333,64 +403,211 @@ function wpilot_chat_endpoint( $request ) {
     }
     set_transient( $rl_key, $count + 1, 60 );
 
-    // Gather site context
-    $context = wpilot_chat_gather_context();
+    global $wpdb;
+    $table      = $wpdb->prefix . 'wpilot_chat_queue';
+    $agent_name = get_option( 'wpilot_agent_name', 'Sara' );
 
-    // Load conversation history
-    $history_key = 'wpilot_chat_history_' . sanitize_key( $session_id );
-    $history     = get_option( $history_key, [] );
+    // If Claude Code is ONLINE -> store as pending (Claude picks it up)
+    if ( wpilot_claude_is_online() ) {
+        $wpdb->insert( $table, [
+            'session_id'   => $session_id,
+            'visitor_name' => $visitor_name ?: null,
+            'message'      => $message,
+            'response'     => null,
+            'source'       => 'pending',
+            'created_at'   => current_time( 'mysql' ),
+        ]);
 
-    // Expire history older than 24 hours
-    if ( ! empty( $history ) && isset( $history[0]['ts'] ) && ( time() - $history[0]['ts'] ) > 86400 ) {
-        $history = [];
+        return new WP_REST_Response([
+            'queued'     => true,
+            'queue_id'   => $wpdb->insert_id,
+            'agent_name' => $agent_name,
+        ], 200 );
     }
 
-    // Build history for proxy
-    $history_for_proxy = array_map( function ( $h ) {
-        return [ 'role' => $h['role'], 'content' => $h['content'] ];
-    }, array_slice( $history, -10 ) );
+    // Claude is OFFLINE -> try brain match
+    $brain_answer = wpilot_brain_search( $message );
+    $source = $brain_answer ? 'brain' : 'pending';
 
-    $context['history'] = $history_for_proxy;
-
-    // Call Weblease proxy
-    $proxy_response = wp_remote_post( 'https://weblease.se/api/wpilot-chat/respond', [
-        'timeout' => 30,
-        'headers' => [ 'Content-Type' => 'application/json' ],
-        'body'    => wp_json_encode([
-            'message'    => $message,
-            'context'    => $context,
-            'session_id' => $session_id,
-            'site_hash'  => md5( get_site_url() ),
-        ]),
+    $wpdb->insert( $table, [
+        'session_id'   => $session_id,
+        'visitor_name' => $visitor_name ?: null,
+        'message'      => $message,
+        'response'     => $brain_answer,
+        'source'       => $source,
+        'created_at'   => current_time( 'mysql' ),
+        'responded_at' => $brain_answer ? current_time( 'mysql' ) : null,
     ]);
 
-    if ( is_wp_error( $proxy_response ) ) {
-        return new WP_REST_Response( [ 'error' => 'Could not reach AI service. Please try again.' ], 502 );
+    if ( $brain_answer ) {
+        return new WP_REST_Response([
+            'reply'      => $brain_answer,
+            'source'     => 'brain',
+            'agent_name' => $agent_name,
+        ], 200 );
     }
 
-    $status = wp_remote_retrieve_response_code( $proxy_response );
-    $result = json_decode( wp_remote_retrieve_body( $proxy_response ), true );
-
-    if ( $status !== 200 || empty( $result['reply'] ) ) {
-        $err = $result['error'] ?? 'AI service error.';
-        return new WP_REST_Response( [ 'error' => $err ], $status ?: 500 );
-    }
-
-    // Store conversation history (max 50 messages)
-    $history[] = [ 'role' => 'user',      'content' => $message,         'ts' => time() ];
-    $history[] = [ 'role' => 'assistant', 'content' => $result['reply'], 'ts' => time() ];
-    if ( count( $history ) > 50 ) {
-        $history = array_slice( $history, -50 );
-    }
-    update_option( $history_key, $history, false );
-
-    // Track session for admin view
-    wpilot_chat_track_session( $session_id, count( $history ) );
+    // No brain match — queue as unanswered, notify owner
+    wpilot_notify_unanswered( $message, $session_id );
 
     return new WP_REST_Response([
-        'reply'      => $result['reply'],
-        'session_id' => $session_id,
+        'queued'          => true,
+        'queue_id'        => $wpdb->insert_id,
+        'offline_message' => wpilot_offline_message(),
+        'agent_name'      => $agent_name,
     ], 200 );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CHAT STATUS — Public, returns online/offline + agent name
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_chat_status( $request ) {
+    header( 'Access-Control-Allow-Origin: *' );
+    header( 'Cache-Control: no-store' );
+
+    return new WP_REST_Response([
+        'online'     => wpilot_claude_is_online(),
+        'agent_name' => get_option( 'wpilot_agent_name', 'Sara' ),
+    ], 200 );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CHAT POLL — Widget polls for responses to a session
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_chat_poll( $request ) {
+    header( 'Access-Control-Allow-Origin: *' );
+    header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
+    header( 'Access-Control-Allow-Headers: Content-Type' );
+    header( 'Cache-Control: no-store' );
+
+    if ( $request->get_method() === 'OPTIONS' ) {
+        return new WP_REST_Response( null, 204 );
+    }
+
+    $body       = $request->get_json_params();
+    $session_id = sanitize_text_field( $body['session_id'] ?? '' );
+    $key        = sanitize_text_field( $body['key'] ?? '' );
+
+    if ( empty( $session_id ) || empty( $key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Missing session_id or key.' ], 400 );
+    }
+
+    // Validate chat key
+    $stored_key = get_option( 'wpilot_chat_key', '' );
+    if ( empty( $stored_key ) || ! hash_equals( $stored_key, $key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
+    }
+
+    // Rate limit: 60 polls per minute per session
+    $rl_key = 'wpilot_poll_rl_' . md5( $session_id );
+    $count  = intval( get_transient( $rl_key ) ?: 0 );
+    if ( $count >= 60 ) {
+        return new WP_REST_Response( [ 'error' => 'Too many requests. Please slow down.' ], 429 );
+    }
+    set_transient( $rl_key, $count + 1, 60 );
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'wpilot_chat_queue';
+
+    $messages = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, message, response, source, created_at FROM {$table} WHERE session_id = %s ORDER BY created_at ASC LIMIT 100",
+        $session_id
+    ) );
+
+    return new WP_REST_Response([
+        'messages' => $messages ?: [],
+    ], 200 );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BRAIN SEARCH — Offline keyword matching against brain data
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_brain_search( $query ) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'wpilot_agent_brain';
+
+    // Check table exists
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+        return null;
+    }
+
+    // Normalize query
+    $words = array_filter( explode( ' ', strtolower( preg_replace( '/[^\w\s]/u', '', $query ) ) ) );
+    if ( count( $words ) < 2 ) return null;
+
+    // Search brain data by keywords
+    $like_clauses = [];
+    $params = [];
+    foreach ( array_slice( $words, 0, 5 ) as $w ) {
+        if ( strlen( $w ) < 3 ) continue;
+        $like_clauses[] = '(keywords LIKE %s OR title LIKE %s OR content LIKE %s)';
+        $esc = '%' . $wpdb->esc_like( $w ) . '%';
+        $params[] = $esc;
+        $params[] = $esc;
+        $params[] = $esc;
+    }
+
+    if ( empty( $like_clauses ) ) return null;
+
+    $sql = "SELECT title, content, data_type FROM {$table} WHERE " . implode( ' OR ', $like_clauses ) . ' ORDER BY updated_at DESC LIMIT 3';
+    $results = $wpdb->get_results( $wpdb->prepare( $sql, ...$params ) );
+
+    if ( empty( $results ) ) return null;
+
+    // Build a simple response from matched brain data
+    $parts = [];
+    foreach ( $results as $r ) {
+        $snippet = wp_trim_words( strip_tags( $r->content ), 50, '...' );
+        $parts[] = $snippet;
+    }
+
+    return implode( "\n\n", $parts );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  OFFLINE MESSAGE — Friendly message when Claude is away
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_offline_message() {
+    $name = get_option( 'wpilot_agent_name', 'Sara' );
+    $lang = get_locale();
+    if ( str_starts_with( $lang, 'sv' ) ) {
+        return "Tack för ditt meddelande! {$name} är inte tillgänglig just nu men återkommer så snart som möjligt.";
+    }
+    return "Thanks for your message! {$name} isn't available right now but will get back to you as soon as possible.";
+}
+
+// ══════════════════════════════════════════════════════════════
+//  NOTIFY UNANSWERED — Email admin about pending questions
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_notify_unanswered( $message, $session_id ) {
+    $admin_email = get_option( 'admin_email' );
+    $site_name   = get_bloginfo( 'name' );
+    $agent_name  = get_option( 'wpilot_agent_name', 'Sara' );
+
+    // Rate limit: max 1 email per 10 minutes
+    $last_notif = get_transient( 'wpilot_chat_last_notif' );
+    if ( $last_notif ) return;
+    set_transient( 'wpilot_chat_last_notif', time(), 600 );
+
+    // Count total pending
+    global $wpdb;
+    $table   = $wpdb->prefix . 'wpilot_chat_queue';
+    $pending = $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source = 'pending' AND response IS NULL" );
+
+    $subject = "[{$site_name}] {$pending} unanswered customer question" . ( $pending > 1 ? 's' : '' );
+    $body_text  = "Hi!\n\n";
+    $body_text .= "You have {$pending} unanswered question(s) from visitors on {$site_name}.\n\n";
+    $body_text .= "Latest question:\n\"{$message}\"\n\n";
+    $body_text .= "Open Claude Code and connect to your site — {$agent_name} will automatically answer pending questions.\n\n";
+    $body_text .= "Or view all messages in your WordPress dashboard: WPilot > Chat Agent.\n\n";
+    $body_text .= "— WPilot";
+
+    wp_mail( $admin_email, $subject, $body_text );
 }
 
 /**
@@ -992,6 +1209,28 @@ BE PROFESSIONAL:
 
 ABOUT WPILOT:
 - Made by Weblease (weblease.se/wpilot). For licensing, pricing, or support — direct the user there.";
+
+    // Add chat agent instructions if enabled
+    if ( get_option( 'wpilot_chat_enabled', false ) ) {
+        $pending = 0;
+        global $wpdb;
+        $chat_table = $wpdb->prefix . 'wpilot_chat_queue';
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $chat_table ) ) === $chat_table ) {
+            $pending = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$chat_table} WHERE source = 'pending' AND response IS NULL" ) );
+        }
+
+        $prompt .= "\n\nCHAT AGENT — ACTIVE ON THIS SITE:";
+        $prompt .= "\nThis site has Chat Agent enabled. You are also serving as the customer service AI.";
+        if ( $pending > 0 ) {
+            $prompt .= "\nURGENT: There are {$pending} UNANSWERED visitor question(s) waiting! Check them immediately with:";
+            $prompt .= "\nreturn \$wpdb->get_results(\"SELECT id, session_id, message, created_at FROM {$chat_table} WHERE source = 'pending' AND response IS NULL ORDER BY created_at ASC\");";
+            $prompt .= "\nTo answer a question, use:";
+            $prompt .= "\n\$wpdb->update('{$chat_table}', ['response' => 'Your answer here', 'source' => 'claude', 'responded_at' => current_time('mysql')], ['id' => THE_ID]);";
+            $prompt .= "\nreturn 'Answered';";
+        }
+        $prompt .= "\nThe site owner can ask you about recent customer messages. You can query the chat queue table to show them.";
+        $prompt .= "\nWhen answering visitors: be helpful, friendly, use the site's real data. Answer in the same language the visitor wrote in.";
+    }
 
     return $prompt;
 }
