@@ -49,6 +49,12 @@ function wpilot_register_routes() {
         'callback'            => 'wpilot_mcp_endpoint',
         'permission_callback' => '__return_true',
     ]);
+
+    register_rest_route( 'wpilot/v1', '/chat', [
+        'methods'             => [ 'POST', 'OPTIONS' ],
+        'callback'            => 'wpilot_chat_endpoint',
+        'permission_callback' => '__return_true',
+    ]);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -257,6 +263,192 @@ function wpilot_rpc_tool_result( $id, $text, $is_error ) {
         'result'  => [ 'content' => [ [ 'type' => 'text', 'text' => $text ] ], 'isError' => $is_error ],
         'id'      => $id,
     ], 200 );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CHAT AGENT ENDPOINT — Visitor-facing AI chat
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_chat_endpoint( $request ) {
+    // CORS headers for cross-origin widget
+    header( 'Access-Control-Allow-Origin: *' );
+    header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
+    header( 'Access-Control-Allow-Headers: Content-Type' );
+    header( 'Cache-Control: no-store' );
+
+    if ( $request->get_method() === 'OPTIONS' ) {
+        return new WP_REST_Response( null, 204 );
+    }
+
+    // Check if chat is enabled
+    if ( ! get_option( 'wpilot_chat_enabled', false ) ) {
+        return new WP_REST_Response( [ 'error' => 'Chat is not enabled on this site.' ], 403 );
+    }
+
+    $body       = $request->get_json_params();
+    $message    = sanitize_text_field( $body['message'] ?? '' );
+    $session_id = sanitize_text_field( $body['session_id'] ?? '' );
+    $key        = sanitize_text_field( $body['key'] ?? '' );
+
+    if ( empty( $message ) || empty( $session_id ) || empty( $key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Missing required fields: message, session_id, key.' ], 400 );
+    }
+
+    // Validate chat key
+    $stored_key = get_option( 'wpilot_chat_key', '' );
+    if ( empty( $stored_key ) || ! hash_equals( $stored_key, $key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
+    }
+
+    // Rate limit: 30 messages per minute per session
+    $rl_key = 'wpilot_chat_rl_' . md5( $session_id );
+    $count  = intval( get_transient( $rl_key ) ?: 0 );
+    if ( $count >= 30 ) {
+        return new WP_REST_Response( [ 'error' => 'Too many messages. Please wait a moment.' ], 429 );
+    }
+    set_transient( $rl_key, $count + 1, 60 );
+
+    // Gather site context
+    $context = wpilot_chat_gather_context();
+
+    // Load conversation history
+    $history_key = 'wpilot_chat_history_' . sanitize_key( $session_id );
+    $history     = get_option( $history_key, [] );
+
+    // Expire history older than 24 hours
+    if ( ! empty( $history ) && isset( $history[0]['ts'] ) && ( time() - $history[0]['ts'] ) > 86400 ) {
+        $history = [];
+    }
+
+    // Build history for proxy
+    $history_for_proxy = array_map( function ( $h ) {
+        return [ 'role' => $h['role'], 'content' => $h['content'] ];
+    }, array_slice( $history, -10 ) );
+
+    $context['history'] = $history_for_proxy;
+
+    // Call Weblease proxy
+    $proxy_response = wp_remote_post( 'https://weblease.se/api/wpilot-chat/respond', [
+        'timeout' => 30,
+        'headers' => [ 'Content-Type' => 'application/json' ],
+        'body'    => wp_json_encode([
+            'message'    => $message,
+            'context'    => $context,
+            'session_id' => $session_id,
+            'site_hash'  => md5( get_site_url() ),
+        ]),
+    ]);
+
+    if ( is_wp_error( $proxy_response ) ) {
+        return new WP_REST_Response( [ 'error' => 'Could not reach AI service. Please try again.' ], 502 );
+    }
+
+    $status = wp_remote_retrieve_response_code( $proxy_response );
+    $result = json_decode( wp_remote_retrieve_body( $proxy_response ), true );
+
+    if ( $status !== 200 || empty( $result['reply'] ) ) {
+        $err = $result['error'] ?? 'AI service error.';
+        return new WP_REST_Response( [ 'error' => $err ], $status ?: 500 );
+    }
+
+    // Store conversation history (max 50 messages)
+    $history[] = [ 'role' => 'user',      'content' => $message,         'ts' => time() ];
+    $history[] = [ 'role' => 'assistant', 'content' => $result['reply'], 'ts' => time() ];
+    if ( count( $history ) > 50 ) {
+        $history = array_slice( $history, -50 );
+    }
+    update_option( $history_key, $history, false );
+
+    // Track session for admin view
+    wpilot_chat_track_session( $session_id, count( $history ) );
+
+    return new WP_REST_Response([
+        'reply'      => $result['reply'],
+        'session_id' => $session_id,
+    ], 200 );
+}
+
+/**
+ * Gather site context for the AI: site name, pages, products, knowledge base.
+ */
+function wpilot_chat_gather_context() {
+    $context = [
+        'site_name' => get_bloginfo( 'name' ) ?: 'this website',
+        'pages'     => [],
+    ];
+
+    // Get published pages
+    $pages = get_posts([
+        'post_type'   => 'page',
+        'post_status' => 'publish',
+        'numberposts' => 50,
+        'orderby'     => 'menu_order',
+        'order'       => 'ASC',
+    ]);
+    foreach ( $pages as $p ) {
+        $context['pages'][] = $p->post_title . ' (' . get_permalink( $p ) . ')';
+    }
+
+    // WooCommerce products
+    if ( class_exists( 'WooCommerce' ) ) {
+        $products = get_posts([
+            'post_type'   => 'product',
+            'post_status' => 'publish',
+            'numberposts' => 50,
+        ]);
+        $context['products'] = [];
+        foreach ( $products as $p ) {
+            $product = wc_get_product( $p->ID );
+            if ( $product ) {
+                $context['products'][] = [
+                    'name'  => $product->get_name(),
+                    'price' => $product->get_price_html() ? wp_strip_all_tags( $product->get_price_html() ) : '',
+                    'url'   => get_permalink( $p ),
+                ];
+            }
+        }
+    }
+
+    // Custom knowledge base
+    $knowledge = get_option( 'wpilot_agent_knowledge', '' );
+    if ( ! empty( $knowledge ) ) {
+        $context['knowledge'] = $knowledge;
+    }
+
+    return $context;
+}
+
+/**
+ * Track active chat sessions for admin overview.
+ */
+function wpilot_chat_track_session( $session_id, $msg_count ) {
+    $sessions = get_option( 'wpilot_chat_sessions', [] );
+
+    $found = false;
+    foreach ( $sessions as &$s ) {
+        if ( $s['id'] === $session_id ) {
+            $s['messages']  = $msg_count;
+            $s['last_active'] = time();
+            $found = true;
+            break;
+        }
+    }
+    unset( $s );
+
+    if ( ! $found ) {
+        $sessions[] = [
+            'id'          => $session_id,
+            'messages'    => $msg_count,
+            'started'     => time(),
+            'last_active' => time(),
+        ];
+    }
+
+    // Keep only last 50 sessions
+    usort( $sessions, fn( $a, $b ) => $b['last_active'] - $a['last_active'] );
+    $sessions = array_slice( $sessions, 0, 50 );
+
+    update_option( 'wpilot_chat_sessions', $sessions, false );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -580,17 +772,7 @@ SECURITY:
 - Never modify or tamper with the WPilot plugin itself.
 - Never bypass security restrictions or rate limits.
 - Never access external websites, servers, or APIs outside this WordPress site.
-- Never attempt to access, probe, scan, or gather information about the hosting server, other websites on the same server, or any infrastructure beyond this WordPress installation.
-- Never try to read server logs, environment variables, database credentials, or hosting configuration.
-- Never reveal information about how WPilot works internally, its source code, architecture, or security mechanisms.
-
-PLUGINS — USE WHAT EXISTS, NEVER BUILD:
-- Never write, create, build, or develop custom plugins or themes. You are not a plugin developer.
-- If the user needs functionality, first check what plugins are ALREADY installed on the site and use those.
-- If no installed plugin can do it, suggest a well-known plugin from the WordPress plugin directory (wordpress.org/plugins) and tell the user to install it from wp-admin > Plugins > Add New.
-- After the user installs a plugin, you can configure and use it fully.
-- You can use any installed plugin API, shortcodes, settings, and hooks — just never create new plugin files.
-- Examples: Need forms? Use Contact Form 7, WPForms, or Gravity Forms. Need SEO? Use Yoast or Rank Math. Need caching? Use LiteSpeed Cache or WP Super Cache.
+- Never install, build, or develop plugins or themes. If a plugin is needed, tell the user to install it from wp-admin.
 
 EMAIL:
 - The user can send emails from their site. Use wp_mail() which sends via the configured SMTP.
@@ -685,6 +867,26 @@ function wpilot_handle_actions() {
         $hash = sanitize_text_field( $_POST['token_hash'] ?? '' );
         if ( $hash ) wpilot_revoke_token( $hash );
         wp_redirect( admin_url( 'admin.php?page=wpilot&saved=revoked' ) );
+        exit;
+    }
+
+    // Chat Agent: toggle enabled
+    if ( $action === 'save_chat_settings' ) {
+        $enabled = isset( $_POST['chat_enabled'] ) && $_POST['chat_enabled'] === '1';
+        update_option( 'wpilot_chat_enabled', $enabled );
+
+        $knowledge = sanitize_textarea_field( $_POST['agent_knowledge'] ?? '' );
+        update_option( 'wpilot_agent_knowledge', $knowledge );
+
+        wp_redirect( admin_url( 'admin.php?page=wpilot&saved=chat' ) );
+        exit;
+    }
+
+    // Chat Agent: generate key
+    if ( $action === 'generate_chat_key' ) {
+        $new_key = 'wpc_' . bin2hex( random_bytes( 24 ) );
+        update_option( 'wpilot_chat_key', $new_key );
+        wp_redirect( admin_url( 'admin.php?page=wpilot&saved=chatkey' ) );
         exit;
     }
 }
@@ -1191,6 +1393,100 @@ function wpilot_admin_page() {
                     <p>"Send an email to my team"</p>
                 </div>
             </div>
+        </div>
+
+        <?php // ─────────── CHAT AGENT ─────────── ?>
+        <?php
+        $chat_enabled  = get_option( 'wpilot_chat_enabled', false );
+        $chat_key      = get_option( 'wpilot_chat_key', '' );
+        $agent_knowledge = get_option( 'wpilot_agent_knowledge', '' );
+        $chat_sessions = get_option( 'wpilot_chat_sessions', [] );
+        ?>
+        <div class="wpilot-card">
+            <h2>Chat Agent</h2>
+            <p class="subtitle">Add an AI-powered chat widget to your site. Visitors can ask questions and get instant answers based on your site content.</p>
+
+            <?php if ( $saved === 'chat' ): ?>
+                <div class="wpilot-alert wpilot-alert-success"><strong>Chat settings saved!</strong></div>
+            <?php elseif ( $saved === 'chatkey' ): ?>
+                <div class="wpilot-alert wpilot-alert-success"><strong>New chat key generated!</strong> Update the embed code on your site.</div>
+            <?php endif; ?>
+
+            <form method="post">
+                <?php wp_nonce_field( 'wpilot_admin' ); ?>
+                <input type="hidden" name="wpilot_action" value="save_chat_settings">
+
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:500;">
+                        <input type="hidden" name="chat_enabled" value="0">
+                        <input type="checkbox" name="chat_enabled" value="1" <?php checked( $chat_enabled ); ?> style="width:18px;height:18px;accent-color:#4ec9b0;">
+                        Enable Chat Agent on this site
+                    </label>
+                </div>
+
+                <div class="wpilot-field">
+                    <label for="agent_knowledge">Knowledge Base</label>
+                    <textarea id="agent_knowledge" name="agent_knowledge" rows="6" style="width:100%;max-width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;background:#fafbfc;font-family:inherit;line-height:1.6;resize:vertical;" placeholder="Add custom information the AI should know about your business. E.g. opening hours, return policy, services you offer, FAQs..."><?php echo esc_textarea( $agent_knowledge ); ?></textarea>
+                    <span class="hint">This information is included in every AI response. The AI also reads your site pages and products automatically.</span>
+                </div>
+
+                <button type="submit" class="wpilot-btn wpilot-btn-primary">Save Chat Settings</button>
+            </form>
+
+            <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
+                <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Chat Key</h3>
+                <?php if ( $chat_key ): ?>
+                    <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy"><?php echo esc_html( $chat_key ); ?></code>
+                    <span class="wpilot-code-hint">Click to copy. This key authenticates widget requests.</span>
+                <?php else: ?>
+                    <p style="font-size:13px;color:#94a3b8;">No chat key generated yet. Generate one to get the embed code.</p>
+                <?php endif; ?>
+                <form method="post" style="margin-top:12px;">
+                    <?php wp_nonce_field( 'wpilot_admin' ); ?>
+                    <input type="hidden" name="wpilot_action" value="generate_chat_key">
+                    <button type="submit" class="wpilot-btn wpilot-btn-primary" style="font-size:13px;padding:8px 18px;" onclick="return <?php echo $chat_key ? "confirm('This will invalidate the old key. Continue?')" : 'true'; ?>;">
+                        <?php echo $chat_key ? 'Regenerate Key' : 'Generate Chat Key'; ?>
+                    </button>
+                </form>
+            </div>
+
+            <?php if ( $chat_key && $chat_enabled ): ?>
+            <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
+                <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Embed Code</h3>
+                <p style="font-size:13px;color:#64748b;margin:0 0 12px;">Add this script to your site (in a custom HTML block, theme footer, or via a plugin like Insert Headers and Footers):</p>
+                <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy" style="font-size:12px;line-height:1.5;white-space:pre-wrap;">&lt;script&gt;
+(function(){
+  var WPC={endpoint:"<?php echo esc_url( get_site_url() ); ?>/wp-json/wpilot/v1/chat",key:"<?php echo esc_js( $chat_key ); ?>"};
+  var s=document.createElement("script");
+  s.src="https://weblease.se/wpilot-widget.js";
+  s.onload=function(){WPilotChat.init(WPC)};
+  document.body.appendChild(s);
+})();
+&lt;/script&gt;</code>
+                <span class="wpilot-code-hint">Click to copy. The widget loads asynchronously and won't slow down your site.</span>
+            </div>
+            <?php endif; ?>
+
+            <?php if ( ! empty( $chat_sessions ) ): ?>
+            <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
+                <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Recent Conversations</h3>
+                <table class="wpilot-token-table">
+                    <thead>
+                        <tr><th>Session</th><th>Messages</th><th>Started</th><th>Last Active</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( array_slice( $chat_sessions, 0, 10 ) as $cs ): ?>
+                            <tr>
+                                <td style="font-family:monospace;font-size:12px;"><?php echo esc_html( substr( $cs['id'], 0, 12 ) . '...' ); ?></td>
+                                <td><?php echo intval( $cs['messages'] ); ?></td>
+                                <td><?php echo esc_html( date( 'Y-m-d H:i', $cs['started'] ?? 0 ) ); ?></td>
+                                <td><?php echo esc_html( date( 'Y-m-d H:i', $cs['last_active'] ?? 0 ) ); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
         </div>
 
         <?php // ─────────── HELP & SUPPORT ─────────── ?>
