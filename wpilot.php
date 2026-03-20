@@ -2337,6 +2337,59 @@ WPilotChat.init({
             <?php endif; // chat_licensed ?>
         </div>
 
+        <?php // ─────────── FEEDBACK & FEATURE REQUESTS ─────────── ?>
+        <?php if ( $saved === 'feedback' ): ?>
+            <div class="wpilot-alert wpilot-alert-success"><strong>Thank you!</strong> Your feedback has been sent. We read every message.</div>
+        <?php endif; ?>
+        <div class="wpilot-card">
+            <h2>Feedback & Feature Requests</h2>
+            <p class="subtitle">Help us make WPilot better. Tell us what you love, what's broken, or what you wish it could do.</p>
+
+            <form method="post">
+                <?php wp_nonce_field( 'wpilot_admin' ); ?>
+                <input type="hidden" name="wpilot_action" value="send_feedback">
+
+                <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+                    <?php
+                    $fb_types = [
+                        'feedback'        => '&#128172; General feedback',
+                        'feature_request' => '&#128161; Feature request',
+                        'bug_report'      => '&#128027; Bug report',
+                        'question'        => '&#10067; Question',
+                    ];
+                    foreach ( $fb_types as $val => $label ): ?>
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;font-weight:500;color:#475569;background:#fafbfc;transition:all 0.15s;">
+                            <input type="radio" name="feedback_type" value="<?php echo $val; ?>" <?php echo $val === 'feedback' ? 'checked' : ''; ?> style="accent-color:#4ec9b0;">
+                            <?php echo $label; ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="wpilot-field">
+                    <label>How would you rate WPilot?</label>
+                    <div style="display:flex;gap:4px;margin-bottom:4px;" id="wpilot-stars">
+                        <?php for ( $i = 1; $i <= 5; $i++ ): ?>
+                            <label style="cursor:pointer;font-size:28px;color:#e2e8f0;transition:color 0.15s;" 
+                                   onmouseover="for(var s=this.parentNode.children,j=0;j<s.length;j++)s[j].style.color=j<=<?php echo $i-1; ?>?'#f59e0b':'#e2e8f0';"
+                                   onmouseout="var r=this.parentNode.querySelector('input:checked');if(r){var v=parseInt(r.value);for(var s=this.parentNode.children,j=0;j<s.length;j++)s[j].style.color=j<=v-1?'#f59e0b':'#e2e8f0';}else{for(var s=this.parentNode.children,j=0;j<s.length;j++)s[j].style.color='#e2e8f0';}"
+                                   onclick="this.querySelector('input').checked=true;var v=parseInt(this.querySelector('input').value);for(var s=this.parentNode.children,j=0;j<s.length;j++)s[j].style.color=j<=v-1?'#f59e0b':'#e2e8f0';">
+                                <input type="radio" name="feedback_rating" value="<?php echo $i; ?>" style="display:none;" <?php echo $i === 5 ? 'checked' : ''; ?>>&#9733;
+                            </label>
+                        <?php endfor; ?>
+                    </div>
+                    <span class="hint">Optional — helps us understand your experience.</span>
+                </div>
+
+                <div class="wpilot-field">
+                    <label for="feedback_message">Your message</label>
+                    <textarea id="feedback_message" name="feedback_message" rows="4" required style="width:100%;max-width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;background:#fafbfc;font-family:inherit;line-height:1.6;resize:vertical;" placeholder="What would you like to tell us? Bug reports, ideas, praise — anything helps!"></textarea>
+                </div>
+
+                <button type="submit" class="wpilot-btn wpilot-btn-primary">Send Feedback</button>
+                <span style="font-size:12px;color:#94a3b8;margin-left:12px;">We read every message and usually respond within 24 hours.</span>
+            </form>
+        </div>
+
         <?php // ─────────── HELP & SUPPORT ─────────── ?>
         <div class="wpilot-help">
             <h2>Need help?</h2>
