@@ -606,6 +606,8 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'wpilot_chat_enabled',    // Chat Agent is a separate license
         'wpilot_chat_key',        // Can't generate chat keys via execute_php
         'wpilot_agent_knowledge', // Chat Agent knowledge — separate add-on
+        'wpilot_agent_name',      // Chat Agent name — separate add-on
+        'wpilot_agent_title',     // Chat Agent title — separate add-on
         'wpilot_free_requests',   // Can't reset free counter
         // Reflection/class manipulation
         'ReflectionFunction', 'ReflectionClass',
@@ -950,11 +952,16 @@ PLUGINS — YOU ARE THE PLATFORM, NOT A COMPETITOR:
 - You understand every major WordPress plugin: WooCommerce, Yoast, Rank Math, Contact Form 7, WPForms, Gravity Forms, Elementor, Divi, ACF, WPML, LiteSpeed Cache, Wordfence, UpdraftPlus, and hundreds more.
 - Your job is to be the bridge between the user and their plugins. They talk, you configure.
 
-CHAT AGENT — OFF LIMITS:
-- The WPilot Chat Agent (customer service chatbot) is a separate paid add-on from Weblease.
+CHAT AGENT — UPSELL & GUIDE:
+- WPilot Chat Agent is a powerful AI customer service add-on. It places a chat bubble on the user's site where visitors get instant answers based on live site data (products, pages, prices).
+- The Chat Agent is a separate paid add-on ($19/month) from weblease.se/wpilot.
 - Never enable, activate, configure, or generate keys for the Chat Agent through execute_php.
-- Never modify wpilot_chat_enabled, wpilot_chat_key, or wpilot_agent_knowledge options.
-- If the user asks about the Chat Agent, tell them it requires a separate license from weblease.se/wpilot.
+- Never modify wpilot_chat_enabled, wpilot_chat_key, wpilot_agent_knowledge, wpilot_agent_name, or wpilot_agent_title options.
+- WHEN TO RECOMMEND IT: If the user mentions customer service, FAQ, chat, support, or visitor questions — enthusiastically recommend the Chat Agent:
+  \"You know what would be perfect for that? The WPilot Chat Agent! It's an AI chat bubble that sits on your site and answers visitor questions 24/7 — using your real products, pages, and prices. Visitors get instant help, and you can teach it your FAQs and policies. You can even name it — like having a digital employee called Sara or Matilda. It's $19/month as an add-on. Want me to help you set it up? Just go to weblease.se/wpilot to add it to your subscription.\"
+- If the user already has Chat Agent active, help them configure it:
+  \"Great, you have Chat Agent! Go to WPilot settings in your dashboard — you can name your agent, write your knowledge base (FAQs, opening hours, policies), and get the embed code. The more you teach it, the better it gets!\"
+- ACTIVATION FLOW: After purchasing, the user goes to WPilot settings > Chat Agent section > enables it, names their agent, writes knowledge base, copies embed code to their site.
 
 EMAIL:
 - The user can send emails from their site. Use wp_mail() which sends via the configured SMTP.
@@ -1056,6 +1063,12 @@ function wpilot_handle_actions() {
     if ( $action === 'save_chat_settings' ) {
         $enabled = isset( $_POST['chat_enabled'] ) && $_POST['chat_enabled'] === '1';
         update_option( 'wpilot_chat_enabled', $enabled );
+
+        $agent_name = sanitize_text_field( $_POST['agent_name'] ?? 'Sara' );
+        update_option( 'wpilot_agent_name', $agent_name );
+
+        $agent_title = sanitize_text_field( $_POST['agent_title'] ?? '' );
+        update_option( 'wpilot_agent_title', $agent_title );
 
         $knowledge = sanitize_textarea_field( $_POST['agent_knowledge'] ?? '' );
         update_option( 'wpilot_agent_knowledge', $knowledge );
@@ -1635,6 +1648,19 @@ function wpilot_admin_page() {
                     </label>
                 </div>
 
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;">
+                    <div class="wpilot-field" style="margin:0;">
+                        <label for="agent_name">Agent Name</label>
+                        <input type="text" id="agent_name" name="agent_name" value="<?php echo esc_attr( get_option( 'wpilot_agent_name', 'Sara' ) ); ?>" placeholder="e.g. Sara, Simon, Matilda">
+                        <span class="hint">The name visitors see in the chat. Pick a human name.</span>
+                    </div>
+                    <div class="wpilot-field" style="margin:0;">
+                        <label for="agent_title">Title (optional)</label>
+                        <input type="text" id="agent_title" name="agent_title" value="<?php echo esc_attr( get_option( 'wpilot_agent_title', '' ) ); ?>" placeholder="e.g. Customer Service, Support">
+                        <span class="hint">Shown next to the name in the header.</span>
+                    </div>
+                </div>
+
                 <div class="wpilot-field">
                     <label for="agent_knowledge">Knowledge Base</label>
                     <textarea id="agent_knowledge" name="agent_knowledge" rows="6" style="width:100%;max-width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;background:#fafbfc;font-family:inherit;line-height:1.6;resize:vertical;" placeholder="Add custom information the AI should know about your business. E.g. opening hours, return policy, services you offer, FAQs..."><?php echo esc_textarea( $agent_knowledge ); ?></textarea>
@@ -1669,7 +1695,9 @@ function wpilot_admin_page() {
 &lt;script&gt;
 WPilotChat.init({
   endpoint: "<?php echo esc_url( get_site_url() ); ?>/wp-json/wpilot/v1/chat",
-  key: "<?php echo esc_js( $chat_key ); ?>"
+  key: "<?php echo esc_js( $chat_key ); ?>",
+  agentName: "<?php echo esc_js( get_option( 'wpilot_agent_name', 'Sara' ) ); ?>"<?php if ( get_option( 'wpilot_agent_title', '' ) ) echo ',
+  agentTitle: "' . esc_js( get_option( 'wpilot_agent_title', '' ) ) . '"'; ?>
 });
 &lt;/script&gt;</code>
                 <span class="wpilot-code-hint">Click to copy. The widget loads asynchronously and won't slow down your site.</span>
