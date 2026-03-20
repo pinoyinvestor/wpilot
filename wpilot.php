@@ -168,8 +168,25 @@ function wpilot_check_license() {
 
     $body   = json_decode( wp_remote_retrieve_body( $response ), true );
     $status = ( $body['valid'] ?? false ) ? 'valid' : 'expired';
+    // Cache chat_agent status alongside license
+    $has_chat = $body['chat_agent'] ?? false;
+    set_transient( 'wpilot_chat_agent_licensed', $has_chat ? 'yes' : 'no', 3600 );
     set_transient( 'wpilot_license_status', $status, 3600 );
     return $status;
+}
+
+/**
+ * Check if this license includes Chat Agent add-on.
+ * Cached for 1 hour alongside license validation.
+ */
+function wpilot_has_chat_agent() {
+    $cached = get_transient( 'wpilot_chat_agent_licensed' );
+    if ( $cached !== false ) return $cached === 'yes';
+
+    // Force a license check to populate the cache
+    wpilot_check_license();
+    $cached = get_transient( 'wpilot_chat_agent_licensed' );
+    return $cached === 'yes';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -286,6 +303,11 @@ function wpilot_chat_endpoint( $request ) {
     // Check if chat is enabled
     if ( ! get_option( 'wpilot_chat_enabled', false ) ) {
         return new WP_REST_Response( [ 'error' => 'Chat is not enabled on this site.' ], 403 );
+    }
+
+    // Verify Chat Agent license
+    if ( ! wpilot_has_chat_agent() ) {
+        return new WP_REST_Response( [ 'error' => 'Chat Agent requires a separate license. Visit weblease.se/wpilot for details.' ], 403 );
     }
 
     $body       = $request->get_json_params();
@@ -1557,14 +1579,43 @@ function wpilot_admin_page() {
 
         <?php // ─────────── CHAT AGENT ─────────── ?>
         <?php
+        $chat_licensed = wpilot_has_chat_agent();
         $chat_enabled  = get_option( 'wpilot_chat_enabled', false );
         $chat_key      = get_option( 'wpilot_chat_key', '' );
         $agent_knowledge = get_option( 'wpilot_agent_knowledge', '' );
         $chat_sessions = get_option( 'wpilot_chat_sessions', [] );
         ?>
         <div class="wpilot-card">
-            <h2>Chat Agent</h2>
-            <p class="subtitle">Add an AI-powered chat widget to your site. Visitors can ask questions and get instant answers based on your site content.</p>
+            <h2 style="display:flex;align-items:center;gap:10px;">Chat Agent <span style="font-size:11px;background:<?php echo $chat_licensed ? 'rgba(78,201,176,0.15);color:#16a34a' : 'rgba(234,179,8,0.15);color:#a16207'; ?>;padding:4px 12px;border-radius:20px;font-weight:600;"><?php echo $chat_licensed ? 'Active' : 'Add-on'; ?></span></h2>
+
+            <?php if ( ! $chat_licensed ): ?>
+                <p class="subtitle">Add an AI-powered chat widget to your site. Visitors ask questions, your AI answers instantly.</p>
+                <div style="background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);border-radius:14px;padding:32px;color:#fff;margin-top:16px;">
+                    <h3 style="margin:0 0 8px;font-size:20px;font-weight:700;">Upgrade to Chat Agent</h3>
+                    <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 20px;">Let AI handle your customer service 24/7. The chat widget reads your products, pages, and knowledge base to give accurate answers.</p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
+                        <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:14px;">
+                            <div style="color:#4ec9b0;font-weight:600;font-size:13px;">&#10003; Live site data</div>
+                            <div style="color:#94a3b8;font-size:12px;margin-top:4px;">Answers from your real pages, products & prices</div>
+                        </div>
+                        <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:14px;">
+                            <div style="color:#4ec9b0;font-weight:600;font-size:13px;">&#10003; Knowledge base</div>
+                            <div style="color:#94a3b8;font-size:12px;margin-top:4px;">Teach it your FAQs, policies & custom info</div>
+                        </div>
+                        <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:14px;">
+                            <div style="color:#4ec9b0;font-weight:600;font-size:13px;">&#10003; 9 languages</div>
+                            <div style="color:#94a3b8;font-size:12px;margin-top:4px;">Auto-detects visitor language</div>
+                        </div>
+                        <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:14px;">
+                            <div style="color:#4ec9b0;font-weight:600;font-size:13px;">&#10003; Easy embed</div>
+                            <div style="color:#94a3b8;font-size:12px;margin-top:4px;">One line of code on your site</div>
+                        </div>
+                    </div>
+                    <a href="https://weblease.se/wpilot?addon=chat" target="_blank" class="wpilot-btn wpilot-btn-green" style="font-size:16px;padding:14px 32px;">Get Chat Agent &mdash; $19/month</a>
+                    <p style="font-size:12px;color:#64748b;margin-top:12px;">Added to your existing WPilot subscription. Cancel anytime.</p>
+                </div>
+            <?php else: ?>
+                <p class="subtitle">Add an AI-powered chat widget to your site. Visitors can ask questions and get instant answers based on your site content.</p>
 
             <?php if ( $saved === 'chat' ): ?>
                 <div class="wpilot-alert wpilot-alert-success"><strong>Chat settings saved!</strong></div>
@@ -1645,6 +1696,7 @@ WPilotChat.init({
                 </table>
             </div>
             <?php endif; ?>
+            <?php endif; // chat_licensed ?>
         </div>
 
         <?php // ─────────── HELP & SUPPORT ─────────── ?>
