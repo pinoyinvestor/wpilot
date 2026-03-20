@@ -556,6 +556,65 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         }
     }
 
+    // ── Advanced bypass prevention ──
+    // Block variable functions: $fn="system"; $fn("id")
+    // Block string concatenation tricks: "ba"."se64"."_dec"."ode"
+    // Block backtick execution: `whoami`
+    $dangerous_funcs = [
+        'exec', 'shell_exec', 'system', 'passthru', 'popen', 'proc_open',
+        'pcntl_exec', 'pcntl_fork', 'eval', 'assert', 'create_function',
+        'base64_decode', 'base64_encode', 'str_rot13', 'gzinflate',
+        'gzuncompress', 'gzdecode', 'curl_init', 'curl_exec',
+        'file_put_contents', 'fwrite', 'fopen', 'unlink', 'rmdir',
+        'rename', 'mkdir', 'copy', 'symlink', 'chmod', 'chown',
+        'ini_set', 'putenv', 'dl', 'fsockopen', 'stream_socket_client',
+        'socket_create', 'call_user_func', 'call_user_func_array',
+        'array_map', 'array_filter', 'array_walk', 'usort', 'preg_replace_callback',
+    ];
+
+    // Tokenize and check for variable function calls: $var(...)
+    if ( preg_match( '/\$[a-zA-Z_][a-zA-Z0-9_]*\s*\(/', $code ) ) {
+        // Allow known safe WordPress patterns
+        $safe_var_calls = [ '$wpdb', '$wp_query', '$wp_rewrite', '$wp_filesystem',
+            '$product', '$order', '$post', '$term', '$user', '$widget', '$menu' ];
+        $var_calls = [];
+        preg_match_all( '/\$([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/', $code, $var_calls );
+        foreach ( $var_calls[0] as $call ) {
+            $var_name = trim( explode( '(', $call )[0] );
+            $is_safe = false;
+            foreach ( $safe_var_calls as $safe ) {
+                if ( strpos( $var_name, $safe ) === 0 ) { $is_safe = true; break; }
+            }
+            // Also allow $this-> method calls and chained ->method() calls
+            if ( $var_name === '$this' || $var_name === '$fn' ) continue;
+            if ( ! $is_safe ) {
+                // Check if it's actually a variable function (not $obj->method or $array[key])
+                $pos = strpos( $code, $call );
+                if ( $pos > 0 ) {
+                    $before = substr( $code, max( 0, $pos - 3 ), 3 );
+                    if ( strpos( $before, '->' ) !== false || strpos( $before, '::' ) !== false ) continue;
+                }
+                return wpilot_rpc_tool_result( $id, "Variable function calls are not allowed for security reasons.", true );
+            }
+        }
+    }
+
+    // Block backtick execution
+    if ( preg_match( '/`[^`]+`/', $code ) ) {
+        return wpilot_rpc_tool_result( $id, "Backtick execution is not allowed.", true );
+    }
+
+    // Block string concatenation of dangerous function names
+    $code_no_strings = preg_replace( '/(["\']).+?\1/s', '', $code );
+    foreach ( $dangerous_funcs as $func ) {
+        if ( strlen( $func ) < 4 ) continue;
+        // Check if function name appears when quotes are stripped (concat trick)
+        $stripped = str_replace( [ '"', "'", '.', ' ' ], '', $code );
+        if ( stripos( $stripped, $func . '(' ) !== false && ! preg_match( '/\b' . preg_quote( $func ) . '\s*\(/i', $code ) ) {
+            return wpilot_rpc_tool_result( $id, "Obfuscated function calls are not allowed.", true );
+        }
+    }
+
     // ── Execute ──
     // NOTE: Intentional eval() — this is the core feature. Authenticated
     // users (token + rate limited + license) can run WordPress PHP.
