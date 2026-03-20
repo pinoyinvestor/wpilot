@@ -505,6 +505,46 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         return wpilot_rpc_tool_result( $id, 'Code too large. Maximum 50KB.', true );
     }
 
+
+    // ── Block file reading functions (customers must NOT read server files) ──
+    $file_read_blocked = [
+        'file_get_contents', 'readfile', 'file\b', 'fgets', 'fgetc',
+        'fread', 'fpassthru', 'highlight_file', 'show_source',
+        'php_strip_whitespace', 'parse_ini_file',
+        'scandir', 'glob', 'opendir', 'readdir', 'dir',
+        'DirectoryIterator', 'FilesystemIterator', 'RecursiveDirectoryIterator',
+        'SplFileObject', 'SplFileInfo',
+        'phpinfo', 'php_uname', 'php_sapi_name', 'get_loaded_extensions',
+        'getenv', 'apache_getenv',
+        'constant', 'get_defined_constants', 'get_defined_vars', 'get_defined_functions',
+        'debug_backtrace', 'debug_print_backtrace',
+        'token_get_all',  // Can parse PHP source
+    ];
+    foreach ( $file_read_blocked as $fn ) {
+        if ( preg_match( '/' . $fn . '\s*\(/i', $code ) ) {
+            return wpilot_rpc_tool_result( $id, 'This function is not available. Use WordPress functions instead.', true );
+        }
+    }
+
+    // ── Block credential/constant access ──
+    $credential_blocked = [
+        'DB_PASSWORD', 'DB_USER', 'DB_HOST', 'DB_NAME', 'DB_CHARSET',
+        'AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY',
+        'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT',
+        'ABSPATH', 'WPINC',
+                'WPILOT_DIR',
+    ];
+    foreach ( $credential_blocked as $cred ) {
+        if ( strpos( $code, $cred ) !== false ) {
+            return wpilot_rpc_tool_result( $id, 'Access to server credentials and internals is not allowed.', true );
+        }
+    }
+
+    // ── Block superglobal access ──
+    if ( preg_match( '/\$_(SERVER|ENV|REQUEST|FILES|COOKIE|SESSION|GET|POST)\b/', $code ) ) {
+        return wpilot_rpc_tool_result( $id, 'Direct access to superglobals is not allowed.', true );
+    }
+
     // ── Security: block dangerous operations ──
     $blocked = [
         // Shell execution
