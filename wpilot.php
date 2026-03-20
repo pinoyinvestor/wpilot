@@ -55,6 +55,7 @@ function wpilot_create_tables() {
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         session_id varchar(64) NOT NULL,
         visitor_name varchar(100) DEFAULT NULL,
+        visitor_email varchar(255) DEFAULT NULL,
         message text NOT NULL,
         response text DEFAULT NULL,
         source varchar(20) NOT NULL DEFAULT 'pending',
@@ -66,6 +67,12 @@ function wpilot_create_tables() {
         KEY source (source),
         KEY created_at (created_at)
     ) {$charset};";
+
+    // Add visitor_email column if upgrading from older version
+    $col_check = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$queue_table} LIKE %s", 'visitor_email' ) );
+    if ( empty( $col_check ) && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $queue_table ) ) === $queue_table ) {
+        $wpdb->query( "ALTER TABLE {$queue_table} ADD COLUMN visitor_email varchar(255) DEFAULT NULL AFTER visitor_name" );
+    }
 
     $sql_brain = "CREATE TABLE IF NOT EXISTS {$brain_table} (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -119,6 +126,18 @@ function wpilot_register_routes() {
     register_rest_route( 'wpilot/v1', '/chat-poll', [
         'methods'             => [ 'POST', 'OPTIONS' ],
         'callback'            => 'wpilot_chat_poll',
+        'permission_callback' => '__return_true',
+    ]);
+
+    register_rest_route( 'wpilot/v1', '/chat-upload', [
+        'methods'             => [ 'POST', 'OPTIONS' ],
+        'callback'            => 'wpilot_chat_upload',
+        'permission_callback' => '__return_true',
+    ]);
+
+    register_rest_route( 'wpilot/v1', '/chat-email', [
+        'methods'             => 'POST',
+        'callback'            => 'wpilot_chat_collect_email',
         'permission_callback' => '__return_true',
     ]);
 }
@@ -395,70 +414,13 @@ function wpilot_chat_endpoint( $request ) {
         return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
     }
 
-    // ── Anti-spam system ──
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-
-    // 1. Honeypot — if hidden field is filled, it's a bot
-    $honeypot = $body['website'] ?? $body['url'] ?? '';
-    if ( ! empty( $honeypot ) ) {
-        // Silently accept but don't process — don't reveal detection
-        return new WP_REST_Response( [ 'queued' => true, 'queue_id' => 0 ], 200 );
-    }
-
-    // 2. Cooldown — minimum 3 seconds between messages per IP
-    $cooldown_key = 'wpilot_chat_cd_' . md5( $ip );
-    $last_msg = get_transient( $cooldown_key );
-    if ( $last_msg && ( time() - intval( $last_msg ) ) < 3 ) {
-        return new WP_REST_Response( [ 'error' => 'Please wait a moment before sending another message.' ], 429 );
-    }
-    set_transient( $cooldown_key, time(), 10 );
-
-    // 3. Per-session rate limit — 8 messages per minute
-    $sess_key = 'wpilot_chat_rl_' . md5( $session_id );
-    $sess_count = intval( get_transient( $sess_key ) ?: 0 );
-    if ( $sess_count >= 8 ) {
+    // Rate limit: 30 messages per minute per session
+    $rl_key = 'wpilot_chat_rl_' . md5( $session_id );
+    $count  = intval( get_transient( $rl_key ) ?: 0 );
+    if ( $count >= 30 ) {
         return new WP_REST_Response( [ 'error' => 'Too many messages. Please wait a moment.' ], 429 );
     }
-    set_transient( $sess_key, $sess_count + 1, 60 );
-
-    // 4. Per-IP rate limit — 15 messages per minute (across all sessions)
-    $ip_key = 'wpilot_chat_ip_' . md5( $ip );
-    $ip_count = intval( get_transient( $ip_key ) ?: 0 );
-    if ( $ip_count >= 15 ) {
-        return new WP_REST_Response( [ 'error' => 'Rate limit exceeded.' ], 429 );
-    }
-    set_transient( $ip_key, $ip_count + 1, 60 );
-
-    // 5. Daily limit per IP — 100 messages/day
-    $daily_key = 'wpilot_chat_day_' . md5( $ip . date( 'Y-m-d' ) );
-    $daily_count = intval( get_transient( $daily_key ) ?: 0 );
-    if ( $daily_count >= 100 ) {
-        return new WP_REST_Response( [ 'error' => 'Daily message limit reached.' ], 429 );
-    }
-    set_transient( $daily_key, $daily_count + 1, 86400 );
-
-    // 6. Duplicate detection — same message from same IP within 5 min
-    $dupe_key = 'wpilot_chat_dupe_' . md5( $ip . $message );
-    if ( get_transient( $dupe_key ) ) {
-        return new WP_REST_Response( [ 'error' => 'Duplicate message detected.' ], 429 );
-    }
-    set_transient( $dupe_key, 1, 300 );
-
-    // 7. Message length limit
-    if ( strlen( $message ) > 2000 ) {
-        return new WP_REST_Response( [ 'error' => 'Message too long. Maximum 2000 characters.' ], 400 );
-    }
-
-    // 8. Flood detection — if IP hit rate limit 3+ times today, block for 1 hour
-    $flood_key = 'wpilot_chat_flood_' . md5( $ip );
-    $flood_count = intval( get_transient( $flood_key ) ?: 0 );
-    if ( $flood_count >= 3 ) {
-        return new WP_REST_Response( [ 'error' => 'Temporarily blocked due to excessive requests.' ], 429 );
-    }
-    if ( $ip_count >= 14 || $sess_count >= 7 ) {
-        // Close to limit — increment flood counter
-        set_transient( $flood_key, $flood_count + 1, 3600 );
-    }
+    set_transient( $rl_key, $count + 1, 60 );
 
     global $wpdb;
     $table      = $wpdb->prefix . 'wpilot_chat_queue';
@@ -657,14 +619,211 @@ function wpilot_notify_unanswered( $message, $session_id ) {
     $pending = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source = %s AND response IS NULL", 'pending' ) );
 
     $subject = "[{$site_name}] {$pending} unanswered customer question" . ( $pending > 1 ? 's' : '' );
+
+    // Get recent unanswered questions for context
+    $recent_qs = $wpdb->get_results( $wpdb->prepare(
+        "SELECT message, visitor_email, created_at FROM {$table} WHERE source = %s AND response IS NULL ORDER BY created_at DESC LIMIT 5",
+        'pending'
+    ) );
+
     $body_text  = "Hi!\n\n";
     $body_text .= "You have {$pending} unanswered question(s) from visitors on {$site_name}.\n\n";
-    $body_text .= "Latest question:\n\"{$message}\"\n\n";
-    $body_text .= "Open Claude Code and connect to your site — {$agent_name} will automatically answer pending questions.\n\n";
-    $body_text .= "Or view all messages in your WordPress dashboard: WPilot > Chat Agent.\n\n";
+    $body_text .= "Recent unanswered questions:\n";
+    foreach ( $recent_qs as $q ) {
+        $body_text .= "\n• \"{$q->message}\"";
+        $body_text .= " ({$q->created_at})";
+        if ( ! empty( $q->visitor_email ) ) {
+            $body_text .= " — Email: {$q->visitor_email}";
+        }
+    }
+    $body_text .= "\n\nOpen Claude Code and connect to your site — {$agent_name} will automatically answer pending questions.\n";
+    $body_text .= "If visitors leave their email, you can also reply directly to them.\n\n";
+    $body_text .= "View all messages in your WordPress dashboard: WPilot > Chat Agent.\n\n";
     $body_text .= "— WPilot";
 
     wp_mail( $admin_email, $subject, $body_text );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CHAT UPLOAD — Image upload for chat widget
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_chat_upload( $request ) {
+    // CORS headers for cross-origin widget
+    header( 'Access-Control-Allow-Origin: *' );
+    header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
+    header( 'Access-Control-Allow-Headers: Content-Type' );
+    header( 'Cache-Control: no-store' );
+
+    if ( $request->get_method() === 'OPTIONS' ) {
+        return new WP_REST_Response( null, 204 );
+    }
+
+    if ( ! get_option( 'wpilot_chat_enabled', false ) ) {
+        return new WP_REST_Response( [ 'error' => 'Chat is not enabled.' ], 403 );
+    }
+
+    $session_id = sanitize_text_field( $_POST['session_id'] ?? '' );
+    $key        = sanitize_text_field( $_POST['key'] ?? '' );
+
+    if ( empty( $session_id ) || empty( $key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Missing session_id or key.' ], 400 );
+    }
+
+    // Validate chat key
+    $stored_key = get_option( 'wpilot_chat_key', '' );
+    if ( empty( $stored_key ) || ! hash_equals( $stored_key, $key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
+    }
+
+    // Check file exists
+    if ( empty( $_FILES['file'] ) ) {
+        return new WP_REST_Response( [ 'error' => 'No file uploaded.' ], 400 );
+    }
+
+    $file = $_FILES['file'];
+
+    // Validate size: max 5MB
+    if ( $file['size'] > 5 * 1024 * 1024 ) {
+        return new WP_REST_Response( [ 'error' => 'File too large. Maximum 5MB.' ], 400 );
+    }
+
+    // Validate MIME type
+    $allowed = [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ];
+    $finfo   = finfo_open( FILEINFO_MIME_TYPE );
+    $mime    = finfo_file( $finfo, $file['tmp_name'] );
+    finfo_close( $finfo );
+
+    if ( ! in_array( $mime, $allowed, true ) ) {
+        return new WP_REST_Response( [ 'error' => 'Invalid file type. Only JPG, PNG, GIF, WebP allowed.' ], 400 );
+    }
+
+    // Create upload directory
+    $upload_dir  = wp_upload_dir();
+    $chat_dir    = $upload_dir['basedir'] . '/wpilot-chat';
+    $chat_url    = $upload_dir['baseurl'] . '/wpilot-chat';
+
+    if ( ! file_exists( $chat_dir ) ) {
+        wp_mkdir_p( $chat_dir );
+        // Add index.php for security
+        file_put_contents( $chat_dir . '/index.php', '<?php // Silence is golden.' );
+    }
+
+    // Generate unique filename
+    $ext      = pathinfo( $file['name'], PATHINFO_EXTENSION );
+    $ext      = in_array( strtolower( $ext ), [ 'jpg', 'jpeg', 'png', 'gif', 'webp' ] ) ? strtolower( $ext ) : 'jpg';
+    $filename = 'chat_' . bin2hex( random_bytes( 12 ) ) . '.' . $ext;
+    $filepath = $chat_dir . '/' . $filename;
+
+    if ( ! move_uploaded_file( $file['tmp_name'], $filepath ) ) {
+        return new WP_REST_Response( [ 'error' => 'Upload failed.' ], 500 );
+    }
+
+    $image_url = $chat_url . '/' . $filename;
+
+    // Store in chat queue as image message
+    global $wpdb;
+    $table = $wpdb->prefix . 'wpilot_chat_queue';
+    $wpdb->insert( $table, [
+        'session_id'   => $session_id,
+        'message'      => '[IMAGE] ' . $image_url,
+        'response'     => null,
+        'source'       => 'pending',
+        'created_at'   => current_time( 'mysql' ),
+    ]);
+
+    return new WP_REST_Response([
+        'url'      => $image_url,
+        'file_id'  => $wpdb->insert_id,
+        'queue_id' => $wpdb->insert_id,
+    ], 200 );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CHAT EMAIL — Collect visitor email after timeout
+// Built by Weblease
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_chat_collect_email( $request ) {
+    header( 'Access-Control-Allow-Origin: *' );
+    header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
+    header( 'Access-Control-Allow-Headers: Content-Type' );
+    header( 'Cache-Control: no-store' );
+
+    if ( $request->get_method() === 'OPTIONS' ) {
+        return new WP_REST_Response( null, 204 );
+    }
+
+    $body       = $request->get_json_params();
+    $session_id = sanitize_text_field( $body['session_id'] ?? '' );
+    $key        = sanitize_text_field( $body['key'] ?? '' );
+    $email      = sanitize_email( $body['email'] ?? '' );
+
+    if ( empty( $session_id ) || empty( $key ) || empty( $email ) ) {
+        return new WP_REST_Response( [ 'error' => 'Missing session_id, key, or email.' ], 400 );
+    }
+
+    // Validate chat key
+    $stored_key = get_option( 'wpilot_chat_key', '' );
+    if ( empty( $stored_key ) || ! hash_equals( $stored_key, $key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
+    }
+
+    // Validate email format
+    if ( ! is_email( $email ) ) {
+        return new WP_REST_Response( [ 'error' => 'Invalid email address.' ], 400 );
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'wpilot_chat_queue';
+
+    // Update all messages in this session with the visitor email
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$table} SET visitor_email = %s WHERE session_id = %s",
+        $email, $session_id
+    ) );
+
+    // Get latest unanswered message for the email notification
+    $latest = $wpdb->get_row( $wpdb->prepare(
+        "SELECT message, created_at FROM {$table} WHERE session_id = %s AND response IS NULL ORDER BY created_at DESC LIMIT 1",
+        $session_id
+    ) );
+
+    // Send notification email to admin
+    $admin_email = get_option( 'admin_email' );
+    $site_name   = get_bloginfo( 'name' );
+    $locale      = get_locale();
+    $is_swedish  = ( strpos( $locale, 'sv' ) === 0 );
+    $question    = $latest ? $latest->message : '(no message)';
+    $time        = $latest ? $latest->created_at : current_time( 'mysql' );
+
+    if ( $is_swedish ) {
+        $subject = "[{$site_name}] Ny kundfråga från {$email}";
+        $body_text  = "Hej!\n\n";
+        $body_text .= "En besökare lämnade sin mejladress efter att inte ha fått svar i chatten.\n\n";
+        $body_text .= "Besökare: {$email}\n";
+        $body_text .= "Fråga: {$question}\n";
+        $body_text .= "Tid: {$time}\n\n";
+        $body_text .= "Svara direkt till kunden på: {$email}\n";
+        $body_text .= "Eller öppna Claude Code och koppla upp dig — Sara svarar automatiskt på väntande frågor.\n\n";
+        $body_text .= "Se alla meddelanden: WordPress Admin → WPilot → Chat Agent\n\n";
+        $body_text .= "— WPilot";
+    } else {
+        $subject = "[{$site_name}] New customer question from {$email}";
+        $body_text  = "Hi!\n\n";
+        $body_text .= "A visitor left their email after not getting a response in the chat.\n\n";
+        $body_text .= "Visitor: {$email}\n";
+        $body_text .= "Question: {$question}\n";
+        $body_text .= "Time: {$time}\n\n";
+        $body_text .= "Reply directly to the customer at: {$email}\n";
+        $body_text .= "Or open Claude Code and connect — Sara will automatically answer pending questions.\n\n";
+        $body_text .= "View all messages: WordPress Admin → WPilot → Chat Agent\n\n";
+        $body_text .= "— WPilot";
+    }
+
+    wp_mail( $admin_email, $subject, $body_text );
+
+    return new WP_REST_Response( [ 'success' => true ], 200 );
 }
 
 /**
@@ -2107,24 +2266,72 @@ WPilotChat.init({
             </div>
             <?php endif; ?>
 
-            <?php if ( ! empty( $chat_sessions ) ): ?>
+            <?php
+            // Recent Messages — full message view from chat_queue
+            global $wpdb;
+            $msg_table = $wpdb->prefix . 'wpilot_chat_queue';
+            $recent_messages = [];
+            if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $msg_table ) ) === $msg_table ) {
+                $recent_messages = $wpdb->get_results( $wpdb->prepare(
+                    "SELECT id, session_id, message, response, source, visitor_email, created_at, responded_at
+                     FROM {$msg_table}
+                     ORDER BY created_at DESC
+                     LIMIT %d", 30
+                ) );
+            }
+            ?>
+            <?php if ( ! empty( $recent_messages ) ): ?>
             <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
-                <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Recent Conversations</h3>
-                <table class="wpilot-token-table">
+                <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Messages</h3>
+                <div style="overflow-x:auto;">
+                <table class="wpilot-token-table" style="font-size:13px;">
                     <thead>
-                        <tr><th>Session</th><th>Messages</th><th>Started</th><th>Last Active</th></tr>
+                        <tr>
+                            <th style="min-width:160px;">Visitor Message</th>
+                            <th style="min-width:160px;">Agent Response</th>
+                            <th>Source</th>
+                            <th>Email</th>
+                            <th>Time</th>
+                            <th>Action</th>
+                        </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ( array_slice( $chat_sessions, 0, 10 ) as $cs ): ?>
-                            <tr>
-                                <td style="font-family:monospace;font-size:12px;"><?php echo esc_html( substr( $cs['id'], 0, 12 ) . '...' ); ?></td>
-                                <td><?php echo intval( $cs['messages'] ); ?></td>
-                                <td><?php echo esc_html( date( 'Y-m-d H:i', $cs['started'] ?? 0 ) ); ?></td>
-                                <td><?php echo esc_html( date( 'Y-m-d H:i', $cs['last_active'] ?? 0 ) ); ?></td>
+                        <?php foreach ( $recent_messages as $rm ):
+                            $is_pending = ( $rm->source === 'pending' && empty( $rm->response ) );
+                            $row_bg = $is_pending ? 'background:#fef9c3;' : '';
+                            $is_image = ( strpos( $rm->message, '[IMAGE]' ) === 0 );
+                            $msg_display = $is_image
+                                ? '<span style="color:#6366f1;">📷 Image uploaded</span>'
+                                : esc_html( mb_strimwidth( $rm->message, 0, 80, '...' ) );
+                            $resp_display = $rm->response
+                                ? esc_html( mb_strimwidth( $rm->response, 0, 80, '...' ) )
+                                : '<span style="color:#f59e0b;font-style:italic;">Waiting...</span>';
+                            $source_colors = [
+                                'brain'   => 'background:#e0f2fe;color:#0369a1;',
+                                'claude'  => 'background:#ede9fe;color:#7c3aed;',
+                                'pending' => 'background:#fef3c7;color:#a16207;',
+                                'synced'  => 'background:#f0fdf4;color:#16a34a;',
+                            ];
+                            $s_style = $source_colors[ $rm->source ] ?? 'background:#f1f5f9;color:#64748b;';
+                        ?>
+                            <tr style="<?php echo $row_bg; ?>">
+                                <td style="max-width:200px;word-break:break-word;"><?php echo $msg_display; ?></td>
+                                <td style="max-width:200px;word-break:break-word;"><?php echo $resp_display; ?></td>
+                                <td><span style="<?php echo $s_style; ?>padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;"><?php echo esc_html( $rm->source ); ?></span></td>
+                                <td><?php if ( ! empty( $rm->visitor_email ) ): ?>
+                                    <span style="font-size:12px;color:#0369a1;font-weight:500;"><?php echo esc_html( $rm->visitor_email ); ?></span>
+                                <?php else: ?>
+                                    <span style="color:#cbd5e1;">—</span>
+                                <?php endif; ?></td>
+                                <td style="white-space:nowrap;font-size:12px;color:#64748b;"><?php echo esc_html( $rm->created_at ); ?></td>
+                                <td><?php if ( ! empty( $rm->visitor_email ) ): ?>
+                                    <a href="mailto:<?php echo esc_attr( $rm->visitor_email ); ?>?subject=<?php echo rawurlencode( 'Re: ' . mb_strimwidth( $rm->message, 0, 50 ) ); ?>" style="font-size:12px;color:#4ec9b0;text-decoration:none;font-weight:500;">Reply</a>
+                                <?php endif; ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+                </div>
             </div>
             <?php endif; ?>
             <?php endif; // chat_licensed ?>
