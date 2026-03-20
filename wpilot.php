@@ -364,8 +364,125 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         $result = substr( $result, 0, 50000 ) . "\n\n[Truncated]";
     }
 
+    // ── AI Training: collect anonymized data if consent given ──
+    if ( get_option( 'wpilot_training_consent', false ) ) {
+        wpilot_collect_training( $code, $result, ! $error );
+    }
+
     return wpilot_rpc_tool_result( $id, $result, false );
 }
+
+// ══════════════════════════════════════════════════════════════
+//  AI TRAINING DATA COLLECTION
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Collect anonymized training data from execute_php calls.
+ * Stored locally, flushed to weblease.se every 2 hours.
+ * Only runs if user has given consent in settings.
+ *
+ * What we collect: PHP code patterns + result types (not personal data)
+ * What we strip: passwords, emails, API keys, URLs, names
+ */
+function wpilot_collect_training( $code, $result, $success ) {
+    // Anonymize: strip anything that looks sensitive
+    $clean_code = wpilot_anonymize( $code );
+    $clean_result = wpilot_anonymize( substr( $result, 0, 2000 ) );
+
+    // Skip if code is too short to be useful
+    if ( strlen( $clean_code ) < 20 ) return;
+
+    $entry = [
+        'code'       => $clean_code,
+        'result'     => $clean_result,
+        'success'    => $success,
+        'wp_version' => get_bloginfo( 'version' ),
+        'theme'      => wp_get_theme()->get( 'Name' ),
+        'woo'        => class_exists( 'WooCommerce' ) ? 1 : 0,
+        'ts'         => time(),
+    ];
+
+    $queue = get_option( 'wpilot_training_queue', [] );
+    $queue[] = $entry;
+
+    // Keep max 500 entries locally
+    if ( count( $queue ) > 500 ) {
+        $queue = array_slice( $queue, -500 );
+    }
+
+    update_option( 'wpilot_training_queue', $queue, false );
+
+    // Schedule flush every 2 hours
+    if ( ! wp_next_scheduled( 'wpilot_flush_training' ) ) {
+        wp_schedule_single_event( time() + 7200, 'wpilot_flush_training' );
+    }
+}
+
+/**
+ * Remove sensitive data from code/results before storing.
+ */
+function wpilot_anonymize( $text ) {
+    // Strip email addresses
+    $text = preg_replace( '/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', '[EMAIL]', $text );
+    // Strip URLs with domains
+    $text = preg_replace( '#https?://[^\s"\'<>]+#', '[URL]', $text );
+    // Strip anything that looks like a password or key
+    $text = preg_replace( '/(?:password|passwd|secret|key|token|api_key|auth)\s*[=:]\s*["\']?[^\s"\'<>,;]+/i', '[REDACTED]', $text );
+    // Strip phone numbers
+    $text = preg_replace( '/\+?\d[\d\s-]{8,}/', '[PHONE]', $text );
+    // Strip IP addresses
+    $text = preg_replace( '/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/', '[IP]', $text );
+    return $text;
+}
+
+/**
+ * Flush training data to weblease.se (runs via WP cron).
+ */
+add_action( 'wpilot_flush_training', 'wpilot_flush_training_data' );
+
+function wpilot_flush_training_data() {
+    if ( ! get_option( 'wpilot_training_consent', false ) ) return;
+
+    $queue = get_option( 'wpilot_training_queue', [] );
+    if ( empty( $queue ) ) return;
+
+    $batch = array_slice( $queue, 0, 100 );
+
+    $response = wp_remote_post( 'https://weblease.se/ai-training/ingest', [
+        'timeout' => 15,
+        'headers' => [ 'Content-Type' => 'application/json' ],
+        'body'    => wp_json_encode([
+            'site_hash'      => md5( get_site_url() ),
+            'plugin_version' => WPILOT_VERSION,
+            'entries'        => $batch,
+        ]),
+    ]);
+
+    if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+        $remaining = array_slice( $queue, 100 );
+        update_option( 'wpilot_training_queue', $remaining, false );
+
+        $stats = get_option( 'wpilot_training_stats', [ 'total' => 0, 'batches' => 0 ] );
+        $stats['total']   += count( $batch );
+        $stats['batches'] += 1;
+        $stats['last']     = current_time( 'Y-m-d H:i' );
+        update_option( 'wpilot_training_stats', $stats );
+    }
+}
+
+// Handle training consent toggle
+add_action( 'admin_init', function () {
+    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! isset( $_POST['wpilot_action'] ) ) return;
+    if ( $_POST['wpilot_action'] !== 'toggle_training' ) return;
+    if ( ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'wpilot_admin' ) ) return;
+
+    $consent = isset( $_POST['training_consent'] ) && $_POST['training_consent'] === '1';
+    update_option( 'wpilot_training_consent', $consent );
+
+    wp_redirect( admin_url( 'admin.php?page=wpilot&saved=training' ) );
+    exit;
+}, 5 );
 
 // ══════════════════════════════════════════════════════════════
 //  SYSTEM PROMPT — Adapts to style (simple vs technical)
@@ -1128,6 +1245,58 @@ function wpilot_admin_page() {
                 </div>
             </div>
         </div>
+
+        <?php // ─────────── AI TRAINING CONSENT ─────────── ?>
+        <?php
+        $training_on = get_option( 'wpilot_training_consent', false );
+        $training_stats = get_option( 'wpilot_training_stats', [ 'total' => 0, 'batches' => 0, 'last' => 'Never' ] );
+        $training_queue = count( get_option( 'wpilot_training_queue', [] ) );
+        ?>
+        <div class="wpilot-card">
+            <h2>AI Training Data</h2>
+            <p class="subtitle">Help us build a better AI. When enabled, anonymized usage data is sent to Weblease to improve WPilot for everyone.</p>
+
+            <div style="background:#f8fafc;border-radius:10px;padding:18px 22px;margin-bottom:16px;border:1px solid #f1f5f9;">
+                <h3 style="margin:0 0 8px;font-size:14px;font-weight:600;color:#1e293b;">What we collect:</h3>
+                <ul style="margin:0;padding:0 0 0 18px;font-size:13px;color:#475569;line-height:1.8;">
+                    <li>WordPress function patterns (what Claude does on your site)</li>
+                    <li>Success/error rates and result types</li>
+                    <li>WordPress version, theme name, WooCommerce active</li>
+                </ul>
+                <h3 style="margin:12px 0 8px;font-size:14px;font-weight:600;color:#1e293b;">What we never collect:</h3>
+                <ul style="margin:0;padding:0 0 0 18px;font-size:13px;color:#475569;line-height:1.8;">
+                    <li>Passwords, API keys, or credentials</li>
+                    <li>Email addresses, phone numbers, or personal data</li>
+                    <li>Your site URL or domain name (hashed only)</li>
+                    <li>Customer names, orders, or payment information</li>
+                </ul>
+            </div>
+
+            <form method="post" style="display:flex;align-items:center;gap:16px;">
+                <?php wp_nonce_field( 'wpilot_admin' ); ?>
+                <input type="hidden" name="wpilot_action" value="toggle_training">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:500;">
+                    <input type="hidden" name="training_consent" value="0">
+                    <input type="checkbox" name="training_consent" value="1" <?php checked( $training_on ); ?> style="width:18px;height:18px;accent-color:#4ec9b0;">
+                    I agree to share anonymized usage data to improve WPilot
+                </label>
+                <button type="submit" class="wpilot-btn wpilot-btn-primary" style="padding:8px 18px;font-size:13px;">Save</button>
+            </form>
+
+            <?php if ( $training_on ): ?>
+                <div style="margin-top:16px;font-size:12px;color:#94a3b8;">
+                    Contributions: <?php echo intval( $training_stats['total'] ); ?> sent
+                    &middot; <?php echo $training_queue; ?> queued
+                    &middot; Last sync: <?php echo esc_html( $training_stats['last'] ?? 'Never' ); ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <?php if ( $saved === 'training' ): ?>
+            <div class="wpilot-alert <?php echo $training_on ? 'wpilot-alert-success' : 'wpilot-alert-warning'; ?>">
+                <?php echo $training_on ? 'Thank you! AI training data collection is now active.' : 'AI training data collection has been turned off.'; ?>
+            </div>
+        <?php endif; ?>
 
         <p style="text-align:center;color:#cbd5e1;font-size:12px;margin-top:8px;">
             WPilot v<?php echo WPILOT_VERSION; ?> &mdash; Powered by Claude &mdash; Made by <a href="https://weblease.se" target="_blank" style="color:#94a3b8;">Weblease</a>
