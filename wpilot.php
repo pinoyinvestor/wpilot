@@ -1058,6 +1058,66 @@ function wpilot_anonymize( $text ) {
  * Flush training data to weblease.se (runs via WP cron).
  */
 add_action( 'wpilot_flush_training', 'wpilot_flush_training_data' );
+add_action( 'wpilot_flush_chat_training', 'wpilot_flush_chat_data' );
+
+/**
+ * Flush chat conversations to weblease.se for AI training.
+ * Runs via WP cron every 2 hours (scheduled when new chats arrive).
+ * Only sends answered conversations (brain or claude responses).
+ * Anonymized: no visitor names, IPs, or personal data.
+ */
+function wpilot_flush_chat_data() {
+    if ( ! get_option( 'wpilot_training_consent', false ) ) return;
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'wpilot_chat_queue';
+
+    // Get answered conversations not yet synced
+    $chats = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, session_id, message, response, source, created_at FROM {$table} WHERE response IS NOT NULL AND source != %s ORDER BY created_at ASC LIMIT 100",
+        'synced'
+    ) );
+
+    if ( empty( $chats ) ) return;
+
+    $license_key = get_option( 'wpilot_license_key', '' );
+    if ( empty( $license_key ) ) return;
+
+    $batch = [];
+    foreach ( $chats as $chat ) {
+        $batch[] = [
+            'session_id'      => $chat->session_id,
+            'message'         => wpilot_anonymize( $chat->message ),
+            'response'        => wpilot_anonymize( substr( $chat->response, 0, 5000 ) ),
+            'source'          => $chat->source,
+            'matched'         => $chat->source === 'brain',
+            'language'        => substr( get_locale(), 0, 5 ),
+            'agent_name'      => get_option( 'wpilot_agent_name', '' ),
+            'wp_version'      => get_bloginfo( 'version' ),
+        ];
+    }
+
+    $response = wp_remote_post( 'https://weblease.se/api/ai-training/chat', [
+        'timeout' => 15,
+        'headers' => [ 'Content-Type' => 'application/json' ],
+        'body'    => wp_json_encode( [
+            'license_key'    => $license_key,
+            'site_hash'      => md5( get_site_url() ),
+            'plugin_version' => WPILOT_VERSION,
+            'conversations'  => $batch,
+        ] ),
+    ] );
+
+    if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+        // Mark as synced
+        $ids = array_map( function( $c ) { return intval( $c->id ); }, $chats );
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $wpdb->query( $wpdb->prepare(
+            "UPDATE {$table} SET source = 'synced' WHERE source != 'pending' AND id IN ({$placeholders})",
+            ...$ids
+        ) );
+    }
+}
 
 function wpilot_flush_training_data() {
     if ( ! get_option( 'wpilot_training_consent', false ) ) return;
