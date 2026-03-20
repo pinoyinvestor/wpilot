@@ -846,12 +846,13 @@ function wpilot_admin_page() {
                     <div class="wpilot-plan">
                         <h3>Pro</h3>
                         <div class="price">$9<span>/month</span></div>
-                        <p class="price-note">For individuals</p>
+                        <p class="price-note">For one website</p>
                         <ul>
                             <li>Unlimited requests</li>
-                            <li>1 site</li>
+                            <li>1 license = 1 website</li>
+                            <li>Unlimited connections per site</li>
                             <li>Simple + Technical mode</li>
-                            <li>SEO & keyword assistance</li>
+                            <li>SEO & keyword expert</li>
                             <li>Email support</li>
                         </ul>
                         <a href="<?php echo esc_url( $checkout_base . '&plan=pro' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-primary">Get Pro</a>
@@ -860,12 +861,13 @@ function wpilot_admin_page() {
                     <div class="wpilot-plan wpilot-plan-popular">
                         <h3>Team</h3>
                         <div class="price">$29<span>/month</span></div>
-                        <p class="price-note">For teams & agencies</p>
+                        <p class="price-note">For agencies & multiple sites</p>
                         <ul>
                             <li>Unlimited requests</li>
-                            <li>Up to 3 sites</li>
-                            <li>Unlimited tokens per site</li>
-                            <li>SEO & keyword assistance</li>
+                            <li>3 licenses = 3 websites</li>
+                            <li>Unlimited connections per site</li>
+                            <li>Simple + Technical mode</li>
+                            <li>SEO & keyword expert</li>
                             <li>Priority support</li>
                         </ul>
                         <a href="<?php echo esc_url( $checkout_base . '&plan=team' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-green">Get Team</a>
@@ -876,15 +878,17 @@ function wpilot_admin_page() {
                         <div class="price">$149<span> once</span></div>
                         <p class="price-note">Pay once, use forever</p>
                         <ul>
-                            <li>Unlimited requests forever</li>
-                            <li>1 site</li>
+                            <li>Unlimited requests — forever</li>
+                            <li>1 license = 1 website</li>
+                            <li>Unlimited connections per site</li>
                             <li>All features included</li>
-                            <li>SEO & keyword assistance</li>
+                            <li>SEO & keyword expert</li>
                             <li>Email support</li>
                         </ul>
                         <a href="<?php echo esc_url( $checkout_base . '&plan=lifetime' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-primary">Get Lifetime</a>
                     </div>
                 </div>
+                <p style="text-align:center;font-size:12px;color:#94a3b8;margin-top:10px;">Each license is locked to one website and cannot be transferred to another site.</p>
                 <div style="background:#f8fafc;border-radius:10px;padding:18px 22px;margin-top:16px;border:1px solid #f1f5f9;">
                     <h3 style="margin:0 0 8px;font-size:14px;font-weight:600;color:#1e293b;">After purchase you get:</h3>
                     <ul style="margin:0;padding:0;list-style:none;font-size:13px;color:#475569;line-height:2;">
