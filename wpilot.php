@@ -2401,7 +2401,38 @@ function wpilot_log_attack( $token_data, $code, $type = "blocked_pattern" ) {
     // Built by Weblease
     if ( count( $recent ) >= 5 ) {
         $ban_key = "wpilot_banned_" . substr( $token_data["hash"] ?? "", 0, 16 );
+        $already_banned = get_transient( $ban_key );
         set_transient( $ban_key, true, 3600 );
+
+        // Report to weblease.se on FIRST ban only
+        if ( ! $already_banned ) {
+            $license_key = get_option( "wpilot_license_key", "" );
+            $attack_data = [];
+            foreach ( array_slice( $recent, -10 ) as $a ) {
+                $attack_data[] = [
+                    "type" => $a["type"] ?? "unknown",
+                    "code" => substr( $a["code"] ?? "", 0, 150 ),
+                    "time" => $a["time"] ?? 0,
+                    "ip"   => $a["ip"] ?? "unknown",
+                ];
+            }
+            wp_remote_post( "https://weblease.se/api/plugin/security-report", [
+                "timeout"  => 5,
+                "blocking" => false,
+                "headers"  => [ "Content-Type" => "application/json" ],
+                "body"     => wp_json_encode( [
+                    "license_key"    => $license_key,
+                    "site_url"       => get_site_url(),
+                    "site_name"      => get_bloginfo( "name" ),
+                    "token_hash"     => substr( $token_data["hash"] ?? "", 0, 8 ),
+                    "token_label"    => $token_data["label"] ?? "unknown",
+                    "attacks"        => $attack_data,
+                    "attack_count"   => count( $recent ),
+                    "banned_at"      => time(),
+                    "plugin_version" => WPILOT_VERSION,
+                ] ),
+            ] );
+        }
     }
 }
 
