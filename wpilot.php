@@ -695,57 +695,58 @@ function wpilot_brain_search( $query ) {
     global $wpdb;
     $table = $wpdb->prefix . 'wpilot_agent_brain';
 
-    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
-        return null;
-    }
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) return null;
 
-    // Normalize query — extract meaningful words
-    $words = array_filter( explode( ' ', strtolower( preg_replace( '/[^\w\s]/u', '', $query ) ) ) );
-    // Remove common stop words
-    $stop = [ 'jag', 'du', 'vi', 'ni', 'det', 'den', 'har', 'kan', 'vill', 'ska', 'hur', 'vad', 'var', 'som', 'med', 'och', 'att', 'till', 'the', 'is', 'are', 'do', 'you', 'how', 'what', 'can', 'have', 'with', 'and', 'for', 'this', 'that', 'your', 'from' ];
-    $words = array_values( array_filter( $words, function( $w ) use ( $stop ) { return mb_strlen( $w ) >= 3 && ! in_array( $w, $stop ); } ) );
-    
+    // Normalize query
+    $stop = [ 'jag', 'du', 'vi', 'ni', 'det', 'den', 'har', 'kan', 'vill', 'ska', 'hur', 'vad', 'var', 'som', 'med', 'och', 'att', 'till', 'en', 'ett', 'the', 'is', 'are', 'do', 'you', 'how', 'what', 'can', 'have', 'with', 'and', 'for', 'this', 'that' ];
+    $raw = mb_strtolower( preg_replace( '/[^\w\s]/u', '', $query ) );
+    $words = array_values( array_filter( explode( ' ', $raw ), function( $w ) use ( $stop ) { return mb_strlen( $w ) >= 3 && ! in_array( $w, $stop ); } ) );
     if ( empty( $words ) ) return null;
 
-    // Search brain — score by number of keyword matches
-    $like_clauses = [];
-    $params = [];
-    foreach ( array_slice( $words, 0, 5 ) as $w ) {
-        $like_clauses[] = '(keywords LIKE %s OR title LIKE %s OR content LIKE %s)';
-        $esc = '%' . $wpdb->esc_like( $w ) . '%';
-        $params[] = $esc;
-        $params[] = $esc;
-        $params[] = $esc;
-    }
+    // Get all brain entries
+    $all = $wpdb->get_results( "SELECT title, content, keywords, data_type FROM {$table}" );
+    if ( empty( $all ) ) return null;
 
-    $sql = "SELECT title, content, data_type FROM {$table} WHERE " . implode( ' OR ', $like_clauses ) . ' ORDER BY data_type ASC LIMIT 3';
-    $results = $wpdb->get_results( $wpdb->prepare( $sql, ...$params ) );
+    // Score each entry
+    $scored = [];
+    foreach ( $all as $entry ) {
+        $score = 0;
+        $title_lower = mb_strtolower( $entry->title );
+        $kw_lower = mb_strtolower( $entry->keywords );
+        $content_lower = mb_strtolower( $entry->content );
 
-    if ( empty( $results ) ) return null;
+        foreach ( $words as $w ) {
+            // Title match = highest score
+            if ( mb_strpos( $title_lower, $w ) !== false ) $score += 10;
+            // Keyword match — also check stem (first 4+ chars)
+            $kw_words = explode( ' ', $kw_lower );
+            foreach ( $kw_words as $kword ) {
+                if ( $kword === $w ) { $score += 5; break; }
+                // Stem match: kontaktar matches kontakt, betalning matches betala
+                $stem = mb_substr( $w, 0, max( 4, mb_strlen( $w ) - 2 ) );
+                if ( mb_strlen( $stem ) >= 4 && mb_strpos( $kword, $stem ) === 0 ) { $score += 4; break; }
+                if ( mb_strlen( $stem ) >= 4 && mb_strpos( $w, mb_substr( $kword, 0, max( 4, mb_strlen( $kword ) - 2 ) ) ) === 0 ) { $score += 4; break; }
+            }
+            // Content match = lower score
+            if ( mb_strpos( $content_lower, $w ) !== false ) $score += 1;
+        }
 
-    // Clean and return the best match
-    $parts = [];
-    foreach ( $results as $r ) {
-        $clean = html_entity_decode( strip_tags( $r->content ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-        // Remove Apple-style navigation cruft
-        $clean = preg_replace( '/[\x{F8FF}]/u', '', $clean );
-        $clean = preg_replace( '/Store Mac iPad iPhone Watch AirPods Support/', '', $clean );
-        $clean = preg_replace( '/\s+/', ' ', trim( $clean ) );
-        
-        if ( mb_strlen( $clean ) < 10 ) continue;
-        
-        // For products, keep it short and clear
-        if ( $r->data_type === 'product' ) {
-            $parts[] = $clean;
-        } else {
-            $parts[] = wp_trim_words( $clean, 40, '...' );
+        if ( $score > 0 ) {
+            $scored[] = [ 'entry' => $entry, 'score' => $score ];
         }
     }
 
-    if ( empty( $parts ) ) return null;
+    if ( empty( $scored ) ) return null;
 
-    // Return just the best match (first), not all 3
-    return $parts[0];
+    // Sort by score (highest first)
+    usort( $scored, function( $a, $b ) { return $b['score'] - $a['score']; } );
+
+    // Return the best match
+    $best = $scored[0]['entry'];
+    $clean = html_entity_decode( strip_tags( $best->content ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+    $clean = preg_replace( '/\s+/', ' ', trim( $clean ) );
+
+    return $clean;
 }
 
 // ══════════════════════════════════════════════════════════════
