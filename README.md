@@ -51,4 +51,4 @@ Each license is locked to one website.
 
 ## Version
 
-4.1.0
+1.0.0

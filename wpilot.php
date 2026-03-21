@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot — Powered by Claude
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Connect Claude to your WordPress site. AI-powered site management.
- * Version:      4.1.0
+ * Version:      1.0.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -14,7 +14,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WPILOT_VERSION', '4.1.0' );
+define( 'WPILOT_VERSION', '1.0.0' );
 define( 'WPILOT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPILOT_FREE_LIMIT', 10 );
 
