@@ -827,9 +827,6 @@ function wpilot_brain_search( $query ) {
     // Sort by score (highest first)
     usort( $scored, function( $a, $b ) { return $b['score'] - $a['score']; } );
 
-    // Minimum confidence — need at least score 8 (e.g. title match + keyword, or 2 keyword matches)
-    // This prevents false positives like "säljer ni hemsidor till iphone" matching the iPhone product
-    if ( $scored[0]['score'] < 5 ) return null;
 
     // Return the best match
     $best = $scored[0]['entry'];
