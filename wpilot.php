@@ -1837,6 +1837,63 @@ add_action( 'admin_init', function () {
 //  SYSTEM PROMPT — Adapts to style (simple vs technical)
 // ══════════════════════════════════════════════════════════════
 
+function wpilot_detect_builders() {
+    $builders = [];
+
+    // Elementor
+    if ( defined( 'ELEMENTOR_VERSION' ) || is_plugin_active( 'elementor/elementor.php' ) ) {
+        $builders[] = 'elementor';
+    }
+    // Elementor Pro
+    if ( defined( 'ELEMENTOR_PRO_VERSION' ) || is_plugin_active( 'elementor-pro/elementor-pro.php' ) ) {
+        $builders[] = 'elementor-pro';
+    }
+    // Divi
+    if ( defined( 'ET_BUILDER_VERSION' ) || wp_get_theme()->get_template() === 'Divi' || is_plugin_active( 'divi-builder/divi-builder.php' ) ) {
+        $builders[] = 'divi';
+    }
+    // WPBakery
+    if ( defined( 'WPB_VC_VERSION' ) || is_plugin_active( 'js_composer/js_composer.php' ) ) {
+        $builders[] = 'wpbakery';
+    }
+    // Beaver Builder
+    if ( defined( 'FL_BUILDER_VERSION' ) || is_plugin_active( 'beaver-builder-lite-version/fl-builder.php' ) ) {
+        $builders[] = 'beaver';
+    }
+    // Oxygen
+    if ( defined( 'CT_VERSION' ) || is_plugin_active( 'oxygen/functions.php' ) ) {
+        $builders[] = 'oxygen';
+    }
+    // Brizy
+    if ( defined( 'BRIZY_VERSION' ) || is_plugin_active( 'brizy/brizy.php' ) ) {
+        $builders[] = 'brizy';
+    }
+    // Built by Weblease
+    // Breakdance
+    if ( is_plugin_active( 'breakdance/plugin.php' ) ) {
+        $builders[] = 'breakdance';
+    }
+    // Kadence Blocks
+    if ( is_plugin_active( 'kadence-blocks/kadence-blocks.php' ) ) {
+        $builders[] = 'kadence';
+    }
+    // Spectra (formerly UAG)
+    if ( is_plugin_active( 'ultimate-addons-for-gutenberg/ultimate-addons-for-gutenberg.php' ) ) {
+        $builders[] = 'spectra';
+    }
+    // GenerateBlocks / GeneratePress
+    if ( is_plugin_active( 'generateblocks/plugin.php' ) || wp_get_theme()->get_template() === 'flavor' ) {
+        $builders[] = 'generateblocks';
+    }
+
+    // If no builder detected, it uses Gutenberg (block editor)
+    if ( empty( $builders ) ) {
+        $builders[] = 'gutenberg';
+    }
+
+    return $builders;
+}
+
 function wpilot_system_prompt( $style = 'simple' ) {
     $site_name = get_bloginfo( 'name' ) ?: 'this website';
     $site_url  = get_site_url();
@@ -1926,7 +1983,53 @@ GOLDEN RULE — WORK WITH WHAT EXISTS:
 - This is a live site. Respect what's already built. Don't redesign, restructure, or rebuild things unless the user specifically asks for it.
 - Make targeted changes. If the user says \"change the header color\", change ONLY the header color — don't reorganize the page, rename things, or \"improve\" other parts.
 - Read the current state before making any change. Understand the existing structure first.
-- If the site has a specific design, style, or structure — preserve it. Add to it, don't replace it.
+- If the site has a specific design, style, or structure — preserve it. Add to it, don't replace it.";
+
+    // ── Dynamic builder detection and instructions ──
+    $builders = wpilot_detect_builders();
+    $builder_list = implode( ', ', $builders );
+
+    $prompt .= "\n\nPAGE BUILDER DETECTED: " . strtoupper( $builder_list ) . "\nThis site uses {$builder_list}. Build WITH it — never against it.";
+
+    if ( in_array( 'elementor', $builders ) || in_array( 'elementor-pro', $builders ) ) {
+        $prompt .= "\n\nELEMENTOR RULES:";
+        $prompt .= "\n- Content is in _elementor_data postmeta (JSON). NEVER edit post_content — Elementor ignores it.";
+        $prompt .= "\n- To edit: get_post_meta(ID, '_elementor_data', true) → decode JSON → modify → update_post_meta → clear cache.";
+        $prompt .= "\n- Clear cache: delete_post_meta(ID, '_elementor_css'); if(class_exists('\\Elementor\\Plugin')) \\Elementor\\Plugin::\$instance->files_manager->clear_cache();";
+        $prompt .= "\n- To add sections: append to the Elementor JSON array structure.";
+        $prompt .= "\n- Global styles: stored in Elementor settings, not per-page.";
+        $prompt .= "\n- For CSS changes: modify element settings in JSON, not external CSS files.";
+    }
+
+    if ( in_array( 'divi', $builders ) ) {
+        $prompt .= "\n\nDIVI RULES:";
+        $prompt .= "\n- Content uses Divi shortcodes in post_content: [et_pb_section][et_pb_row][et_pb_column][et_pb_text].";
+        $prompt .= "\n- To edit: read post_content → find shortcode → modify attributes → wp_update_post.";
+        $prompt .= "\n- Global colors/fonts: Divi > Theme Options (et_divi options).";
+        $prompt .= "\n- Templates: et_pb_layout post type. Custom CSS: Divi > Theme Options > Custom CSS.";
+    }
+
+    if ( in_array( 'wpbakery', $builders ) ) {
+        $prompt .= "\n\nWPBAKERY RULES:";
+        $prompt .= "\n- Content uses shortcodes: [vc_row][vc_column][vc_column_text].";
+        $prompt .= "\n- Edit by modifying shortcodes in post_content.";
+    }
+
+    if ( in_array( 'gutenberg', $builders ) && count( $builders ) === 1 ) {
+        $prompt .= "\n\nGUTENBERG RULES:";
+        $prompt .= "\n- Pages use blocks (<!-- wp:paragraph -->, <!-- wp:heading --> etc) in post_content.";
+        $prompt .= "\n- To edit: read post_content → find block → modify → wp_update_post.";
+        $prompt .= "\n- For layouts: use wp:columns, wp:group, wp:cover blocks.";
+        $prompt .= "\n- Reusable blocks: wp_block post type. Custom CSS: Customizer > Additional CSS.";
+    }
+
+    $prompt .= "\n\nBUILDER INTELLIGENCE:";
+    $prompt .= "\n- ALWAYS check what builder a page uses before editing it.";
+    $prompt .= "\n- If pages use different builders, use the SAME builder each page already uses.";
+    $prompt .= "\n- NEVER convert a page from one builder to another unless explicitly asked.";
+    $prompt .= "\n- For global changes, use the builder's global settings, not page-by-page editing.";
+
+    $prompt .= "
 
 SECURITY:
 - Never modify wp-config.php, .htaccess, or server files.
