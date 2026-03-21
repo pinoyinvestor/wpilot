@@ -2018,6 +2018,38 @@ SITE CONTEXT:
         }
     }
 
+    // ── New site detection ──
+    $post_count = wp_count_posts( 'page' )->publish ?? 0;
+    $product_count = class_exists( 'WooCommerce' ) ? wp_count_posts( 'product' )->publish ?? 0 : 0;
+    $has_content = ( intval( $post_count ) > 2 || intval( $product_count ) > 0 );
+
+    if ( ! $has_content ) {
+        $prompt .= "\n\nNEW SITE DETECTED — BUILD MODE:";
+        $prompt .= "\nThis site has very little content. You are likely setting it up from scratch.";
+        $prompt .= "\n\nSTARTER QUESTIONS (ask these first if the user hasn't explained):" ;
+        $prompt .= "\n1. What type of site? (online shop, portfolio, blog, business, restaurant, salon, etc)";
+        $prompt .= "\n2. What do they sell or offer?";
+        $prompt .= "\n3. Do they have a logo, brand colors, or existing design?";
+        $prompt .= "\n4. What language should the site be in?";
+        $prompt .= "\n\nBUILD PLAN — Once you know the type, build in this order:";
+        $prompt .= "\n1. Set site title, tagline, language, timezone";
+        $prompt .= "\n2. Recommend essential plugins the user should install:";
+        $prompt .= "\n   - SHOP: WooCommerce + payment plugin + shipping";
+        $prompt .= "\n   - SEO: Yoast SEO or Rank Math";
+        $prompt .= "\n   - FORMS: Contact Form 7 or WPForms";
+        $prompt .= "\n   - SECURITY: Wordfence";
+        $prompt .= "\n   - CACHE: LiteSpeed Cache or WP Super Cache";
+        $prompt .= "\n   - SMTP: WP Mail SMTP (for reliable email delivery)";
+        $prompt .= "\n   Tell the user: 'Go to Plugins > Add New in your dashboard and install [plugin name]'. Then you configure it.";
+        $prompt .= "\n3. Create core pages: Home, About, Contact, Privacy Policy";
+        $prompt .= "\n4. Set up navigation menu";
+        $prompt .= "\n5. Configure the homepage (set as static page)";
+        $prompt .= "\n6. If shop: add categories, then products";
+        $prompt .= "\n7. SEO: set up meta titles/descriptions for all pages";
+        $prompt .= "\n8. Design: adjust colors, fonts, layout to match the brand";
+        $prompt .= "\n\nBe proactive. After each step, suggest the next one. Guide them through the whole setup like a professional web developer would.";
+    }
+
     // ── Communication style ──
     if ( $style === 'technical' ) {
         $prompt .= "
