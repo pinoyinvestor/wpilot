@@ -2768,8 +2768,8 @@ function wpilot_admin_page() {
             <?php if ( ! $chat_licensed ): ?>
                 <p class="subtitle">Add an AI-powered chat widget to your site. Visitors ask questions, your AI answers instantly.</p>
                 <div style="background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);border-radius:14px;padding:32px;color:#fff;margin-top:16px;">
-                    <h3 style="margin:0 0 8px;font-size:20px;font-weight:700;">Upgrade to Chat Agent</h3>
-                    <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 20px;">Let AI handle your customer service 24/7. The chat widget reads your products, pages, and knowledge base to give accurate answers.</p>
+                    <h3 style="margin:0 0 8px;font-size:20px;font-weight:700;">Chat Agent — $19/month</h3>
+                    <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 20px;">Your AI customer service agent. Answers visitor questions instantly using your real products, pages, and prices. Works 24/7 — even when you sleep.</p>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
                         <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:14px;">
                             <div style="color:#4ec9b0;font-weight:600;font-size:13px;">&#10003; Live site data</div>
@@ -3141,46 +3141,65 @@ WPilotChat.init({
         $training_stats = get_option( 'wpilot_training_stats', [ 'total' => 0, 'batches' => 0, 'last' => 'Never' ] );
         $training_queue = count( get_option( 'wpilot_training_queue', [] ) );
         ?>
-        <div class="wpilot-card">
-            <h2 style="cursor:pointer;user-select:none;" onclick="var c=this.parentNode.querySelector('.wpilot-training-body');c.style.display=c.style.display==='none'?'block':'none';this.querySelector('.wpilot-arr').textContent=c.style.display==='none'?'\u25B6':'\u25BC';">AI Training Data <span class="wpilot-arr" style="font-size:12px;color:#94a3b8;margin-left:6px;">\u25B6</span></h2>
-            <div class="wpilot-training-body" style="display:none;">
-            <p class="subtitle">Help us build a better AI. When enabled, anonymized usage data is sent to Weblease to improve WPilot for everyone.</p>
+        <div class="wpilot-card" style="<?php echo ! $training_on ? 'border:2px solid #4ec9b0;' : ''; ?>">
+            <h2 style="display:flex;align-items:center;gap:10px;">Help Us Lower Prices For Everyone <?php if ( $training_on ): ?><span style="font-size:11px;background:rgba(34,197,94,0.12);color:#16a34a;padding:4px 12px;border-radius:20px;font-weight:600;">Active</span><?php endif; ?></h2>
 
-            <div style="background:#f8fafc;border-radius:10px;padding:18px 22px;margin-bottom:16px;border:1px solid #f1f5f9;">
-                <h3 style="margin:0 0 8px;font-size:14px;font-weight:600;color:#1e293b;">What we collect:</h3>
-                <ul style="margin:0;padding:0 0 0 18px;font-size:13px;color:#475569;line-height:1.8;">
-                    <li>WordPress function patterns (what Claude does on your site)</li>
-                    <li>Success/error rates and result types</li>
-                    <li>WordPress version, theme name, WooCommerce active</li>
-                </ul>
-                <h3 style="margin:12px 0 8px;font-size:14px;font-weight:600;color:#1e293b;">What we never collect:</h3>
-                <ul style="margin:0;padding:0 0 0 18px;font-size:13px;color:#475569;line-height:1.8;">
-                    <li>Passwords, API keys, or credentials</li>
-                    <li>Email addresses, phone numbers, or personal data</li>
-                    <li>Your site URL or domain name (hashed only)</li>
-                    <li>Customer names, orders, or payment information</li>
-                </ul>
+            <?php if ( ! $training_on ): ?>
+            <div style="background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);border-radius:14px;padding:28px 32px;color:#fff;margin-bottom:20px;">
+                <h3 style="margin:0 0 12px;font-size:18px;font-weight:700;color:#4ec9b0;">We are building our own AI</h3>
+                <p style="color:#cbd5e1;font-size:14px;line-height:1.7;margin:0 0 16px;">
+                    Right now, WPilot runs on Claude — a powerful but expensive AI. Our goal is to train <strong style="color:#fff;">our own WordPress AI</strong> that is faster, smarter, and much cheaper.
+                </p>
+                <p style="color:#cbd5e1;font-size:14px;line-height:1.7;margin:0;">
+                    When you opt in, we collect anonymized patterns — no personal data, no passwords, no customer info. Just the technical patterns that teach our AI how WordPress works.
+                </p>
+                <p style="color:#4ec9b0;font-size:16px;font-weight:700;margin:16px 0 0;">
+                    More data = better AI = lower prices for you.
+                </p>
+            </div>
+            <?php endif; ?>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                <div style="background:#f0fdf4;border-radius:10px;padding:16px 18px;border:1px solid #bbf7d0;">
+                    <div style="font-size:13px;font-weight:600;color:#16a34a;margin-bottom:6px;">&#10003; What we collect</div>
+                    <ul style="margin:0;padding:0 0 0 14px;font-size:12px;color:#475569;line-height:1.8;">
+                        <li>WordPress function patterns</li>
+                        <li>Success/error rates</li>
+                        <li>WP version, theme, plugins</li>
+                    </ul>
+                </div>
+                <div style="background:#fef2f2;border-radius:10px;padding:16px 18px;border:1px solid #fecaca;">
+                    <div style="font-size:13px;font-weight:600;color:#dc2626;margin-bottom:6px;">&#10007; What we NEVER collect</div>
+                    <ul style="margin:0;padding:0 0 0 14px;font-size:12px;color:#475569;line-height:1.8;">
+                        <li>Passwords or API keys</li>
+                        <li>Personal data or emails</li>
+                        <li>Customer or order info</li>
+                    </ul>
+                </div>
             </div>
 
-            <form method="post" style="display:flex;align-items:center;gap:16px;">
+            <form method="post" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
                 <?php wp_nonce_field( 'wpilot_admin' ); ?>
                 <input type="hidden" name="wpilot_action" value="toggle_training">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:500;">
-                    <input type="hidden" name="training_consent" value="0">
-                    <input type="checkbox" name="training_consent" value="1" <?php checked( $training_on ); ?> style="width:18px;height:18px;accent-color:#4ec9b0;">
-                    I agree to share anonymized usage data to improve WPilot
-                </label>
-                <button type="submit" class="wpilot-btn wpilot-btn-primary" style="padding:8px 18px;font-size:13px;">Save</button>
+                <input type="hidden" name="training_consent" value="0">
+                <?php if ( ! $training_on ): ?>
+                    <button type="submit" name="training_consent" value="1" class="wpilot-btn wpilot-btn-green" style="font-size:14px;padding:12px 28px;">
+                        Yes, I want to help lower prices!
+                    </button>
+                    <span style="font-size:12px;color:#94a3b8;">You can turn this off anytime. Fully GDPR compliant.</span>
+                <?php else: ?>
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:500;color:#16a34a;">
+                        <input type="checkbox" name="training_consent" value="1" checked style="width:18px;height:18px;accent-color:#4ec9b0;">
+                        Contributing to better AI for everyone
+                    </label>
+                    <button type="submit" class="wpilot-btn wpilot-btn-primary" style="padding:8px 18px;font-size:13px;">Save</button>
+                    <div style="width:100%;margin-top:8px;font-size:12px;color:#94a3b8;">
+                        <?php echo intval( $training_stats['total'] ); ?> contributions sent
+                        &middot; <?php echo $training_queue; ?> queued
+                        &middot; Last sync: <?php echo esc_html( $training_stats['last'] ?? 'Never' ); ?>
+                    </div>
+                <?php endif; ?>
             </form>
-
-            <?php if ( $training_on ): ?>
-                <div style="margin-top:16px;font-size:12px;color:#94a3b8;">
-                    Contributions: <?php echo intval( $training_stats['total'] ); ?> sent
-                    &middot; <?php echo $training_queue; ?> queued
-                    &middot; Last sync: <?php echo esc_html( $training_stats['last'] ?? 'Never' ); ?>
-                </div>
-            <?php endif; ?>
-            </div><!-- .wpilot-training-body -->
         </div>
 
         <?php if ( $saved === 'training' ): ?>
