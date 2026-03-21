@@ -1894,6 +1894,83 @@ function wpilot_detect_builders() {
     return $builders;
 }
 
+function wpilot_detect_plugins() {
+    $active = get_option( 'active_plugins', [] );
+    $found = [];
+
+    $known = [
+        // E-commerce
+        'woocommerce/woocommerce.php' => ['name' => 'WooCommerce', 'cat' => 'ecommerce'],
+        'woo-gutenberg-products-block/woocommerce-gutenberg-products-block.php' => ['name' => 'WooCommerce Blocks', 'cat' => 'ecommerce'],
+        // SEO
+        'wordpress-seo/wp-seo.php' => ['name' => 'Yoast SEO', 'cat' => 'seo'],
+        'seo-by-rank-math/rank-math.php' => ['name' => 'Rank Math', 'cat' => 'seo'],
+        'all-in-one-seo-pack/all_in_one_seo_pack.php' => ['name' => 'All in One SEO', 'cat' => 'seo'],
+        'the-seo-framework-extension-manager/the-seo-framework-extension-manager.php' => ['name' => 'The SEO Framework', 'cat' => 'seo'],
+        // Forms
+        'contact-form-7/wp-contact-form-7.php' => ['name' => 'Contact Form 7', 'cat' => 'forms'],
+        'wpforms-lite/wpforms.php' => ['name' => 'WPForms', 'cat' => 'forms'],
+        'gravityforms/gravityforms.php' => ['name' => 'Gravity Forms', 'cat' => 'forms'],
+        'forminator/forminator.php' => ['name' => 'Forminator', 'cat' => 'forms'],
+        'fluentform/fluentform.php' => ['name' => 'Fluent Forms', 'cat' => 'forms'],
+        // Security
+        'wordfence/wordfence.php' => ['name' => 'Wordfence', 'cat' => 'security'],
+        'better-wp-security/better-wp-security.php' => ['name' => 'iThemes Security', 'cat' => 'security'],
+        'sucuri-scanner/sucuri.php' => ['name' => 'Sucuri', 'cat' => 'security'],
+        'all-in-one-wp-security-and-firewall/wp-security.php' => ['name' => 'All In One Security', 'cat' => 'security'],
+        // Cache / Performance
+        'litespeed-cache/litespeed-cache.php' => ['name' => 'LiteSpeed Cache', 'cat' => 'cache'],
+        'w3-total-cache/w3-total-cache.php' => ['name' => 'W3 Total Cache', 'cat' => 'cache'],
+        'wp-super-cache/wp-cache.php' => ['name' => 'WP Super Cache', 'cat' => 'cache'],
+        'wp-fastest-cache/wpFastestCache.php' => ['name' => 'WP Fastest Cache', 'cat' => 'cache'],
+        'autoptimize/autoptimize.php' => ['name' => 'Autoptimize', 'cat' => 'cache'],
+        'wp-optimize/wp-optimize.php' => ['name' => 'WP-Optimize', 'cat' => 'cache'],
+        // Multilingual
+        'sitepress-multilingual-cms/sitepress.php' => ['name' => 'WPML', 'cat' => 'multilingual'],
+        'polylang/polylang.php' => ['name' => 'Polylang', 'cat' => 'multilingual'],
+        'translatepress-multilingual/index.php' => ['name' => 'TranslatePress', 'cat' => 'multilingual'],
+        // Backup
+        'updraftplus/updraftplus.php' => ['name' => 'UpdraftPlus', 'cat' => 'backup'],
+        'duplicator/duplicator.php' => ['name' => 'Duplicator', 'cat' => 'backup'],
+        // Advanced Custom Fields
+        'advanced-custom-fields/acf.php' => ['name' => 'ACF', 'cat' => 'fields'],
+        'advanced-custom-fields-pro/acf.php' => ['name' => 'ACF Pro', 'cat' => 'fields'],
+        // Email / SMTP
+        'wp-mail-smtp/wp_mail_smtp.php' => ['name' => 'WP Mail SMTP', 'cat' => 'email'],
+        'fluent-smtp/fluent-smtp.php' => ['name' => 'FluentSMTP', 'cat' => 'email'],
+        // Booking
+        'ameliabooking/ameliabooking.php' => ['name' => 'Amelia Booking', 'cat' => 'booking'],
+        'bookly-responsive-appointment-booking-tool/main.php' => ['name' => 'Bookly', 'cat' => 'booking'],
+        // Social / Marketing
+        'mailchimp-for-wp/mailchimp-for-wp.php' => ['name' => 'Mailchimp for WP', 'cat' => 'marketing'],
+        'official-facebook-pixel/facebook-for-wordpress.php' => ['name' => 'Meta Pixel', 'cat' => 'marketing'],
+        // Sliders / Media
+        'revslider/revslider.php' => ['name' => 'Slider Revolution', 'cat' => 'media'],
+        'smart-slider-3/smart-slider-3.php' => ['name' => 'Smart Slider', 'cat' => 'media'],
+        // Membership
+        'memberpress/memberpress.php' => ['name' => 'MemberPress', 'cat' => 'membership'],
+        'paid-memberships-pro/paid-memberships-pro.php' => ['name' => 'PMPro', 'cat' => 'membership'],
+        // LMS
+        'sfwd-lms/sfwd_lms.php' => ['name' => 'LearnDash', 'cat' => 'lms'],
+        'learnpress/learnpress.php' => ['name' => 'LearnPress', 'cat' => 'lms'],
+        // WPilot itself
+        'wpilot/wpilot.php' => ['name' => 'WPilot', 'cat' => 'wpilot'],
+    ];
+    // Built by Weblease
+    foreach ( $active as $plugin ) {
+        if ( isset( $known[ $plugin ] ) ) {
+            $found[] = $known[ $plugin ];
+        }
+    }
+
+    // Also detect by class/function for mu-plugins or non-standard paths
+    if ( empty( array_filter( $found, fn($p) => $p['cat'] === 'ecommerce' ) ) && class_exists( 'WooCommerce' ) ) {
+        $found[] = ['name' => 'WooCommerce', 'cat' => 'ecommerce'];
+    }
+
+    return $found;
+}
+
 function wpilot_system_prompt( $style = 'simple' ) {
     $site_name = get_bloginfo( 'name' ) ?: 'this website';
     $site_url  = get_site_url();
@@ -1920,6 +1997,26 @@ SITE CONTEXT:
 
     if ( $owner )    $prompt .= "\n- Owner: {$owner}";
     if ( $business ) $prompt .= "\n- Business: {$business}";
+
+    // ── Installed plugins ──
+    $detected_plugins = wpilot_detect_plugins();
+    if ( ! empty( $detected_plugins ) ) {
+        $by_cat = [];
+        foreach ( $detected_plugins as $dp ) {
+            if ( $dp['cat'] !== 'wpilot' ) {
+                $by_cat[ $dp['cat'] ][] = $dp['name'];
+            }
+        }
+        $plugin_lines = [];
+        foreach ( $by_cat as $cat => $names ) {
+            $plugin_lines[] = ucfirst( $cat ) . ': ' . implode( ', ', $names );
+        }
+        if ( ! empty( $plugin_lines ) ) {
+            $prompt .= "\n\nINSTALLED PLUGINS:\n" . implode( "\n", $plugin_lines );
+            $prompt .= "\nUse these plugins for their intended purpose. Configure them, don't replace them.";
+            $prompt .= "\nIf the user needs something a plugin already handles, use that plugin's settings/API.";
+        }
+    }
 
     // ── Communication style ──
     if ( $style === 'technical' ) {
