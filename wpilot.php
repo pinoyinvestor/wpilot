@@ -1269,7 +1269,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
     }
 
     // ── Block superglobal access ──
-    if ( preg_match( '/\$_(SERVER|ENV|REQUEST|FILES|COOKIE|SESSION|GET|POST)\b/', $code ) ) {
+    if ( preg_match( '/\$_(SERVER|ENV|REQUEST|FILES|COOKIE|SESSION|GET|POST)\b/', $code ) || preg_match( '/\$GLOBALS\b/', $code ) ) {
         return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
     }
 
@@ -1305,6 +1305,8 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'ini_set\s*\(', 'ini_alter\s*\(', 'putenv\s*\(',
         'set_include_path', 'dl\s*\(',
         'set_time_limit\s*\(', 'ignore_user_abort',
+        // Output buffer abuse (ob_start with callback = shell execution)
+        'ob_start\s*\(', 'ob_end_clean', 'ob_get_clean', 'ob_end_flush',
         // Callback functions (can execute arbitrary code via string function names)
         'array_map\s*\(', 'array_filter\s*\(', 'array_walk\s*\(',
         'array_walk_recursive\s*\(', 'usort\s*\(', 'uasort\s*\(', 'uksort\s*\(',
@@ -1319,8 +1321,13 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         '__halt_compiler',
         // Database destructive
         '\$wpdb\s*->\s*query\s*\(\s*["\x27]?\s*(DROP|TRUNCATE|ALTER|GRANT|REVOKE|CREATE\s+USER)',
-        // Block $wpdb writes to users table (password/role changes)
-        '\$wpdb\s*->\s*(update|delete|insert|replace|query)\s*\(\s*["\x27]?\s*\$?w?p?d?b?-?>?\s*u?s?e?r?s?\s*["\x27]?\s*\$?wpdb\s*->\s*(users|usermeta)',
+        // Block ALL access to users/usermeta tables (read AND write)
+        '\$wpdb\s*->\s*users\b',
+        '\$wpdb\s*->\s*usermeta\b',
+        'wp_users',
+        'wp_usermeta',
+        '\buser_pass\b',
+        '\buser_login\b.*\bFROM\b',
         // Critical WordPress options that can break the site
         'update_option\s*\(\s*["\x27](siteurl|home|blogname|admin_email|users_can_register|default_role|permalink_structure|template|stylesheet|active_plugins|recently_activated)',
         // User escalation functions
@@ -1371,7 +1378,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         // wp_mail — can exfiltrate data via email
         'wp_mail\s*\(',
         // wpdb credential properties — object props not caught by constant blocklist
-        'dbpassword', 'dbuser', 'dbhost',
+        'dbpassword', 'dbuser', 'dbhost', 'dbname',
     ];
     foreach ( $blocked as $pattern ) {
         if ( preg_match( '/' . $pattern . '/i', $code ) ) {
@@ -1388,6 +1395,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'pcntl_exec', 'pcntl_fork', 'eval', 'assert', 'create_function',
         'base64_decode', 'base64_encode', 'str_rot13', 'gzinflate',
         'gzuncompress', 'gzdecode', 'curl_init', 'curl_exec',
+        'ob_start', 'ob_end_clean', 'ob_get_clean',
         'file_put_contents', 'fwrite', 'fopen', 'unlink', 'rmdir',
         'rename', 'mkdir', 'copy', 'symlink', 'chmod', 'chown',
         'ini_set', 'putenv', 'dl', 'fsockopen', 'stream_socket_client',
