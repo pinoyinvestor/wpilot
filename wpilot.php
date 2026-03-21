@@ -1255,7 +1255,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'DirectoryIterator', 'FilesystemIterator', 'RecursiveDirectoryIterator',
         'SplFileObject', 'SplFileInfo',
         'phpinfo', 'php_uname', 'php_sapi_name', 'get_loaded_extensions',
-        'getenv', 'apache_getenv',
+        'getenv', 'apache_getenv', 'apache_request_headers', 'getallheaders',
         'constant', 'get_defined_constants', 'get_defined_vars', 'get_defined_functions',
         'debug_backtrace', 'debug_print_backtrace',
         'token_get_all',  // Can parse PHP source
@@ -1414,6 +1414,9 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         '\$wpdb\s*->\s*query\s*\(.*\bDELETE\b',
         '\$wpdb\s*->\s*query\s*\(.*\bINSERT\b',
         '\$wpdb\s*->\s*query\s*\(.*\bUPDATE\b',
+        // Block SQL LIKE queries that could leak wpilot internal options
+        '\bLIKE\b.*wpilot',
+        'wpilot.*\bLIKE\b',
         // Block ALL access to users/usermeta tables (read AND write)
         '\$wpdb\s*->\s*users\b',
         '\$wpdb\s*->\s*usermeta\b',
@@ -1425,7 +1428,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'update_option\s*\(\s*["\x27](siteurl|home|admin_email|active_plugins|recently_activated|cron|rewrite_rules|db_version|initial_db_version|wp_user_roles)',
         // Block update_option for all wpilot_ options (use admin UI instead)
         'update_option\s*\(\s*["\x27]wpilot_',
-        'delete_option\s*\(\s*["\x27]wpilot_',
+        'delete_option\s*\(',
         // User escalation functions
         'wp_insert_user\s*\(', 'wp_update_user\s*\(', 'wp_create_user\s*\(',
         'wp_set_current_user\s*\(', 'wp_set_auth_cookie\s*\(',
@@ -1454,12 +1457,11 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'wpilot_contact_email',       // Block contact email from execute_php
         'wpilot_training_consent',// Can't toggle training consent
         'wpilot_training_queue',  // Can't tamper with training queue
-        'wpilot_',                // Block ALL wpilot internal functions
         // Reflection/class manipulation
-        'ReflectionFunction', 'ReflectionClass', 'ReflectionMethod',
+        'ReflectionFunction', 'ReflectionClass', 'ReflectionMethod', 'ReflectionObject', 'ReflectionProperty', 'ReflectionNamedType', 'ReflectionParameter',
         // Header manipulation — now fully blocked in expanded list above
         // Plugin/theme file reading
-        'get_plugin_data\s*\(', 'plugin_dir_path\s*\(',
+        'get_plugin_data\s*\(', 'plugin_dir_path\s*\(', 'get_plugins\s*\(',
         'WP_PLUGIN_DIR', 'WPMU_PLUGIN_DIR',
         // Hook registration — can inject persistent code into WordPress lifecycle
         'add_action\s*\(', 'add_filter\s*\(',
@@ -1473,6 +1475,10 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'delete_plugins\s*\(',
         // wp_mail — can exfiltrate data via email
         'wp_mail\s*\(',
+        // wp_cache_get for sensitive caches (alloptions contains everything)
+        'wp_cache_get\s*\(',
+        'wp_cache_set\s*\(',
+        'wp_cache_delete\s*\(',
         // wpdb credential properties — object props not caught by constant blocklist
         'dbpassword', 'dbuser', 'dbhost', 'dbname',
     ];
@@ -1539,6 +1545,203 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
                 return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
             }
         }
+    }
+
+    // ── Block dynamic property access on $wpdb (credential leak via $wpdb->$var) ──
+    if ( preg_match( '/\$wpdb\s*->\s*\$/', $code ) ) {
+        wpilot_log_attack( $token_data ?? [], $code, 'wpdb_dynamic_property' );
+        return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+    }
+
+    // ── Block wpdb aliasing + dump (json_encode, var_export, var_dump, print_r on alias) ──
+    // Pattern: $x = $wpdb; json_encode($x) / var_export($x) / (array)$x
+    if ( preg_match( '/\$wpdb/', $code ) ) {
+        // Check for assignment alias: $anything = $wpdb
+        if ( preg_match( '/\$([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*\$wpdb\b/', $code, $alias_match ) ) {
+            $alias = $alias_match[1];
+            if ( $alias !== 'wpdb' ) {
+                // Block json_encode, var_export, serialize, print_r, var_dump on the alias
+                $dump_fns = [ 'json_encode', 'var_export', 'serialize', 'print_r', 'var_dump', 'debug_zval_refcount' ];
+                foreach ( $dump_fns as $dump_fn ) {
+                    if ( preg_match( '/' . preg_quote( $dump_fn ) . '\s*\(\s*\$' . preg_quote( $alias ) . '\b/', $code ) ) {
+                        wpilot_log_attack( $token_data ?? [], $code, 'wpdb_alias_dump' );
+                        return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+                    }
+                }
+                // Block casting: (array)$alias, (object)$alias
+                if ( preg_match( '/\(\s*(array|object)\s*\)\s*\$' . preg_quote( $alias ) . '\b/', $code ) ) {
+                    wpilot_log_attack( $token_data ?? [], $code, 'wpdb_alias_cast' );
+                    return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+                }
+            }
+        }
+        // Also block direct: json_encode($wpdb), var_export($wpdb), (array)$wpdb
+        $direct_dumps = [ 'json_encode', 'var_export', 'serialize', 'print_r', 'var_dump' ];
+        foreach ( $direct_dumps as $dd ) {
+            if ( preg_match( '/' . preg_quote( $dd ) . '\s*\(\s*\$wpdb\b/', $code ) ) {
+                wpilot_log_attack( $token_data ?? [], $code, 'wpdb_direct_dump' );
+                return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+            }
+        }
+        // Block casting: (array)$wpdb
+        if ( preg_match( '/\(\s*(array|object)\s*\)\s*\$wpdb\b/', $code ) ) {
+            wpilot_log_attack( $token_data ?? [], $code, 'wpdb_cast' );
+            return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+        }
+    }
+
+    // ── Block SQL queries that dynamically build wpilot option names ──
+    // Attackers use implode/join to build "wpilot_tokens" at runtime to bypass literal string check
+    if ( preg_match( '/options.*option_name/i', $code ) || preg_match( '/option_name.*options/i', $code ) ) {
+        // If the code also contains string building functions, it is trying to bypass
+        if ( preg_match( '/implode|join|sprintf|str_replace|substr|strtolower|strtoupper/i', $code ) ) {
+            // Check if any wpilot-related strings exist as pieces
+            if ( preg_match( '/["\'](wpilot|tokens|license|chat|agent|training|free_req|attack|banned|telegram|whatsapp|notification|contact)["\']/i', $code ) ) {
+                wpilot_log_attack( $token_data ?? [], $code, 'sql_option_bypass' );
+                return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+            }
+        }
+    }
+
+    // ── Block parenthesized function calls: (expr)(...) ──
+    // This is the #1 bypass vector: ("system")("id"), ($var)("arg"), (trim("system"))("id")
+    // Block ANY pattern where ) is immediately followed by ( unless it is a known safe construct
+    if ( preg_match( '/\)\s*\(/', $code ) ) {
+        $cleaned = $code;
+        // Remove known safe patterns where )( is legitimate:
+        // Control structures: if(...), while(...), for(...), foreach(...), switch(...), catch(...), match(...)
+        $cleaned = preg_replace( '/\b(if|elseif|while|for|foreach|switch|catch|function|fn)\s*\(/', 'SAFE(', $cleaned );
+        // Repeat cleaning until stable (handles nested parens)
+        // Check for SAFESAFE and SAFE( at EACH iteration (before outer parens collapse them)
+        $prev = "";
+        $iterations = 0;
+        while ( $prev !== $cleaned && $iterations < 20 ) {
+            $prev = $cleaned;
+            $iterations++;
+            // Check BEFORE collapsing: if two SAFE tokens are adjacent, a dynamic call happened
+            if ( preg_match( '/SAFE\s*SAFE/', $cleaned ) || preg_match( '/SAFE\s*\(/', $cleaned ) ) {
+                wpilot_log_attack( $token_data ?? [], $code, 'dynamic_call_bypass' );
+                return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+            }
+            // Remove balanced parens that are INSIDE other parens: func(inner())
+            // This is the key: replace innermost (...) groups that do NOT contain ( with SAFE
+            $cleaned = preg_replace( '/\([^()]*\)/', 'SAFE', $cleaned );
+        }
+        // Final check after all collapsing
+        if ( preg_match( '/SAFE\s*\(/', $cleaned ) || preg_match( '/SAFE\s*SAFE/', $cleaned ) ) {
+            wpilot_log_attack( $token_data ?? [], $code, 'dynamic_call_bypass' );
+            return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+        }
+    }
+
+    // ── Block string-building functions that can construct blocked names ──
+    $string_builders = [
+        'implode\s*\(', 'join\s*\(', 'sprintf\s*\(', 'str_replace\s*\(',
+        'str_ireplace\s*\(', 'substr\s*\(', 'mb_substr\s*\(',
+        'strtolower\s*\(', 'strtoupper\s*\(', 'ucfirst\s*\(', 'lcfirst\s*\(',
+        'trim\s*\(', 'ltrim\s*\(', 'rtrim\s*\(',
+        'str_pad\s*\(', 'str_repeat\s*\(', 'str_split\s*\(',
+        'array_pop\s*\(', 'array_shift\s*\(', 'array_reverse\s*\(',
+        'current\s*\(', 'next\s*\(', 'reset\s*\(', 'end\s*\(',
+        'mb_strtolower\s*\(', 'mb_strtoupper\s*\(',
+        'preg_replace\s*\(', 'str_contains\s*\(',
+        'substr_replace\s*\(', 'chunk_split\s*\(',
+        'wordwrap\s*\(', 'nl2br\s*\(',
+        'number_format\s*\(',
+    ];
+    foreach ( $string_builders as $sb ) {
+        if ( preg_match( '/' . $sb . '/i', $code ) ) {
+            // Only block if the result could be used as a function call
+            // Check for patterns: $var = builder(...); ($var)( or builder(...)( 
+            // Since the )(  check above handles direct calls, here we block
+            // assignment patterns where a builder feeds into a variable that gets called
+            // Simple rule: if ANY string builder is used AND any $var( or ($var) pattern exists, block
+            if ( preg_match( '/\$[a-zA-Z_][a-zA-Z0-9_]*\s*\(/', $code ) || preg_match( '/\(\s*\$[a-zA-Z_][a-zA-Z0-9_]*\s*\)/', $code ) ) {
+                // Check if the variable call is from the safe list
+                $has_unsafe_call = false;
+                preg_match_all( '/\$([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/', $code, $sb_matches );
+                $safe_vars = ['wpdb', 'wp_query', 'wp_rewrite', 'product', 'order', 'post', 'term', 'user', 'widget', 'menu', 'this'];
+                foreach ( $sb_matches[1] as $sb_var ) {
+                    if ( ! in_array( $sb_var, $safe_vars ) ) {
+                        // Check it is not a method call (->$var() or ::$var())
+                        $sb_pos = strpos( $code, '$' . $sb_var . '(' );
+                        if ( $sb_pos !== false && $sb_pos >= 2 ) {
+                            $sb_before = substr( $code, $sb_pos - 2, 2 );
+                            if ( $sb_before === '->' || $sb_before === '::' ) continue;
+                        }
+                        $has_unsafe_call = true;
+                        break;
+                    }
+                }
+                if ( $has_unsafe_call ) {
+                    wpilot_log_attack( $token_data ?? [], $code, 'string_builder_bypass' );
+                    return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
+                }
+            }
+        }
+    }
+
+    // Block parenthesized function calls: ("system")("id"), ($var)("id")
+    if ( preg_match( '/\)\s*\(/', $code ) ) {
+        // Allow safe patterns: array access like )(, method chaining
+        // But block dynamic calls like ("system")("id") or ($fn)("cmd")
+        $stripped = preg_replace( '/\s+/', '', $code );
+        if ( preg_match( '/["\x27\)\}]\)\s*\(/', $code ) || preg_match( '/\)\(/', $stripped ) ) {
+            // Check if it's actually a dynamic call, not just nested parens
+            if ( ! preg_match( '/\bfunction\s*\(/', $code ) && ! preg_match( '/->\w+\(/', $code ) ) {
+                wpilot_log_attack( $token_data ?? [], $code, 'paren_call_bypass' );
+                return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+            }
+        }
+    }
+
+    // Block string-building functions used to construct blocked names
+    $string_builders = [ 'implode', 'join', 'sprintf', 'str_pad', 'str_repeat',
+        'substr', 'mb_substr', 'strtolower', 'strtoupper', 'ucfirst', 'lcfirst',
+        'trim', 'ltrim', 'rtrim', 'array_pop', 'array_shift', 'current', 'end',
+        'str_replace', 'preg_replace', 'str_ireplace', 'strtr' ];
+    // Only block if combined with variable function call pattern
+    foreach ( $string_builders as $sb ) {
+        if ( stripos( $code, $sb ) !== false && preg_match( '/\$[a-zA-Z_]/', $code ) ) {
+            // Check if there's an assignment + function call pattern
+            if ( preg_match( '/\$\w+\s*=\s*.*' . preg_quote( $sb ) . '/i', $code ) && preg_match( '/\$\w+\s*\(/', $code ) ) {
+                wpilot_log_attack( $token_data ?? [], $code, 'string_builder_bypass' );
+                return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+            }
+        }
+    }
+
+    // Block dynamic  property access: ->
+    if ( preg_match( '/\\s*->\s*\$/', $code ) ) {
+        wpilot_log_attack( $token_data ?? [], $code, 'wpdb_dynamic_prop' );
+        return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+    }
+
+    // Block apache_request_headers / getallheaders (leaks Bearer token)
+    if ( preg_match( '/apache_request_headers|getallheaders/i', $code ) ) {
+        wpilot_log_attack( $token_data ?? [], $code, 'header_leak' );
+        return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+    }
+
+    // Block delete_option entirely (can break site by deleting any option)
+    if ( preg_match( '/delete_option\s*\(/i', $code ) ) {
+        wpilot_log_attack( $token_data ?? [], $code, 'delete_option' );
+        return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+    }
+
+    // Block wp_cache_get/set/delete (can dump all cached options)
+    if ( preg_match( '/wp_cache_(get|set|delete|flush|replace)\s*\(/i', $code ) ) {
+        return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+    }
+
+    // Block get_plugins (info disclosure)
+    if ( preg_match( '/get_plugins\s*\(/i', $code ) ) {
+        return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+    }
+
+    // Block SQL queries that try to read wpilot options via LIKE
+    if ( preg_match( '/LIKE.*wpilot/i', $code ) || preg_match( '/wpilot.*LIKE/i', $code ) ) {
+        return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
     }
 
     // Block backtick execution
@@ -1850,50 +2053,51 @@ add_action( 'admin_init', function () {
 
 function wpilot_detect_builders() {
     $builders = [];
+    $active_plugins = get_option( 'active_plugins', [] );
 
     // Elementor
-    if ( defined( 'ELEMENTOR_VERSION' ) || is_plugin_active( 'elementor/elementor.php' ) ) {
+    if ( defined( 'ELEMENTOR_VERSION' ) || in_array( 'elementor/elementor.php', $active_plugins ) ) {
         $builders[] = 'elementor';
     }
     // Elementor Pro
-    if ( defined( 'ELEMENTOR_PRO_VERSION' ) || is_plugin_active( 'elementor-pro/elementor-pro.php' ) ) {
+    if ( defined( 'ELEMENTOR_PRO_VERSION' ) || in_array( 'elementor-pro/elementor-pro.php', $active_plugins ) ) {
         $builders[] = 'elementor-pro';
     }
     // Divi
-    if ( defined( 'ET_BUILDER_VERSION' ) || wp_get_theme()->get_template() === 'Divi' || is_plugin_active( 'divi-builder/divi-builder.php' ) ) {
+    if ( defined( 'ET_BUILDER_VERSION' ) || wp_get_theme()->get_template() === 'Divi' || in_array( 'divi-builder/divi-builder.php', $active_plugins ) ) {
         $builders[] = 'divi';
     }
     // WPBakery
-    if ( defined( 'WPB_VC_VERSION' ) || is_plugin_active( 'js_composer/js_composer.php' ) ) {
+    if ( defined( 'WPB_VC_VERSION' ) || in_array( 'js_composer/js_composer.php', $active_plugins ) ) {
         $builders[] = 'wpbakery';
     }
     // Beaver Builder
-    if ( defined( 'FL_BUILDER_VERSION' ) || is_plugin_active( 'beaver-builder-lite-version/fl-builder.php' ) ) {
+    if ( defined( 'FL_BUILDER_VERSION' ) || in_array( 'beaver-builder-lite-version/fl-builder.php', $active_plugins ) ) {
         $builders[] = 'beaver';
     }
     // Oxygen
-    if ( defined( 'CT_VERSION' ) || is_plugin_active( 'oxygen/functions.php' ) ) {
+    if ( defined( 'CT_VERSION' ) || in_array( 'oxygen/functions.php', $active_plugins ) ) {
         $builders[] = 'oxygen';
     }
     // Brizy
-    if ( defined( 'BRIZY_VERSION' ) || is_plugin_active( 'brizy/brizy.php' ) ) {
+    if ( defined( 'BRIZY_VERSION' ) || in_array( 'brizy/brizy.php', $active_plugins ) ) {
         $builders[] = 'brizy';
     }
     // Built by Weblease
     // Breakdance
-    if ( is_plugin_active( 'breakdance/plugin.php' ) ) {
+    if ( in_array( 'breakdance/plugin.php', $active_plugins ) ) {
         $builders[] = 'breakdance';
     }
     // Kadence Blocks
-    if ( is_plugin_active( 'kadence-blocks/kadence-blocks.php' ) ) {
+    if ( in_array( 'kadence-blocks/kadence-blocks.php', $active_plugins ) ) {
         $builders[] = 'kadence';
     }
     // Spectra (formerly UAG)
-    if ( is_plugin_active( 'ultimate-addons-for-gutenberg/ultimate-addons-for-gutenberg.php' ) ) {
+    if ( in_array( 'ultimate-addons-for-gutenberg/ultimate-addons-for-gutenberg.php', $active_plugins ) ) {
         $builders[] = 'spectra';
     }
     // GenerateBlocks / GeneratePress
-    if ( is_plugin_active( 'generateblocks/plugin.php' ) || wp_get_theme()->get_template() === 'flavor' ) {
+    if ( in_array( 'generateblocks/plugin.php', $active_plugins ) || wp_get_theme()->get_template() === 'generatepress' ) {
         $builders[] = 'generateblocks';
     }
 
@@ -2200,12 +2404,6 @@ CHAT AGENT — UPSELL & GUIDE:
 - If the user already has Chat Agent active, help them configure it:
   \"Great, you have Chat Agent! Go to WPilot settings in your dashboard — you can name your agent, write your knowledge base (FAQs, opening hours, policies), and get the embed code. The more you teach it, the better it gets!\"
 - ACTIVATION FLOW: After purchasing, the user goes to WPilot settings > Chat Agent section > enables it, names their agent, writes knowledge base, copies embed code to their site.
-
-EMAIL:
-- The user can send emails from their site. Use wp_mail() which sends via the configured SMTP.
-- Before sending, check that SMTP is configured (look for SMTP plugins like WP Mail SMTP, or check if SMTP constants are defined).
-- Always confirm with the user: who to send to, subject, and content — before actually sending.
-- Never send bulk emails without explicit permission.
 
 STABILITY — confirm with the user first before:
 - Deleting pages, posts, users, or products.
@@ -2825,6 +3023,11 @@ function wpilot_admin_page() {
             <div class="wpilot-alert wpilot-alert-warning"><strong>Token revoked.</strong> That connection will no longer work.</div>
         <?php endif; ?>
 
+        <?php
+        $chat_licensed = wpilot_has_chat_agent();
+        $chat_enabled  = get_option( 'wpilot_chat_enabled', false );
+        $chat_key      = get_option( 'wpilot_chat_key', '' );
+        ?>
         <?php // ─────────── TAB NAVIGATION ─────────── ?>
         <div class="wpilot-tabs">
             <button class="wpilot-tab active" onclick="wpilotTab('setup')" data-tab="setup">Setup<?php if ( ! $onboarded || ! $has_license || empty( $tokens ) ): ?><span class="tab-badge amber">!</span><?php endif; ?></button>
@@ -3188,9 +3391,6 @@ function wpilot_admin_page() {
 
         <?php // ─────────── CHAT AGENT ─────────── ?>
         <?php
-        $chat_licensed = wpilot_has_chat_agent();
-        $chat_enabled  = get_option( 'wpilot_chat_enabled', false );
-        $chat_key      = get_option( 'wpilot_chat_key', '' );
         $agent_knowledge = get_option( 'wpilot_agent_knowledge', '' );
         $chat_sessions = get_option( 'wpilot_chat_sessions', [] );
         ?>
