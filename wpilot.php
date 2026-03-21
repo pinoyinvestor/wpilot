@@ -52,6 +52,427 @@ add_action( 'admin_init', function () {
 });
 
 // ══════════════════════════════════════════════════════════════
+//  OAUTH 2.1 — MCP Authorization for Claude Desktop
+// ══════════════════════════════════════════════════════════════
+
+add_action( 'init', 'wpilot_oauth_well_known_handler', 1 );
+add_action( 'init', 'wpilot_oauth_root_endpoints', 1 );
+
+/**
+ * Handle /.well-known/oauth-authorization-server
+ * MCP spec: metadata endpoint MUST be at domain root level
+ */
+function wpilot_oauth_well_known_handler() {
+    $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+    $path = parse_url( $request_uri, PHP_URL_PATH );
+
+    if ( $path !== '/.well-known/oauth-authorization-server' ) return;
+
+    $site_url = get_site_url();
+    $metadata = wpilot_oauth_metadata( $site_url );
+
+    header( 'Content-Type: application/json' );
+    header( 'Cache-Control: no-store' );
+    header( 'Access-Control-Allow-Origin: *' );
+    echo json_encode( $metadata, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+    exit;
+}
+
+/**
+ * Handle root-level /authorize, /token, /register endpoints
+ * MCP spec: these MUST be at domain root for maximum compatibility
+ */
+function wpilot_oauth_root_endpoints() {
+    $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+    $path = parse_url( $request_uri, PHP_URL_PATH );
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+    if ( $path === '/authorize' && $method === 'GET' ) {
+        wpilot_oauth_authorize_handler();
+        exit;
+    }
+
+    if ( $path === '/authorize' && $method === 'POST' ) {
+        wpilot_oauth_authorize_submit_handler();
+        exit;
+    }
+
+    if ( $path === '/token' && $method === 'POST' ) {
+        wpilot_oauth_token_handler();
+        exit;
+    }
+
+    if ( $path === '/register' && $method === 'POST' ) {
+        wpilot_oauth_register_handler();
+        exit;
+    }
+}
+
+/**
+ * Build OAuth 2.0 Authorization Server Metadata (RFC8414)
+ */
+function wpilot_oauth_metadata( $site_url ) {
+    return [
+        'issuer'                                => $site_url,
+        'authorization_endpoint'                => $site_url . '/authorize',
+        'token_endpoint'                        => $site_url . '/token',
+        'registration_endpoint'                 => $site_url . '/register',
+        'response_types_supported'              => [ 'code' ],
+        'grant_types_supported'                 => [ 'authorization_code' ],
+        'token_endpoint_auth_methods_supported' => [ 'none', 'client_secret_post' ],
+        'code_challenge_methods_supported'      => [ 'S256' ],
+        'scopes_supported'                      => [ 'mcp' ],
+    ];
+}
+
+/**
+ * GET /authorize — Show login/authorize page
+ */
+function wpilot_oauth_authorize_handler() {
+    $client_id     = sanitize_text_field( $_GET['client_id'] ?? '' );
+    $redirect_uri  = esc_url_raw( $_GET['redirect_uri'] ?? '' );
+    $response_type = sanitize_text_field( $_GET['response_type'] ?? '' );
+    $state         = sanitize_text_field( $_GET['state'] ?? '' );
+    $scope         = sanitize_text_field( $_GET['scope'] ?? 'mcp' );
+    $code_challenge        = sanitize_text_field( $_GET['code_challenge'] ?? '' );
+    $code_challenge_method = sanitize_text_field( $_GET['code_challenge_method'] ?? '' );
+
+    if ( $response_type !== 'code' ) {
+        wp_die( 'Invalid response_type. Must be "code".', 'OAuth Error', [ 'response' => 400 ] );
+    }
+    if ( empty( $client_id ) ) {
+        wp_die( 'Missing client_id parameter.', 'OAuth Error', [ 'response' => 400 ] );
+    }
+    if ( empty( $redirect_uri ) ) {
+        wp_die( 'Missing redirect_uri parameter.', 'OAuth Error', [ 'response' => 400 ] );
+    }
+    if ( empty( $code_challenge ) || $code_challenge_method !== 'S256' ) {
+        wp_die( 'PKCE required. Provide code_challenge with method S256.', 'OAuth Error', [ 'response' => 400 ] );
+    }
+
+    // Validate redirect_uri: must be localhost, HTTPS, or custom scheme
+    $parsed = parse_url( $redirect_uri );
+    $host = $parsed['host'] ?? '';
+    $scheme = $parsed['scheme'] ?? '';
+    $is_localhost = in_array( $host, [ 'localhost', '127.0.0.1', '::1' ] );
+    if ( ! $is_localhost && $scheme === 'http' ) {
+        wp_die( 'redirect_uri must use HTTPS, localhost, or a custom scheme.', 'OAuth Error', [ 'response' => 400 ] );
+    }
+
+    // Validate client_id
+    $clients = get_option( 'wpilot_oauth_clients', [] );
+    $client_valid = false;
+    foreach ( $clients as $c ) {
+        if ( $c['client_id'] === $client_id ) { $client_valid = true; break; }
+    }
+    if ( ! $client_valid ) {
+        wp_die( 'Unknown client_id. Register first via /register.', 'OAuth Error', [ 'response' => 400 ] );
+    }
+
+    // Built by Weblease
+
+    if ( ! is_user_logged_in() ) {
+        $authorize_url = add_query_arg( [
+            'client_id' => $client_id, 'redirect_uri' => $redirect_uri,
+            'response_type' => $response_type, 'state' => $state, 'scope' => $scope,
+            'code_challenge' => $code_challenge, 'code_challenge_method' => $code_challenge_method,
+        ], site_url( '/authorize' ) );
+        wp_redirect( wp_login_url( $authorize_url ) );
+        exit;
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'Only administrators can authorize MCP connections.', 'Access Denied', [ 'response' => 403 ] );
+    }
+
+    $site_name = get_bloginfo( 'name' ) ?: 'WordPress';
+    wpilot_oauth_render_authorize_page( $site_name, $client_id, $redirect_uri, $state, $scope, $code_challenge, $code_challenge_method );
+}
+
+/**
+ * POST /authorize — Handle Allow/Deny decision
+ */
+function wpilot_oauth_authorize_submit_handler() {
+    if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'Unauthorized.', 'Access Denied', [ 'response' => 403 ] );
+    }
+    if ( ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'wpilot_oauth_authorize' ) ) {
+        wp_die( 'Invalid security token.', 'Security Error', [ 'response' => 403 ] );
+    }
+
+    $decision      = sanitize_text_field( $_POST['decision'] ?? '' );
+    $client_id     = sanitize_text_field( $_POST['client_id'] ?? '' );
+    $redirect_uri  = esc_url_raw( $_POST['redirect_uri'] ?? '' );
+    $state         = sanitize_text_field( $_POST['state'] ?? '' );
+    $scope         = sanitize_text_field( $_POST['scope'] ?? 'mcp' );
+    $code_challenge        = sanitize_text_field( $_POST['code_challenge'] ?? '' );
+    $code_challenge_method = sanitize_text_field( $_POST['code_challenge_method'] ?? '' );
+
+    if ( empty( $redirect_uri ) ) {
+        wp_die( 'Missing redirect_uri.', 'OAuth Error', [ 'response' => 400 ] );
+    }
+
+    if ( $decision !== 'allow' ) {
+        wp_redirect( add_query_arg( [
+            'error' => 'access_denied',
+            'error_description' => 'User denied the request.',
+            'state' => $state,
+        ], $redirect_uri ) );
+        exit;
+    }
+
+    $auth_code = bin2hex( random_bytes( 32 ) );
+    $codes = get_option( 'wpilot_oauth_codes', [] );
+    $codes = array_filter( $codes, function( $c ) { return $c['expires'] > time(); } );
+
+    $codes[ $auth_code ] = [
+        'client_id'             => $client_id,
+        'redirect_uri'          => $redirect_uri,
+        'scope'                 => $scope,
+        'code_challenge'        => $code_challenge,
+        'code_challenge_method' => $code_challenge_method,
+        'user_id'               => get_current_user_id(),
+        'expires'               => time() + 300,
+    ];
+
+    update_option( 'wpilot_oauth_codes', $codes, false );
+
+    wp_redirect( add_query_arg( [
+        'code'  => $auth_code,
+        'state' => $state,
+    ], $redirect_uri ) );
+    exit;
+}
+
+/**
+ * POST /token — Exchange auth code for access token
+ */
+function wpilot_oauth_token_handler() {
+    header( 'Content-Type: application/json' );
+    header( 'Cache-Control: no-store' );
+    header( 'Access-Control-Allow-Origin: *' );
+
+    $grant_type    = sanitize_text_field( $_POST['grant_type'] ?? '' );
+    $code          = sanitize_text_field( $_POST['code'] ?? '' );
+    $redirect_uri  = esc_url_raw( $_POST['redirect_uri'] ?? '' );
+    $client_id     = sanitize_text_field( $_POST['client_id'] ?? '' );
+    $code_verifier = sanitize_text_field( $_POST['code_verifier'] ?? '' );
+
+    if ( $grant_type !== 'authorization_code' ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'unsupported_grant_type' ] );
+        exit;
+    }
+    if ( empty( $code ) || empty( $code_verifier ) ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_request', 'error_description' => 'Missing code or code_verifier.' ] );
+        exit;
+    }
+
+    $codes = get_option( 'wpilot_oauth_codes', [] );
+    if ( ! isset( $codes[ $code ] ) ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_grant', 'error_description' => 'Invalid or expired code.' ] );
+        exit;
+    }
+
+    $code_data = $codes[ $code ];
+    unset( $codes[ $code ] );
+    update_option( 'wpilot_oauth_codes', $codes, false );
+
+    if ( $code_data['expires'] < time() ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_grant', 'error_description' => 'Code expired.' ] );
+        exit;
+    }
+    if ( $code_data['client_id'] !== $client_id ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_grant', 'error_description' => 'Client mismatch.' ] );
+        exit;
+    }
+    if ( $code_data['redirect_uri'] !== $redirect_uri ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_grant', 'error_description' => 'Redirect URI mismatch.' ] );
+        exit;
+    }
+
+    // PKCE verification
+    $expected = rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' );
+    if ( ! hash_equals( $code_data['code_challenge'], $expected ) ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_grant', 'error_description' => 'PKCE verification failed.' ] );
+        exit;
+    }
+
+    // Create access token (stored as wpilot token for backward compat)
+    $raw_token = 'wpi_' . bin2hex( random_bytes( 32 ) );
+    $hash = hash( 'sha256', $raw_token );
+    $tokens = get_option( 'wpilot_tokens', [] );
+
+    $tokens[] = [
+        'hash'      => $hash,
+        'style'     => 'technical',
+        'label'     => 'OAuth: ' . substr( $client_id, 0, 24 ),
+        'created'   => current_time( 'Y-m-d H:i' ),
+        'last_used' => null,
+        'oauth'     => true,
+        'user_id'   => $code_data['user_id'],
+    ];
+
+    update_option( 'wpilot_tokens', $tokens );
+
+    echo json_encode( [
+        'access_token' => $raw_token,
+        'token_type'   => 'Bearer',
+        'scope'        => $code_data['scope'],
+    ], JSON_UNESCAPED_SLASHES );
+    exit;
+}
+
+/**
+ * POST /register — Dynamic Client Registration (RFC7591)
+ */
+function wpilot_oauth_register_handler() {
+    header( 'Content-Type: application/json' );
+    header( 'Cache-Control: no-store' );
+    header( 'Access-Control-Allow-Origin: *' );
+
+    $body = json_decode( file_get_contents( 'php://input' ), true );
+    if ( ! is_array( $body ) ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_request', 'error_description' => 'Invalid JSON.' ] );
+        exit;
+    }
+
+    $client_name    = sanitize_text_field( $body['client_name'] ?? 'Unknown Client' );
+    $redirect_uris  = $body['redirect_uris'] ?? [];
+    $grant_types    = $body['grant_types'] ?? [ 'authorization_code' ];
+    $response_types = $body['response_types'] ?? [ 'code' ];
+    $auth_method    = sanitize_text_field( $body['token_endpoint_auth_method'] ?? 'none' );
+
+    if ( ! is_array( $redirect_uris ) || empty( $redirect_uris ) ) {
+        http_response_code( 400 );
+        echo json_encode( [ 'error' => 'invalid_request', 'error_description' => 'redirect_uris required.' ] );
+        exit;
+    }
+
+    $client_id = 'wpilot_' . bin2hex( random_bytes( 16 ) );
+    $client_secret = bin2hex( random_bytes( 32 ) );
+    $clients = get_option( 'wpilot_oauth_clients', [] );
+
+    if ( count( $clients ) >= 50 ) { array_shift( $clients ); }
+
+    $clients[] = [
+        'client_id'                  => $client_id,
+        'client_secret_hash'         => hash( 'sha256', $client_secret ),
+        'client_name'                => $client_name,
+        'redirect_uris'              => $redirect_uris,
+        'grant_types'                => $grant_types,
+        'response_types'             => $response_types,
+        'token_endpoint_auth_method' => $auth_method,
+        'registered_at'              => time(),
+    ];
+
+    update_option( 'wpilot_oauth_clients', $clients, false );
+
+    http_response_code( 201 );
+    echo json_encode( [
+        'client_id'                  => $client_id,
+        'client_secret'              => $client_secret,
+        'client_name'                => $client_name,
+        'redirect_uris'              => $redirect_uris,
+        'grant_types'                => $grant_types,
+        'response_types'             => $response_types,
+        'token_endpoint_auth_method' => $auth_method,
+    ], JSON_UNESCAPED_SLASHES );
+    exit;
+}
+
+/**
+ * Render premium authorize page — dark theme matching WPilot admin
+ */
+function wpilot_oauth_render_authorize_page( $site_name, $client_id, $redirect_uri, $state, $scope, $code_challenge, $code_challenge_method ) {
+    $user = wp_get_current_user();
+    ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorize — WPilot</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 40%,#16213e 70%,#0f3460 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;color:#e2e8f0}
+        .oc{background:rgba(255,255,255,.04);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:48px 44px;max-width:460px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,.5),0 0 120px rgba(78,201,176,.05)}
+        .ol{text-align:center;margin-bottom:32px}
+        .ol-t{font-size:28px;font-weight:800;letter-spacing:-.5px}
+        .ol-b{display:inline-block;background:rgba(78,201,176,.15);color:#4ec9b0;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-left:8px;vertical-align:middle}
+        .ox{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:32px;padding:20px;background:rgba(255,255,255,.03);border-radius:16px;border:1px solid rgba(255,255,255,.06)}
+        .oi{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0;color:#fff}
+        .oi-c{background:linear-gradient(135deg,#d97706,#f59e0b)}
+        .oi-w{background:linear-gradient(135deg,#4ec9b0,#22c55e)}
+        .oa{color:#4ec9b0;font-size:24px}
+        .ot{text-align:center;font-size:18px;font-weight:600;margin-bottom:8px;color:#f1f5f9}
+        .os{text-align:center;font-size:14px;color:#94a3b8;margin-bottom:28px;line-height:1.5}
+        .op{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:20px 24px;margin-bottom:28px}
+        .op-t{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;font-weight:600;margin-bottom:14px}
+        .op-i{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:14px;color:#cbd5e1}
+        .op-c{color:#4ec9b0;font-size:16px;font-weight:700}
+        .ou{display:flex;align-items:center;gap:12px;padding:14px 18px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.15);border-radius:12px;margin-bottom:28px}
+        .ou-a{width:36px;height:36px;border-radius:50%;background:#4ec9b0;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+        .ou-n{font-size:14px;font-weight:600;color:#e2e8f0}
+        .ou-r{font-size:12px;color:#94a3b8}
+        .ob{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        .btn{padding:14px 24px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;transition:all .2s;text-align:center}
+        .btn-d{background:rgba(255,255,255,.06);color:#94a3b8;border:1px solid rgba(255,255,255,.1)}
+        .btn-d:hover{background:rgba(220,38,38,.15);color:#fca5a5;border-color:rgba(220,38,38,.3)}
+        .btn-a{background:linear-gradient(135deg,#4ec9b0,#22c55e);color:#fff;box-shadow:0 4px 16px rgba(78,201,176,.3)}
+        .btn-a:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(78,201,176,.4)}
+        .of{text-align:center;margin-top:24px;font-size:12px;color:#64748b}
+        .of a{color:#4ec9b0;text-decoration:none}
+        @media(max-width:480px){.oc{padding:32px 24px}.ob{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+<div class="oc">
+    <div class="ol"><span class="ol-t">WPilot</span><span class="ol-b">MCP</span></div>
+    <div class="ox"><div class="oi oi-c">C</div><div class="oa">&#8594;</div><div class="oi oi-w">W</div></div>
+    <div class="ot">Claude wants to connect</div>
+    <div class="os">An application wants to manage<br><strong style="color:#4ec9b0"><?php echo esc_html( $site_name ); ?></strong> through WPilot</div>
+    <div class="op">
+        <div class="op-t">This will allow Claude to:</div>
+        <div class="op-i"><span class="op-c">&#10003;</span> Read and modify content, pages, and posts</div>
+        <div class="op-i"><span class="op-c">&#10003;</span> Manage WooCommerce products and orders</div>
+        <div class="op-i"><span class="op-c">&#10003;</span> Configure site settings and SEO</div>
+        <div class="op-i"><span class="op-c">&#10003;</span> Customize design, themes, and layouts</div>
+    </div>
+    <div class="ou">
+        <div class="ou-a"><?php echo esc_html( strtoupper( substr( $user->display_name ?: $user->user_login, 0, 1 ) ) ); ?></div>
+        <div><div class="ou-n"><?php echo esc_html( $user->display_name ?: $user->user_login ); ?></div><div class="ou-r">Administrator</div></div>
+    </div>
+    <form method="post" action="<?php echo esc_url( site_url( '/authorize' ) ); ?>">
+        <?php wp_nonce_field( 'wpilot_oauth_authorize' ); ?>
+        <input type="hidden" name="client_id" value="<?php echo esc_attr( $client_id ); ?>">
+        <input type="hidden" name="redirect_uri" value="<?php echo esc_attr( $redirect_uri ); ?>">
+        <input type="hidden" name="state" value="<?php echo esc_attr( $state ); ?>">
+        <input type="hidden" name="scope" value="<?php echo esc_attr( $scope ); ?>">
+        <input type="hidden" name="code_challenge" value="<?php echo esc_attr( $code_challenge ); ?>">
+        <input type="hidden" name="code_challenge_method" value="<?php echo esc_attr( $code_challenge_method ); ?>">
+        <div class="ob">
+            <button type="submit" name="decision" value="deny" class="btn btn-d">Deny</button>
+            <button type="submit" name="decision" value="allow" class="btn btn-a">Allow</button>
+        </div>
+    </form>
+    <div class="of">Powered by <a href="https://weblease.se/wpilot" target="_blank">WPilot</a> &mdash; Weblease</div>
+</div>
+</body>
+</html>
+<?php
+    exit;
+}
+
+
+// ══════════════════════════════════════════════════════════════
 //  DATABASE TABLES — Chat Queue & Agent Brain
 // ══════════════════════════════════════════════════════════════
 
@@ -98,7 +519,6 @@ function wpilot_create_tables() {
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql_queue );
-    // Built by Weblease
     dbDelta( $sql_brain );
 }
 
@@ -180,7 +600,6 @@ function wpilot_save_tokens( $tokens ) {
  */
 function wpilot_create_token( $style, $label ) {
     $raw   = 'wpi_' . bin2hex( random_bytes( 32 ) );
-    // Built by Weblease
     $hash  = hash( 'sha256', $raw );
     $tokens = wpilot_get_tokens();
 
@@ -329,11 +748,14 @@ function wpilot_mcp_endpoint( $request ) {
                 'id'      => null,
             ], 429 );
         }
+        $site_url = get_site_url();
         return new WP_REST_Response([
             'jsonrpc' => '2.0',
             'error'   => [ 'code' => -32000, 'message' => 'Unauthorized.' ],
             'id'      => null,
-        ], 401 );
+        ], 401, [
+            'WWW-Authenticate' => 'Bearer resource_metadata="' . $site_url . '/.well-known/oauth-authorization-server"',
+        ] );
     }
 
     $style = $token_data['style'] ?? 'simple';
@@ -617,7 +1039,6 @@ function wpilot_chat_status( $request ) {
     }
 
     // Show "online" if Claude is connected OR brain has data (can still answer)
-    // Built by Weblease
     // Cache brain/contact check for 5 minutes to avoid DB query on every poll
     $has_fallback = get_transient( 'wpilot_has_fallback' );
     if ( $has_fallback === false ) {
@@ -822,7 +1243,6 @@ function wpilot_offline_message() {
 
     // Build contact buttons
     $buttons = [];
-    // Built by Weblease
     if ( ! empty( $wa ) ) {
         $wa_link = 'https://wa.me/' . preg_replace( '/[^0-9]/', '', $wa );
         $buttons[] = '<a href="' . $wa_link . '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;">WhatsApp</a>';
@@ -1051,7 +1471,6 @@ function wpilot_chat_upload( $request ) {
 
 // ══════════════════════════════════════════════════════════════
 //  CHAT EMAIL — Collect visitor email after timeout
-// Built by Weblease
 // ══════════════════════════════════════════════════════════════
 
 function wpilot_chat_collect_email( $request ) {
@@ -1723,6 +2142,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
     }
 
+// Built by Weblease
     // Block delete_option entirely (can break site by deleting any option)
     if ( preg_match( '/delete_option\s*\(/i', $code ) ) {
         wpilot_log_attack( $token_data ?? [], $code, 'delete_option' );
@@ -2083,7 +2503,6 @@ function wpilot_detect_builders() {
     if ( defined( 'BRIZY_VERSION' ) || in_array( 'brizy/brizy.php', $active_plugins ) ) {
         $builders[] = 'brizy';
     }
-    // Built by Weblease
     // Breakdance
     if ( in_array( 'breakdance/plugin.php', $active_plugins ) ) {
         $builders[] = 'breakdance';
@@ -2171,7 +2590,6 @@ function wpilot_detect_plugins() {
         // WPilot itself
         'wpilot/wpilot.php' => ['name' => 'WPilot', 'cat' => 'wpilot'],
     ];
-    // Built by Weblease
     foreach ( $active as $plugin ) {
         if ( isset( $known[ $plugin ] ) ) {
             $found[] = $known[ $plugin ];
@@ -2781,9 +3199,9 @@ function wpilot_admin_styles( $hook ) {
         .wpilot-example-cat p:last-child { border: none; }
 
         /* Pricing */
-        .wpilot-pricing { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
+        .wpilot-pricing { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 16px !important; margin-top: 20px !important; align-items: stretch !important; }
         @media (max-width: 700px) { .wpilot-pricing { grid-template-columns: 1fr; } }
-        .wpilot-plan { background: #fff; border: 2px solid #e2e8f0; border-radius: 14px; padding: 28px 24px; text-align: center; transition: all 0.2s; position: relative; }
+        .wpilot-plan { background: #fff !important; border: 2px solid #e2e8f0 !important; border-radius: 14px !important; padding: 28px 24px !important; text-align: center !important; transition: all 0.2s; position: relative !important; display: flex !important; flex-direction: column !important; }
         .wpilot-plan:hover { border-color: #4ec9b0; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
         .wpilot-plan-popular { border-color: #4ec9b0; box-shadow: 0 4px 16px rgba(78,201,176,0.15); }
         .wpilot-plan-popular::before { content: "Most popular"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #4ec9b0, #22c55e); color: #fff; font-size: 11px; font-weight: 700; padding: 4px 16px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -2791,10 +3209,10 @@ function wpilot_admin_styles( $hook ) {
         .wpilot-plan .price { font-size: 36px; font-weight: 800; color: #1a1a2e; margin: 12px 0 4px; }
         .wpilot-plan .price span { font-size: 15px; font-weight: 400; color: #94a3b8; }
         .wpilot-plan .price-note { font-size: 13px; color: #94a3b8; margin: 0 0 16px; }
-        .wpilot-plan ul { list-style: none; padding: 0; margin: 0 0 20px; text-align: left; }
+        .wpilot-plan ul { list-style: none !important; padding: 0 !important; margin: 0 0 20px !important; text-align: left !important; flex: 1 1 auto !important; }
         .wpilot-plan ul li { padding: 6px 0; font-size: 13px; color: #475569; display: flex; gap: 8px; align-items: start; }
         .wpilot-plan ul li::before { content: "\\2713"; color: #22c55e; font-weight: 700; flex-shrink: 0; }
-        .wpilot-plan .wpilot-btn { width: 100%; justify-content: center; }
+        .wpilot-plan a.wpilot-btn, .wpilot-plan .wpilot-btn { width: 100% !important; justify-content: center !important; margin-top: auto !important; display: inline-flex !important; text-decoration: none !important; box-sizing: border-box !important; align-self: flex-end !important; }
 
         /* Tab navigation */
         .wpilot-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; padding: 0; flex-wrap: wrap; }
@@ -2844,7 +3262,6 @@ function wpilot_log_attack( $token_data, $code, $type = "blocked_pattern" ) {
         return $e["token"] === substr( $token_data["hash"] ?? "", 0, 8 )
             && $e["time"] > time() - 600;
     } );
-    // Built by Weblease
     if ( count( $recent ) >= 5 ) {
         $ban_key = "wpilot_banned_" . substr( $token_data["hash"] ?? "", 0, 16 );
         $already_banned = get_transient( $ban_key );
@@ -2927,7 +3344,6 @@ function wpilot_plugin_info( $result, $action, $args ) {
     if ( $action !== 'plugin_information' || ( $args->slug ?? '' ) !== 'wpilot' ) return $result;
 
     $remote = wpilot_get_remote_version();
-    // Built by Weblease
     if ( ! $remote ) return $result;
 
     return (object) [
@@ -3257,7 +3673,7 @@ function wpilot_admin_page() {
                         <div class="wpilot-guide-step">
                             <h3>Add WPilot to your config file</h3>
                             <p>A file opens. Add the following inside <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">"mcpServers"</code>:</p>
-                            <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy">"wpilot": {
+                            <code class="wpilot-code" style="cursor:pointer;position:relative;" onclick="navigator.clipboard.writeText(this.innerText);var b=document.createElement('div');b.innerHTML='\u2713 Copied!';b.style.cssText='position:absolute;top:8px;right:8px;background:#22c55e;color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;';this.appendChild(b);setTimeout(function(){b.remove();},2000);" title="Click to copy">"wpilot": {
   "command": "npx",
   "args": ["-y", "mcp-remote", "<?php echo esc_url( $site_url ); ?>/wp-json/wpilot/v1/mcp"],
   "env": {
@@ -3287,7 +3703,7 @@ function wpilot_admin_page() {
                         <div class="wpilot-guide-num">2</div>
                         <div class="wpilot-guide-step">
                             <h3>Paste this command and press Enter</h3>
-                            <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy">claude mcp add --transport http wpilot <?php echo esc_url( $site_url ); ?>/wp-json/wpilot/v1/mcp --header "Authorization:Bearer <?php echo esc_html( $new_token ); ?>"</code>
+                            <code class="wpilot-code" style="cursor:pointer;position:relative;" onclick="navigator.clipboard.writeText(this.innerText);var b=document.createElement('div');b.innerHTML='\u2713 Copied!';b.style.cssText='position:absolute;top:8px;right:8px;background:#22c55e;color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;';this.appendChild(b);setTimeout(function(){b.remove();},2000);" title="Click to copy">claude mcp add --transport http wpilot <?php echo esc_url( $site_url ); ?>/wp-json/wpilot/v1/mcp --header "Authorization:Bearer <?php echo esc_html( $new_token ); ?>"</code>
                             <span class="wpilot-code-hint">Click the command to copy it to your clipboard.</span>
                         </div>
 
@@ -3544,7 +3960,7 @@ function wpilot_admin_page() {
             <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
                 <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Chat Key</h3>
                 <?php if ( $chat_key ): ?>
-                    <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy"><?php echo esc_html( $chat_key ); ?></code>
+                    <code class="wpilot-code" style="cursor:pointer;position:relative;" onclick="navigator.clipboard.writeText(this.innerText);var b=document.createElement('div');b.innerHTML='\u2713 Copied!';b.style.cssText='position:absolute;top:8px;right:8px;background:#22c55e;color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;';this.appendChild(b);setTimeout(function(){b.remove();},2000);" title="Click to copy"><?php echo esc_html( $chat_key ); ?></code>
                     <span class="wpilot-code-hint">Click to copy. This key authenticates widget requests.</span>
                 <?php else: ?>
                     <p style="font-size:13px;color:#94a3b8;">No chat key generated yet. Generate one to get the embed code.</p>
@@ -3562,7 +3978,7 @@ function wpilot_admin_page() {
             <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
                 <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Embed Code</h3>
                 <p style="font-size:13px;color:#64748b;margin:0 0 12px;">Add this script to your site (in a custom HTML block, theme footer, or via a plugin like Insert Headers and Footers):</p>
-                <code class="wpilot-code" onclick="navigator.clipboard.writeText(this.innerText);this.style.borderColor='#22c55e';" title="Click to copy" style="font-size:12px;line-height:1.5;white-space:pre-wrap;">&lt;script src="https://weblease.se/wpilot-chat.js"&gt;&lt;/script&gt;
+                <code class="wpilot-code" style="cursor:pointer;position:relative;" onclick="navigator.clipboard.writeText(this.innerText);var b=document.createElement('div');b.innerHTML='\u2713 Copied!';b.style.cssText='position:absolute;top:8px;right:8px;background:#22c55e;color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;';this.appendChild(b);setTimeout(function(){b.remove();},2000);" title="Click to copy" style="font-size:12px;line-height:1.5;white-space:pre-wrap;">&lt;script src="https://weblease.se/wpilot-chat.js"&gt;&lt;/script&gt;
 &lt;script&gt;
 WPilotChat.init({
   endpoint: "<?php echo esc_url( get_site_url() ); ?>/wp-json/wpilot/v1/chat",
