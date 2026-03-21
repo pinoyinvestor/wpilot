@@ -499,7 +499,7 @@ function wpilot_chat_endpoint( $request ) {
         ], 200 );
     }
 
-    // Claude is OFFLINE -> check for greetings first, then brain
+    // Claude is OFFLINE -> greetings first, then proxy AI, then brain fallback
     $greeting_response = wpilot_check_greeting( $message );
     if ( $greeting_response ) {
         $wpdb->insert( $table, [
@@ -518,7 +518,7 @@ function wpilot_chat_endpoint( $request ) {
         ], 200 );
     }
 
-    // Try brain match
+    // Brain keyword match (offline fallback — free, no API cost)
     $brain_answer = wpilot_brain_search( $message );
     $source = $brain_answer ? 'brain' : 'pending';
 
@@ -646,6 +646,96 @@ function wpilot_chat_poll( $request ) {
 /**
  * Detect common greetings and respond naturally.
  */
+/**
+ * Call weblease.se proxy to get AI response via Claude Haiku.
+ * Used when Claude Code is offline. Sends site context for smart answers.
+ * Built by Weblease
+ */
+function wpilot_proxy_chat( $message, $session_id ) {
+    $license_key = get_option( 'wpilot_license_key', '' );
+    if ( empty( $license_key ) ) return null;
+
+    // Gather site context for the AI
+    $context = [
+        'site_name' => get_bloginfo( 'name' ) ?: 'this website',
+        'pages'     => [],
+    ];
+
+    $pages = get_posts( [ 'post_type' => 'page', 'post_status' => 'publish', 'numberposts' => 30 ] );
+    foreach ( $pages as $p ) {
+        $context['pages'][] = $p->post_title . ' (' . get_permalink( $p ) . ')';
+    }
+
+    if ( class_exists( 'WooCommerce' ) ) {
+        $products = get_posts( [ 'post_type' => 'product', 'post_status' => 'publish', 'numberposts' => 30 ] );
+        $context['products'] = [];
+        foreach ( $products as $p ) {
+            $product = wc_get_product( $p->ID );
+            if ( $product ) {
+                $context['products'][] = [
+                    'name'  => $product->get_name(),
+                    'price' => $product->get_price() ? $product->get_price() . 'kr' : '',
+                    'stock' => $product->is_in_stock() ? 'i lager' : 'slut',
+                    'url'   => get_permalink( $p ),
+                ];
+            }
+        }
+    }
+
+    $knowledge = get_option( 'wpilot_agent_knowledge', '' );
+    if ( ! empty( $knowledge ) ) {
+        $context['knowledge'] = $knowledge;
+    }
+
+    // Get brain data for extra context
+    global $wpdb;
+    $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
+        $brain_entries = $wpdb->get_results( "SELECT title, content FROM {$brain_table} LIMIT 20" );
+        $context['brain'] = array_map( function( $e ) { return $e->title . ': ' . $e->content; }, $brain_entries );
+    }
+
+    // Conversation history
+    $history_key = 'wpilot_chat_history_' . sanitize_key( $session_id );
+    $history = get_option( $history_key, [] );
+    $history_for_proxy = array_map( function ( $h ) {
+        return [ 'role' => $h['role'], 'content' => $h['content'] ];
+    }, array_slice( $history, -6 ) );
+    $context['history'] = $history_for_proxy;
+
+    $agent_name = get_option( 'wpilot_agent_name', 'Sara' );
+    $lang = get_locale();
+
+    $response = wp_remote_post( 'https://weblease.se/api/wpilot-chat/respond', [
+        'timeout' => 20,
+        'headers' => [ 'Content-Type' => 'application/json' ],
+        'body'    => wp_json_encode( [
+            'message'      => $message,
+            'context'      => $context,
+            'session_id'   => $session_id,
+            'site_hash'    => md5( get_site_url() ),
+            'agent_name'   => $agent_name,
+            'language'     => $lang,
+            'license_key'  => $license_key,
+        ] ),
+    ] );
+
+    if ( is_wp_error( $response ) ) return null;
+
+    $status = wp_remote_retrieve_response_code( $response );
+    $body   = json_decode( wp_remote_retrieve_body( $response ), true );
+
+    if ( $status !== 200 || empty( $body['reply'] ) ) return null;
+
+    // Save conversation history
+    $history[] = [ 'role' => 'user', 'content' => $message, 'ts' => time() ];
+    $history[] = [ 'role' => 'assistant', 'content' => $body['reply'], 'ts' => time() ];
+    if ( count( $history ) > 20 ) $history = array_slice( $history, -20 );
+    update_option( $history_key, $history, false );
+
+    return $body['reply'];
+}
+
 function wpilot_check_greeting( $message ) {
     $msg = mb_strtolower( trim( $message ) );
     $name = get_option( 'wpilot_agent_name', 'Sara' );
@@ -740,6 +830,10 @@ function wpilot_brain_search( $query ) {
 
     // Sort by score (highest first)
     usort( $scored, function( $a, $b ) { return $b['score'] - $a['score']; } );
+
+    // Minimum confidence — need at least score 8 (e.g. title match + keyword, or 2 keyword matches)
+    // This prevents false positives like "säljer ni hemsidor till iphone" matching the iPhone product
+    if ( $scored[0]['score'] < 5 ) return null;
 
     // Return the best match
     $best = $scored[0]['entry'];
@@ -1823,7 +1917,30 @@ ABOUT WPILOT:
         }
 
         $prompt .= "\n\nCHAT AGENT — ACTIVE ON THIS SITE:";
-        $prompt .= "\nThis site has Chat Agent enabled. You are also serving as the customer service AI.";
+        $prompt .= "\nThis site has Chat Agent enabled. You are the customer service AI for this site.";
+        $prompt .= "\n\nBACKGROUND CHAT AGENT:";
+        $prompt .= "\nYou MUST start a background agent to monitor and answer visitor chat messages.";
+        $prompt .= "\nTell the site owner: I am starting your customer service agent in the background.";
+        $prompt .= "\nThe background agent should:";
+        $prompt .= "\n1. Check for new messages every 10 seconds";
+        $prompt .= "\n2. Answer each message naturally, friendly, using the site data";
+        $prompt .= "\n3. Write answers in the visitor language";  
+        $prompt .= "\n4. Use the agent name: " . get_option( 'wpilot_agent_name', 'Sara' ) . "";
+        $prompt .= "\n\nTo check for new messages, run:";
+        $prompt .= "\nglobal \$wpdb; return \$wpdb->get_results(\$wpdb->prepare('SELECT id, session_id, message, created_at FROM ' . \$wpdb->prefix . 'wpilot_chat_queue WHERE source = %s AND response IS NULL ORDER BY created_at ASC', 'pending'));";
+        $prompt .= "\n\nTo answer a message, run:";
+        $prompt .= "\nglobal \$wpdb; \$wpdb->update(\$wpdb->prefix . 'wpilot_chat_queue', ['response' => 'YOUR ANSWER', 'source' => 'claude', 'responded_at' => current_time('mysql')], ['id' => MESSAGE_ID]); return 'Answered';";
+        $prompt .= "\n\nTo get site context for smart answers, you can query:";
+        $prompt .= "\n- Products: return array_map(function(\$p){\$pr=wc_get_product(\$p->ID);return \$pr?['name'=>\$pr->get_name(),'price'=>\$pr->get_price(),'stock'=>\$pr->is_in_stock()]:null;}, get_posts(['post_type'=>'product','numberposts'=>50]));";
+        $prompt .= "\n- Pages: return array_map(function(\$p){return ['title'=>\$p->post_title,'url'=>get_permalink(\$p)];}, get_posts(['post_type'=>'page','numberposts'=>30]));";
+        $prompt .= "\n- Knowledge base: return get_option('wpilot_agent_knowledge','');";
+        $prompt .= "\n\nAnswer rules:";
+        $prompt .= "\n- Be warm, professional, like a real customer service person";
+        $prompt .= "\n- Use the site data to give accurate answers (prices, stock, shipping)";
+        $prompt .= "\n- If you do not know the answer, say: I will check with the team and get back to you";
+        $prompt .= "\n- NEVER make up information — only use real site data";
+        $prompt .= "\n- Keep answers short (1-3 sentences)";
+        $prompt .= "\n- Match the visitor language";
         if ( $pending > 0 ) {
             $prompt .= "\nURGENT: There are {$pending} UNANSWERED visitor question(s) waiting! Check them immediately with:";
             $prompt .= "\nreturn \$wpdb->get_results(\"SELECT id, session_id, message, created_at FROM {$chat_table} WHERE source = 'pending' AND response IS NULL ORDER BY created_at ASC\");";
