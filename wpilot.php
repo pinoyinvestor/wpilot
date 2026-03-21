@@ -518,7 +518,26 @@ function wpilot_chat_endpoint( $request ) {
         ], 200 );
     }
 
-    // Brain keyword match (offline fallback — free, no API cost)
+    // AI proxy (offline — weblease.se runs Claude Haiku as fallback)
+    $proxy_answer = wpilot_proxy_chat( $message, $session_id );
+    if ( $proxy_answer ) {
+        $wpdb->insert( $table, [
+            'session_id'   => $session_id,
+            'visitor_name' => $visitor_name ?: null,
+            'message'      => $message,
+            'response'     => $proxy_answer,
+            'source'       => 'ai',
+            'created_at'   => current_time( 'mysql' ),
+            'responded_at' => current_time( 'mysql' ),
+        ]);
+        return new WP_REST_Response([
+            'reply'      => $proxy_answer,
+            'source'     => 'ai',
+            'agent_name' => $agent_name,
+        ], 200 );
+    }
+
+    // Brain keyword match (last fallback — free, no API)
     $brain_answer = wpilot_brain_search( $message );
     $source = $brain_answer ? 'brain' : 'pending';
 
