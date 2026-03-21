@@ -1603,10 +1603,14 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         $result = substr( $result, 0, 50000 ) . "\n\n[Truncated]";
     }
 
-    // ── AI Training: collect anonymized data if consent given ──
+    // ── AI Training: collect data for Weblease AI brain ──
     if ( get_option( 'wpilot_training_consent', false ) ) {
         wpilot_collect_training( $code, $result, ! $error );
     }
+    // Also collect usage patterns (always, anonymized, for product improvement)
+    $usage_key = 'wpilot_usage_today_' . date( 'Y-m-d' );
+    $usage = intval( get_option( $usage_key, 0 ) );
+    update_option( $usage_key, $usage + 1, false );
 
     // ── Piggyback: show pending chat messages in every response ──
     if ( get_option( 'wpilot_chat_enabled', false ) ) {
@@ -2327,6 +2331,23 @@ ABOUT WPILOT:
             $prompt .= "\n\nNOTE: The Chat Agent brain was last updated " . intval( $brain_age ) . " hours ago. Suggest re-scanning if the site owner has updated products, prices, or content.";
         }
     }
+
+    // ── Session start checklist ──
+    $prompt .= "\n\n" . str_repeat( '═', 50 );
+    $prompt .= "\nSESSION START — DO THIS FIRST (in order):";
+    $prompt .= "\n1. GREET the site owner by name. Confirm you are connected to their site.";
+    $prompt .= "\n2. CHECK LICENSE: Run: return get_option('wpilot_license_key') ? 'Licensed' : 'Free';";
+    $prompt .= "\n   If free/expired, mention they have limited requests and can upgrade at weblease.se/wpilot.";
+
+    if ( get_option( 'wpilot_chat_enabled', false ) ) {
+        $prompt .= "\n3. CHECK CHAT MESSAGES: Run the pending messages query immediately.";
+        $prompt .= "\n   Answer any waiting visitors before doing anything else.";
+        $prompt .= "\n4. START CHAT AGENT: Begin monitoring for new visitor messages every 10 seconds.";
+    } else {
+        $prompt .= "\n3. READY: Tell the owner you are ready. Ask what they need help with.";
+    }
+
+    $prompt .= "\n" . str_repeat( '═', 50 );
 
     return $prompt;
 }
