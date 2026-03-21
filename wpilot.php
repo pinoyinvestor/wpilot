@@ -55,21 +55,21 @@ add_action( 'admin_init', function () {
 //  OAUTH 2.1 — MCP Authorization for Claude Desktop
 // ══════════════════════════════════════════════════════════════
 
-add_action( 'init', 'wpilot_oauth_well_known_handler', 1 );
-add_action( 'init', 'wpilot_oauth_root_endpoints', 1 );
+add_action( 'init', 'wpilot_pro_oauth_well_known_handler', 1 );
+add_action( 'init', 'wpilot_pro_oauth_root_endpoints', 1 );
 
 /**
  * Handle /.well-known/oauth-authorization-server
  * MCP spec: metadata endpoint MUST be at domain root level
  */
-function wpilot_oauth_well_known_handler() {
+function wpilot_pro_oauth_well_known_handler() {
     $request_uri = $_SERVER['REQUEST_URI'] ?? '';
     $path = parse_url( $request_uri, PHP_URL_PATH );
 
     if ( $path !== '/.well-known/oauth-authorization-server' ) return;
 
     $site_url = get_site_url();
-    $metadata = wpilot_oauth_metadata( $site_url );
+    $metadata = wpilot_pro_oauth_metadata( $site_url );
 
     header( 'Content-Type: application/json' );
     header( 'Cache-Control: no-store' );
@@ -82,28 +82,28 @@ function wpilot_oauth_well_known_handler() {
  * Handle root-level /authorize, /token, /register endpoints
  * MCP spec: these MUST be at domain root for maximum compatibility
  */
-function wpilot_oauth_root_endpoints() {
+function wpilot_pro_oauth_root_endpoints() {
     $request_uri = $_SERVER['REQUEST_URI'] ?? '';
     $path = parse_url( $request_uri, PHP_URL_PATH );
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
     if ( $path === '/authorize' && $method === 'GET' ) {
-        wpilot_oauth_authorize_handler();
+        wpilot_pro_oauth_authorize_handler();
         exit;
     }
 
     if ( $path === '/authorize' && $method === 'POST' ) {
-        wpilot_oauth_authorize_submit_handler();
+        wpilot_pro_oauth_authorize_submit_handler();
         exit;
     }
 
     if ( $path === '/token' && $method === 'POST' ) {
-        wpilot_oauth_token_handler();
+        wpilot_pro_oauth_token_handler();
         exit;
     }
 
     if ( $path === '/register' && $method === 'POST' ) {
-        wpilot_oauth_register_handler();
+        wpilot_pro_oauth_register_handler();
         exit;
     }
 }
@@ -111,7 +111,7 @@ function wpilot_oauth_root_endpoints() {
 /**
  * Build OAuth 2.0 Authorization Server Metadata (RFC8414)
  */
-function wpilot_oauth_metadata( $site_url ) {
+function wpilot_pro_oauth_metadata( $site_url ) {
     return [
         'issuer'                                => $site_url,
         'authorization_endpoint'                => $site_url . '/authorize',
@@ -128,7 +128,7 @@ function wpilot_oauth_metadata( $site_url ) {
 /**
  * GET /authorize — Show login/authorize page
  */
-function wpilot_oauth_authorize_handler() {
+function wpilot_pro_oauth_authorize_handler() {
     $client_id     = sanitize_text_field( $_GET['client_id'] ?? '' );
     $redirect_uri  = esc_url_raw( $_GET['redirect_uri'] ?? '' );
     $response_type = sanitize_text_field( $_GET['response_type'] ?? '' );
@@ -186,17 +186,17 @@ function wpilot_oauth_authorize_handler() {
     }
 
     $site_name = get_bloginfo( 'name' ) ?: 'WordPress';
-    wpilot_oauth_render_authorize_page( $site_name, $client_id, $redirect_uri, $state, $scope, $code_challenge, $code_challenge_method );
+    wpilot_pro_oauth_render_authorize_page( $site_name, $client_id, $redirect_uri, $state, $scope, $code_challenge, $code_challenge_method );
 }
 
 /**
  * POST /authorize — Handle Allow/Deny decision
  */
-function wpilot_oauth_authorize_submit_handler() {
+function wpilot_pro_oauth_authorize_submit_handler() {
     if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
         wp_die( 'Unauthorized.', 'Access Denied', [ 'response' => 403 ] );
     }
-    if ( ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'wpilot_oauth_authorize' ) ) {
+    if ( ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'wpilot_pro_oauth_authorize' ) ) {
         wp_die( 'Invalid security token.', 'Security Error', [ 'response' => 403 ] );
     }
 
@@ -247,7 +247,7 @@ function wpilot_oauth_authorize_submit_handler() {
 /**
  * POST /token — Exchange auth code for access token
  */
-function wpilot_oauth_token_handler() {
+function wpilot_pro_oauth_token_handler() {
     header( 'Content-Type: application/json' );
     header( 'Cache-Control: no-store' );
     header( 'Access-Control-Allow-Origin: *' );
@@ -332,7 +332,7 @@ function wpilot_oauth_token_handler() {
 /**
  * POST /register — Dynamic Client Registration (RFC7591)
  */
-function wpilot_oauth_register_handler() {
+function wpilot_pro_oauth_register_handler() {
     header( 'Content-Type: application/json' );
     header( 'Cache-Control: no-store' );
     header( 'Access-Control-Allow-Origin: *' );
@@ -391,7 +391,7 @@ function wpilot_oauth_register_handler() {
 /**
  * Render premium authorize page — dark theme matching WPilot admin
  */
-function wpilot_oauth_render_authorize_page( $site_name, $client_id, $redirect_uri, $state, $scope, $code_challenge, $code_challenge_method ) {
+function wpilot_pro_oauth_render_authorize_page( $site_name, $client_id, $redirect_uri, $state, $scope, $code_challenge, $code_challenge_method ) {
     $user = wp_get_current_user();
     ?>
 <!DOCTYPE html>
@@ -451,7 +451,7 @@ function wpilot_oauth_render_authorize_page( $site_name, $client_id, $redirect_u
         <div><div class="ou-n"><?php echo esc_html( $user->display_name ?: $user->user_login ); ?></div><div class="ou-r">Administrator</div></div>
     </div>
     <form method="post" action="<?php echo esc_url( site_url( '/authorize' ) ); ?>">
-        <?php wp_nonce_field( 'wpilot_oauth_authorize' ); ?>
+        <?php wp_nonce_field( 'wpilot_pro_oauth_authorize' ); ?>
         <input type="hidden" name="client_id" value="<?php echo esc_attr( $client_id ); ?>">
         <input type="hidden" name="redirect_uri" value="<?php echo esc_attr( $redirect_uri ); ?>">
         <input type="hidden" name="state" value="<?php echo esc_attr( $state ); ?>">
