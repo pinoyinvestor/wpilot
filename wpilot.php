@@ -258,12 +258,14 @@ function wpilot_check_license() {
     ]);
 
     if ( is_wp_error( $response ) ) {
-        set_transient( 'wpilot_license_status', 'valid', 300 );
-        // Also cache chat_agent to prevent re-check loop
+        // Network error: keep last known status, default to 'free' (not 'valid')
+        $last_known = get_transient( 'wpilot_license_status' );
+        $fallback = $last_known !== false ? $last_known : 'free';
+        set_transient( 'wpilot_license_status', $fallback, 300 );
         if ( get_transient( 'wpilot_chat_agent_licensed' ) === false ) {
             set_transient( 'wpilot_chat_agent_licensed', 'no', 300 );
         }
-        return 'valid';
+        return $fallback;
     }
 
     $body   = json_decode( wp_remote_retrieve_body( $response ), true );
@@ -315,9 +317,21 @@ function wpilot_mcp_endpoint( $request ) {
     $token_data = wpilot_validate_token( $raw_token );
 
     if ( ! $token_data ) {
+        // Rate limit failed auth: 10 per minute per IP
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $fail_key = 'wpilot_auth_fail_' . md5( $ip );
+        $fails = intval( get_transient( $fail_key ) ?: 0 );
+        set_transient( $fail_key, $fails + 1, 60 );
+        if ( $fails >= 10 ) {
+            return new WP_REST_Response([
+                'jsonrpc' => '2.0',
+                'error'   => [ 'code' => -32000, 'message' => 'Too many failed attempts.' ],
+                'id'      => null,
+            ], 429 );
+        }
         return new WP_REST_Response([
             'jsonrpc' => '2.0',
-            'error'   => [ 'code' => -32000, 'message' => 'Unauthorized — invalid or missing API token.' ],
+            'error'   => [ 'code' => -32000, 'message' => 'Unauthorized.' ],
             'id'      => null,
         ], 401 );
     }
@@ -365,7 +379,7 @@ function wpilot_mcp_endpoint( $request ) {
             return wpilot_rpc_ok( $id, [ 'tools' => [ wpilot_tool_definition() ] ] );
 
         case 'tools/call':
-            return wpilot_handle_execute( $id, $params, $style );
+            return wpilot_handle_execute( $id, $params, $style, $token_data );
 
         default:
             return new WP_REST_Response([
@@ -1196,11 +1210,16 @@ function wpilot_tool_definition() {
     ];
 }
 
-function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
+function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [] ) {
     $code = $params['arguments']['action'] ?? $params['arguments']['code'] ?? '';
 
     if ( empty( $code ) ) {
         return wpilot_rpc_tool_result( $id, 'No action provided.', true );
+    }
+
+    // ── Check if this token is banned (too many attacks) ──
+    if ( wpilot_is_banned( $token_data ?? [] ) ) {
+        return wpilot_rpc_tool_result( $id, 'Your access has been temporarily suspended due to suspicious activity. Contact support at weblease.se if this is an error.', true );
     }
 
     // ── License check ──
@@ -1252,6 +1271,23 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         }
     }
 
+    // ── Block encoding bypass tricks ──
+    // Attackers use chr(), hex2bin(), str_replace(), base64_decode() etc
+    // to build blocked strings at runtime and bypass strpos() checks
+    $encoding_funcs = [
+        'chr\s*\(', 'hex2bin\s*\(', 'pack\s*\(',
+        'urldecode\s*\(', 'rawurldecode\s*\(',
+        'convert_uuencode\s*\(', 'convert_uudecode\s*\(',
+        'quoted_printable_decode\s*\(', 'quoted_printable_encode\s*\(',
+        'str_rot13\s*\(', 'strrev\s*\(',
+    ];
+    foreach ( $encoding_funcs as $ef ) {
+        if ( preg_match( '/' . $ef . '/i', $code ) ) {
+            wpilot_log_attack( $token_data, $code, 'encoding_bypass' );
+            return wpilot_rpc_tool_result( $id, 'This action is not allowed.', true );
+        }
+    }
+
     // ── Block credential/constant access ──
     $credential_blocked = [
         'DB_PASSWORD', 'DB_USER', 'DB_HOST', 'DB_NAME', 'DB_CHARSET',
@@ -1275,6 +1311,69 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
 
     // ── Security: block dangerous operations ──
     $blocked = [
+        // PHP classes that bypass filesystem/network restrictions
+        'ZipArchive', 'PharData', 'Phar\b',
+        'GlobIterator', 'RegexIterator',
+        'SimpleXMLElement', 'DOMDocument', 'XMLReader', 'XMLWriter',
+        'SQLite3', 'PDO\b', 'PDOStatement',
+        'FFI\b', 'FFI::',
+        'Imagick',
+        // Output buffer abuse (callback = shell execution)
+        'ob_start\s*\(', 'ob_end_clean', 'ob_get_clean', 'ob_end_flush',
+        'ob_implicit_flush', 'output_add_rewrite_var',
+        // DNS/network exfiltration
+        'dns_get_record\s*\(', 'gethostbyname\s*\(', 'gethostbyaddr\s*\(',
+        'checkdnsrr\s*\(', 'getmxrr\s*\(', 'net_get_interfaces\s*\(',
+        // Native mail (wp_mail is blocked separately)
+        '\bmail\s*\(',
+        // ALL header injection (not just Location)
+        '\bheader\s*\(',
+        // Stream wrappers
+        'stream_wrapper_register\s*\(', 'stream_wrapper_unregister\s*\(',
+        'stream_filter_register\s*\(', 'stream_context_create\s*\(',
+        // Process manipulation
+        'proc_nice\s*\(', 'proc_terminate\s*\(',
+        // Server fingerprinting
+        'phpversion\s*\(', 'php_uname\s*\(', 'php_sapi_name\s*\(',
+        'php_ini_scanned_files\s*\(', 'get_loaded_extensions\s*\(',
+        'posix_uname\s*\(', 'posix_getpwuid\s*\(', 'posix_geteuid\s*\(',
+        'posix_getuid\s*\(', 'posix_getgid\s*\(',
+        'disk_free_space\s*\(', 'disk_total_space\s*\(',
+        'getmypid\s*\(', 'getmyuid\s*\(', 'get_current_user\s*\(',
+        'sys_get_temp_dir\s*\(',
+        'ini_get\s*\(', 'get_cfg_var\s*\(',
+        'get_defined_functions\s*\(', 'get_defined_vars\s*\(',
+        'get_defined_constants\s*\(', 'get_declared_classes\s*\(',
+        'get_class_methods\s*\(', 'function_exists\s*\(',
+        'extension_loaded\s*\(', 'class_exists\s*\(',
+        // Callback functions (code execution via string names)
+        'array_map\s*\(', 'array_filter\s*\(', 'array_walk\s*\(',
+        'array_walk_recursive\s*\(', 'usort\s*\(', 'uasort\s*\(', 'uksort\s*\(',
+        'array_reduce\s*\(', 'iterator_apply\s*\(',
+        'preg_replace_callback\s*\(', 'Closure::fromCallable',
+        // Transient manipulation (license/rate limit bypass)
+        'set_transient\s*\(', 'delete_transient\s*\(',
+        'get_transient\s*\(.*wpilot',
+        // WordPress destructive functions
+        'wp_delete_post\s*\(', 'wp_trash_post\s*\(',
+        'switch_theme\s*\(', 'wp_clean_themes_cache\s*\(',
+        'wp_update_nav_menu_item\s*\(', 'wp_delete_nav_menu\s*\(',
+        'wp_cache_flush\s*\(', 'wp_cache_delete\s*\(',
+        // User functions (read AND write)
+        'get_users\s*\(', 'get_user_by\s*\(', 'get_user_meta\s*\(',
+        'get_userdata\s*\(', 'WP_User_Query',
+        'wp_insert_user\s*\(', 'wp_update_user\s*\(', 'wp_create_user\s*\(',
+        'wp_set_current_user\s*\(', 'wp_set_auth_cookie\s*\(',
+        'add_role\s*\(', 'remove_role\s*\(',
+        'add_cap\s*\(', 'remove_cap\s*\(',
+        'grant_super_admin\s*\(', 'revoke_super_admin\s*\(',
+        // WooCommerce price/payment manipulation
+        'set_regular_price\s*\(', 'set_sale_price\s*\(',
+        'set_price\s*\(', 'set_stock_quantity\s*\(',
+        'set_manage_stock\s*\(', 'set_stock_status\s*\(',
+        // Serialization (can leak  credentials)
+        '\bserialize\s*\(.*wpdb', 'print_r\s*\(.*wpdb',
+        'var_dump\s*\(.*wpdb', 'var_export\s*\(.*wpdb',
         // Shell execution
         'exec\s*\(', 'shell_exec\s*\(', 'system\s*\(', 'passthru\s*\(',
         'popen\s*\(', 'proc_open\s*\(', 'pcntl_exec\s*\(',
@@ -1305,12 +1404,6 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'ini_set\s*\(', 'ini_alter\s*\(', 'putenv\s*\(',
         'set_include_path', 'dl\s*\(',
         'set_time_limit\s*\(', 'ignore_user_abort',
-        // Output buffer abuse (ob_start with callback = shell execution)
-        'ob_start\s*\(', 'ob_end_clean', 'ob_get_clean', 'ob_end_flush',
-        // Callback functions (can execute arbitrary code via string function names)
-        'array_map\s*\(', 'array_filter\s*\(', 'array_walk\s*\(',
-        'array_walk_recursive\s*\(', 'usort\s*\(', 'uasort\s*\(', 'uksort\s*\(',
-        'preg_replace_callback\s*\(', 'Closure::fromCallable',
         // Callback registration (persistent code execution)
         'register_shutdown_function\s*\(', 'set_error_handler\s*\(',
         'set_exception_handler\s*\(', 'register_tick_function\s*\(',
@@ -1319,8 +1412,11 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         '\bextract\s*\(', '\bcompact\s*\(',
         // Halt compiler
         '__halt_compiler',
-        // Database destructive
-        '\$wpdb\s*->\s*query\s*\(\s*["\x27]?\s*(DROP|TRUNCATE|ALTER|GRANT|REVOKE|CREATE\s+USER)',
+        // Database:  only allows SELECT (block INSERT/UPDATE/DELETE/DROP/etc)
+        '\$wpdb\s*->\s*query\s*\(\s*["\x27]?\s*(DROP|TRUNCATE|ALTER|GRANT|REVOKE|CREATE|INSERT|UPDATE|DELETE|REPLACE)',
+        '\$wpdb\s*->\s*query\s*\(.*\bDELETE\b',
+        '\$wpdb\s*->\s*query\s*\(.*\bINSERT\b',
+        '\$wpdb\s*->\s*query\s*\(.*\bUPDATE\b',
         // Block ALL access to users/usermeta tables (read AND write)
         '\$wpdb\s*->\s*users\b',
         '\$wpdb\s*->\s*usermeta\b',
@@ -1329,7 +1425,12 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         '\buser_pass\b',
         '\buser_login\b.*\bFROM\b',
         // Critical WordPress options that can break the site
-        'update_option\s*\(\s*["\x27](siteurl|home|blogname|admin_email|users_can_register|default_role|permalink_structure|template|stylesheet|active_plugins|recently_activated)',
+        'update_option\s*\(\s*["\x27](siteurl|home|blogname|blogdescription|admin_email|users_can_register|default_role|permalink_structure|template|stylesheet|active_plugins|recently_activated|blog_public|cron|rewrite_rules|db_version|initial_db_version|wp_user_roles)',
+        // Block update_option for WooCommerce critical settings
+        'update_option\s*\(\s*["\x27]woocommerce_(currency|checkout_page_id|cart_page_id|shop_page_id|myaccount_page_id|terms_page_id|tax_|prices_include_tax|calc_taxes|enable_guest_checkout)',
+        // Block update_option for all wpilot_ options (use admin UI instead)
+        'update_option\s*\(\s*["\x27]wpilot_',
+        'delete_option\s*\(\s*["\x27]wpilot_',
         // User escalation functions
         'wp_insert_user\s*\(', 'wp_update_user\s*\(', 'wp_create_user\s*\(',
         'wp_set_current_user\s*\(', 'wp_set_auth_cookie\s*\(',
@@ -1360,8 +1461,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'wpilot_training_queue',  // Can't tamper with training queue
         // Reflection/class manipulation
         'ReflectionFunction', 'ReflectionClass', 'ReflectionMethod',
-        // Header manipulation
-        'header\s*\(\s*["\x27]Location',
+        // Header manipulation — now fully blocked in expanded list above
         // Plugin/theme file reading
         'get_plugin_data\s*\(', 'plugin_dir_path\s*\(',
         'WP_PLUGIN_DIR', 'WPMU_PLUGIN_DIR',
@@ -1382,7 +1482,8 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
     ];
     foreach ( $blocked as $pattern ) {
         if ( preg_match( '/' . $pattern . '/i', $code ) ) {
-            return wpilot_rpc_tool_result( $id, "Blocked for security reasons.", true );
+            wpilot_log_attack( $token_data ?? [], $code, 'blocked:' . $pattern );
+            return wpilot_rpc_tool_result( $id, "This action is not allowed.", true );
         }
     }
 
@@ -1408,6 +1509,15 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'deactivate_plugins', 'delete_plugins', 'WP_Filesystem',
         'load_template', 'locate_template', 'get_template_part',
         '_set_cron_array', '_get_cron_array',
+        'ZipArchive', 'GlobIterator', 'DOMDocument', 'SimpleXMLElement',
+        'XMLReader', 'SQLite3', 'PDO', 'FFI',
+        'dns_get_record', 'gethostbyname', 'checkdnsrr',
+        'mail', 'header', 'ob_start',
+        'switch_theme', 'wp_delete_post', 'wp_trash_post',
+        'set_transient', 'delete_transient',
+        'get_users', 'get_user_by', 'get_userdata', 'get_user_meta',
+        'stream_wrapper_register', 'proc_nice',
+        'array_reduce', 'iterator_apply',
     ];
 
     // Tokenize and check for variable function calls: $var(...)
@@ -2263,6 +2373,41 @@ function wpilot_admin_styles( $hook ) {
         .wpilot-help-item a { color: #4ec9b0; text-decoration: none; font-weight: 500; }
         .wpilot-help-item a:hover { text-decoration: underline; }
     ' );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ATTACK DETECTION + LOGGING
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_log_attack( $token_data, $code, $type = "blocked_pattern" ) {
+    $log = get_option( "wpilot_attack_log", [] );
+    $log[] = [
+        "time"  => time(),
+        "token" => substr( $token_data["hash"] ?? "unknown", 0, 8 ),
+        "label" => $token_data["label"] ?? "unknown",
+        "type"  => $type,
+        "code"  => substr( $code, 0, 200 ),
+        "ip"    => $_SERVER["REMOTE_ADDR"] ?? "unknown",
+    ];
+    // Keep last 100 entries
+    if ( count( $log ) > 100 ) $log = array_slice( $log, -100 );
+    update_option( "wpilot_attack_log", $log, false );
+
+    // Auto-ban: 5+ attacks in 10 minutes = block token for 1 hour
+    $recent = array_filter( $log, function( $e ) use ( $token_data ) {
+        return $e["token"] === substr( $token_data["hash"] ?? "", 0, 8 )
+            && $e["time"] > time() - 600;
+    } );
+    // Built by Weblease
+    if ( count( $recent ) >= 5 ) {
+        $ban_key = "wpilot_banned_" . substr( $token_data["hash"] ?? "", 0, 16 );
+        set_transient( $ban_key, true, 3600 );
+    }
+}
+
+function wpilot_is_banned( $token_data ) {
+    $ban_key = "wpilot_banned_" . substr( $token_data["hash"] ?? "", 0, 16 );
+    return get_transient( $ban_key ) === true;
 }
 
 // ══════════════════════════════════════════════════════════════
