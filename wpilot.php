@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot — Powered by Claude
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Connect Claude to your WordPress site. AI-powered site management.
- * Version:      4.0.0
+ * Version:      4.1.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -14,7 +14,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WPILOT_VERSION', '4.0.0' );
+define( 'WPILOT_VERSION', '4.1.0' );
 define( 'WPILOT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPILOT_FREE_LIMIT', 10 );
 
@@ -97,7 +97,7 @@ function wpilot_create_tables() {
 
 function wpilot_claude_is_online() {
     $last = intval( get_option( 'wpilot_claude_last_seen', 0 ) );
-    return ( time() - $last ) < 120;
+    return ( time() - $last ) < 45;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -575,16 +575,34 @@ function wpilot_chat_status( $request ) {
     header( 'Access-Control-Allow-Origin: *' );
     header( 'Cache-Control: no-store' );
 
+    // Gate: chat must be enabled AND licensed
+    $chat_on = get_option( 'wpilot_chat_enabled', false );
+    $licensed = wpilot_has_chat_agent();
+
+    if ( ! $chat_on || ! $licensed ) {
+        return new WP_REST_Response([
+            'enabled' => false,
+        ], 200 );
+    }
+
     // Show "online" if Claude is connected OR brain has data (can still answer)
+    // Built by Weblease
     global $wpdb;
     $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
     $has_brain = false;
-    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $brain_table ) ) === $brain_table ) {
         $has_brain = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) ) > 0;
     }
-    $is_online = wpilot_claude_is_online() || $has_brain;
+
+    // Also check if any contact methods configured for offline
+    $has_contact = ! empty( get_option( 'wpilot_whatsapp_number', '' ) )
+        || ! empty( get_option( 'wpilot_contact_phone', '' ) )
+        || ! empty( get_option( 'wpilot_contact_email', '' ) );
+
+    $is_online = wpilot_claude_is_online() || $has_brain || $has_contact;
 
     return new WP_REST_Response([
+        'enabled'    => true,
         'online'     => $is_online,
         'agent_name' => get_option( 'wpilot_agent_name', 'Sara' ),
     ], 200 );
@@ -841,40 +859,44 @@ function wpilot_brain_search( $query ) {
 // ══════════════════════════════════════════════════════════════
 
 function wpilot_offline_message() {
-    $name = get_option( 'wpilot_agent_name', 'Sara' );
-    $lang = get_locale();
-    $wa   = get_option( 'wpilot_whatsapp_number', '' );
+    $name  = get_option( 'wpilot_agent_name', 'Sara' );
+    $lang  = get_locale();
+    $wa    = get_option( 'wpilot_whatsapp_number', '' );
+    $phone = get_option( 'wpilot_contact_phone', '' );
+    $email = get_option( 'wpilot_contact_email', '' );
     $is_sv = str_starts_with( $lang, 'sv' );
 
-    // Priority 1: WhatsApp Business fallback
+    // Build contact buttons
+    $buttons = [];
+    // Built by Weblease
     if ( ! empty( $wa ) ) {
-        $wa_link = 'https://wa.me/' . ltrim( $wa, '+' );
-        if ( $is_sv ) {
-            return "Jag har tyvärr inte svaret just nu. Du kan nå oss direkt på WhatsApp: <a href=\"{$wa_link}\" target=\"_blank\" rel=\"noopener\">Chatta på WhatsApp</a>";
-        }
-        return "I don't have the answer right now. You can reach us directly on WhatsApp: <a href=\"{$wa_link}\" target=\"_blank\" rel=\"noopener\">Chat on WhatsApp</a>";
+        $wa_link = 'https://wa.me/' . preg_replace( '/[^0-9]/', '', $wa );
+        $buttons[] = '<a href="' . $wa_link . '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;">WhatsApp</a>';
     }
 
-    // Priority 2: Brain exists but couldn't match -- ask for email
-    global $wpdb;
-    $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
-    $has_brain = false;
-    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
-        $has_brain = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) ) > 0;
+    if ( ! empty( $phone ) ) {
+        $tel = preg_replace( '/[^0-9+]/', '', $phone );
+        $lbl = $is_sv ? 'Ring oss' : 'Call us';
+        $buttons[] = '<a href="tel:' . $tel . '" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#3B82F6;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;">' . $lbl . '</a>';
     }
 
-    if ( $has_brain ) {
-        if ( $is_sv ) {
-            return "Jag har tyvärr inte svaret på den frågan just nu. Vill du lämna din mejladress så återkommer jag med ett svar?";
-        }
-        return "I don't have the answer to that right now. Would you like to leave your email so I can get back to you?";
+    if ( ! empty( $email ) ) {
+        $lbl = $is_sv ? 'Mejla oss' : 'Email us';
+        $buttons[] = '<a href="mailto:' . esc_attr( $email ) . '" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#6366F1;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;">' . $lbl . '</a>';
     }
 
-    // Priority 3: Generic offline message
+    if ( ! empty( $buttons ) ) {
+        $intro = $is_sv
+            ? 'Jag har inte svaret just nu, men du kan nå oss här:'
+            : 'I don\'t have the answer right now. You can reach us here:';
+        return $intro . '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">' . implode( '', $buttons ) . '</div>';
+    }
+
+    // No contact methods — ask for email
     if ( $is_sv ) {
-        return "Tack för ditt meddelande! {$name} är inte tillgänglig just nu men återkommer så snart som möjligt.";
+        return 'Jag har inte svaret just nu. Vill du lämna din mejladress så återkommer vi med ett svar?';
     }
-    return "Thanks for your message! {$name} isn't available right now but will get back to you as soon as possible.";
+    return 'I don\'t have the answer right now. Would you like to leave your email so I can get back to you?';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1428,6 +1450,8 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'wpilot_telegram_token',      // Can't read Telegram token
         'wpilot_telegram_chat_id',    // Can't read Telegram chat ID
         'wpilot_whatsapp_number',    // Block WhatsApp number from execute_php
+        'wpilot_contact_phone',       // Block phone from execute_php
+        'wpilot_contact_email',       // Block contact email from execute_php
         'wpilot_training_consent',// Can't toggle training consent
         'wpilot_training_queue',  // Can't tamper with training queue
         // Reflection/class manipulation
@@ -1580,6 +1604,28 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
     // ── AI Training: collect anonymized data if consent given ──
     if ( get_option( 'wpilot_training_consent', false ) ) {
         wpilot_collect_training( $code, $result, ! $error );
+    }
+
+    // ── Piggyback: show pending chat messages in every response ──
+    if ( get_option( 'wpilot_chat_enabled', false ) ) {
+        global $wpdb;
+        $chat_tbl = $wpdb->prefix . 'wpilot_chat_queue';
+        $pending_msgs = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, session_id, message, visitor_name, created_at FROM {$chat_tbl} WHERE source = %s AND response IS NULL ORDER BY created_at ASC LIMIT 10",
+            'pending'
+        ) );
+        if ( ! empty( $pending_msgs ) ) {
+            $aname = get_option( 'wpilot_agent_name', 'Sara' );
+            $result .= "\n\n" . str_repeat( '━', 40 );
+            $result .= "\nVISITOR CHAT — ANSWER NOW (as {$aname})";
+            $result .= "\nBe warm, helpful, use real site data. Match the visitor's language.";
+            $result .= "\nTo answer: global \$wpdb; \$wpdb->update(\$wpdb->prefix . 'wpilot_chat_queue', ['response' => 'YOUR ANSWER', 'source' => 'claude', 'responded_at' => current_time('mysql')], ['id' => ID]); return 'Answered';";
+            $result .= "\n" . str_repeat( '━', 40 );
+            foreach ( $pending_msgs as $pm ) {
+                $vn = $pm->visitor_name ? " ({$pm->visitor_name})" : '';
+                $result .= "\n#{$pm->id}{$vn}: {$pm->message} [{$pm->created_at}]";
+            }
+        }
     }
 
     return wpilot_rpc_tool_result( $id, $result, false );
@@ -2111,6 +2157,13 @@ function wpilot_handle_actions() {
         $whatsapp = sanitize_text_field( $_POST['whatsapp_number'] ?? '' );
         $whatsapp = preg_replace( '/[^0-9+]/', '', $whatsapp );
         update_option( 'wpilot_whatsapp_number', $whatsapp );
+
+        $contact_phone = sanitize_text_field( $_POST['contact_phone'] ?? '' );
+        $contact_phone = preg_replace( '/[^0-9+\-\s]/', '', $contact_phone );
+        update_option( 'wpilot_contact_phone', $contact_phone );
+
+        $contact_email = sanitize_email( $_POST['contact_email'] ?? '' );
+        update_option( 'wpilot_contact_email', $contact_email );
 
         wp_redirect( admin_url( 'admin.php?page=wpilot&saved=chat' ) );
         exit;
@@ -2757,6 +2810,23 @@ function wpilot_admin_page() {
                     <span class="hint">Enter your WhatsApp Business number with country code. When the AI can't answer a question, visitors will get a direct WhatsApp link as fallback.</span>
                 </div>
 
+                <div class="wpilot-field">
+                    <label for="contact_phone">Phone Number</label>
+                    <input type="text" id="contact_phone" name="contact_phone"
+                           style="width:100%;max-width:400px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;background:#fafbfc;"
+                           placeholder="+46 8 123 45 67"
+                           value="<?php echo esc_attr( get_option( 'wpilot_contact_phone', '' ) ); ?>">
+                    <span class="hint">Visitors can click to call directly from the chat when the AI is offline.</span>
+                </div>
+
+                <div class="wpilot-field">
+                    <label for="contact_email">Contact Email</label>
+                    <input type="text" id="contact_email" name="contact_email"
+                           style="width:100%;max-width:400px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;background:#fafbfc;"
+                           placeholder="info@example.com"
+                           value="<?php echo esc_attr( get_option( 'wpilot_contact_email', '' ) ); ?>">
+                    <span class="hint">Visitors can email you directly from the chat when the AI is offline.</span>
+                </div>
 
                 <div class="wpilot-field">
                     <label for="agent_knowledge">Knowledge Base</label>
