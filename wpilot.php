@@ -414,13 +414,68 @@ function wpilot_chat_endpoint( $request ) {
         return new WP_REST_Response( [ 'error' => 'Invalid chat key.' ], 403 );
     }
 
-    // Rate limit: 30 messages per minute per session
-    $rl_key = 'wpilot_chat_rl_' . md5( $session_id );
-    $count  = intval( get_transient( $rl_key ) ?: 0 );
-    if ( $count >= 30 ) {
-        return new WP_REST_Response( [ 'error' => 'Too many messages. Please wait a moment.' ], 429 );
+    // ── Anti-spam system ──
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+    // Honeypot
+    $honeypot = $body['website'] ?? $body['url'] ?? '';
+    if ( ! empty( $honeypot ) ) {
+        return new WP_REST_Response( [ 'queued' => true, 'queue_id' => 0 ], 200 );
     }
-    set_transient( $rl_key, $count + 1, 60 );
+
+    // Message length
+    if ( strlen( $message ) > 2000 ) {
+        return new WP_REST_Response( [ 'error' => 'Message too long. Maximum 2000 characters.' ], 400 );
+    }
+
+    // Cooldown 3s per IP
+    $cd_key = 'wpilot_chat_cd_' . md5( $ip );
+    $last = get_transient( $cd_key );
+    if ( $last && ( time() - intval( $last ) ) < 3 ) {
+        return new WP_REST_Response( [ 'error' => 'Please wait a moment.' ], 429 );
+    }
+    set_transient( $cd_key, time(), 10 );
+
+    // Per-session: 8/min
+    $sess_key = 'wpilot_chat_rl_' . md5( $session_id );
+    $sess_c = intval( get_transient( $sess_key ) ?: 0 );
+    if ( $sess_c >= 8 ) {
+        return new WP_REST_Response( [ 'error' => 'Too many messages. Please wait.' ], 429 );
+    }
+    set_transient( $sess_key, $sess_c + 1, 60 );
+
+    // Per-IP: 15/min
+    $ip_key = 'wpilot_chat_ip_' . md5( $ip );
+    $ip_c = intval( get_transient( $ip_key ) ?: 0 );
+    if ( $ip_c >= 15 ) {
+        return new WP_REST_Response( [ 'error' => 'Rate limit exceeded.' ], 429 );
+    }
+    set_transient( $ip_key, $ip_c + 1, 60 );
+
+    // Daily: 100/day per IP
+    $day_key = 'wpilot_chat_day_' . md5( $ip . date( 'Y-m-d' ) );
+    $day_c = intval( get_transient( $day_key ) ?: 0 );
+    if ( $day_c >= 100 ) {
+        return new WP_REST_Response( [ 'error' => 'Daily limit reached.' ], 429 );
+    }
+    set_transient( $day_key, $day_c + 1, 86400 );
+
+    // Duplicate: same msg from same IP within 5 min
+    $dupe_key = 'wpilot_chat_dupe_' . md5( $ip . $message );
+    if ( get_transient( $dupe_key ) ) {
+        return new WP_REST_Response( [ 'error' => 'Duplicate message.' ], 429 );
+    }
+    set_transient( $dupe_key, 1, 300 );
+
+    // Flood detection
+    $flood_key = 'wpilot_chat_flood_' . md5( $ip );
+    $flood_c = intval( get_transient( $flood_key ) ?: 0 );
+    if ( $flood_c >= 3 ) {
+        return new WP_REST_Response( [ 'error' => 'Temporarily blocked.' ], 429 );
+    }
+    if ( $ip_c >= 14 || $sess_c >= 7 ) {
+        set_transient( $flood_key, $flood_c + 1, 3600 );
+    }
 
     global $wpdb;
     $table      = $wpdb->prefix . 'wpilot_chat_queue';
