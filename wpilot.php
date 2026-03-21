@@ -540,8 +540,17 @@ function wpilot_chat_status( $request ) {
     header( 'Access-Control-Allow-Origin: *' );
     header( 'Cache-Control: no-store' );
 
+    // Show "online" if Claude is connected OR brain has data (can still answer)
+    global $wpdb;
+    $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
+    $has_brain = false;
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
+        $has_brain = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) ) > 0;
+    }
+    $is_online = wpilot_claude_is_online() || $has_brain;
+
     return new WP_REST_Response([
-        'online'     => wpilot_claude_is_online(),
+        'online'     => $is_online,
         'agent_name' => get_option( 'wpilot_agent_name', 'Sara' ),
     ], 200 );
 }
