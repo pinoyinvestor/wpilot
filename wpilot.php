@@ -499,7 +499,26 @@ function wpilot_chat_endpoint( $request ) {
         ], 200 );
     }
 
-    // Claude is OFFLINE -> try brain match
+    // Claude is OFFLINE -> check for greetings first, then brain
+    $greeting_response = wpilot_check_greeting( $message );
+    if ( $greeting_response ) {
+        $wpdb->insert( $table, [
+            'session_id'   => $session_id,
+            'visitor_name' => $visitor_name ?: null,
+            'message'      => $message,
+            'response'     => $greeting_response,
+            'source'       => 'brain',
+            'created_at'   => current_time( 'mysql' ),
+            'responded_at' => current_time( 'mysql' ),
+        ]);
+        return new WP_REST_Response([
+            'reply'      => $greeting_response,
+            'source'     => 'brain',
+            'agent_name' => $agent_name,
+        ], 200 );
+    }
+
+    // Try brain match
     $brain_answer = wpilot_brain_search( $message );
     $source = $brain_answer ? 'brain' : 'pending';
 
@@ -523,6 +542,22 @@ function wpilot_chat_endpoint( $request ) {
 
     // No brain match — queue as unanswered, notify owner
     wpilot_notify_unanswered( $message, $session_id );
+
+    // Telegram push notification
+    $tg_agent = get_option( 'wpilot_agent_name', 'Sara' );
+    $tg_site  = get_bloginfo( 'name' );
+    $tg_text = "\xF0\x9F\x92\xAC <b>New question on {$tg_site}</b>\n\n";
+    $tg_text .= "Visitor: <i>" . esc_html( mb_substr( $message, 0, 500 ) ) . "</i>\n\n";
+    $tg_text .= "{$tg_agent} couldn't answer this one.\nOpen Claude Code to respond, or reply from WPilot admin.";
+
+    // Check if message contains image
+    $tg_image = null;
+    if ( strpos( $message, '[IMAGE]' ) === 0 ) {
+        $tg_image = trim( str_replace( '[IMAGE]', '', $message ) );
+        $tg_text = "\xF0\x9F\x93\xB7 <b>New image from visitor on {$tg_site}</b>\n\nOpen Claude Code to see and respond.";
+    }
+
+    wpilot_telegram_notify( $tg_text, $tg_image );
 
     return new WP_REST_Response([
         'queued'          => true,
@@ -608,6 +643,54 @@ function wpilot_chat_poll( $request ) {
 //  BRAIN SEARCH — Offline keyword matching against brain data
 // ══════════════════════════════════════════════════════════════
 
+/**
+ * Detect common greetings and respond naturally.
+ */
+function wpilot_check_greeting( $message ) {
+    $msg = mb_strtolower( trim( $message ) );
+    $name = get_option( 'wpilot_agent_name', 'Sara' );
+    $lang = get_locale();
+    $sv = str_starts_with( $lang, 'sv' );
+    
+    $greetings_sv = [ 'hej', 'hejsan', 'hallå', 'halla', 'tjena', 'tja', 'god dag', 'goddag', 'morsning', 'hey', 'hi', 'hello', 'yo' ];
+    $greetings_en = [ 'hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'yo', 'sup', 'hej' ];
+    
+    $thanks_sv = [ 'tack', 'tackar', 'tack så mycket', 'tusen tack' ];
+    $thanks_en = [ 'thanks', 'thank you', 'thx', 'ty' ];
+    
+    $bye_sv = [ 'hejdå', 'hej då', 'adjö', 'vi ses', 'bye', 'ha det bra' ];
+    $bye_en = [ 'bye', 'goodbye', 'see you', 'have a nice day', 'take care' ];
+    
+    // Check greetings
+    foreach ( ( $sv ? $greetings_sv : $greetings_en ) as $g ) {
+        if ( $msg === $g || str_starts_with( $msg, $g . ' ' ) || str_starts_with( $msg, $g . '!' ) ) {
+            return $sv
+                ? "Hej! Jag är {$name}. Hur kan jag hjälpa dig idag? 😊"
+                : "Hi there! I'm {$name}. How can I help you today? 😊";
+        }
+    }
+    
+    // Check thanks
+    foreach ( ( $sv ? $thanks_sv : $thanks_en ) as $t ) {
+        if ( $msg === $t || str_starts_with( $msg, $t ) ) {
+            return $sv
+                ? "Varsågod! Är det något mer jag kan hjälpa dig med?"
+                : "You're welcome! Is there anything else I can help with?";
+        }
+    }
+    
+    // Check goodbye
+    foreach ( ( $sv ? $bye_sv : $bye_en ) as $b ) {
+        if ( $msg === $b || str_starts_with( $msg, $b ) ) {
+            return $sv
+                ? "Hejdå! Ha en fin dag! 👋"
+                : "Goodbye! Have a great day! 👋";
+        }
+    }
+    
+    return null;
+}
+
 function wpilot_brain_search( $query ) {
     global $wpdb;
     $table = $wpdb->prefix . 'wpilot_agent_brain';
@@ -657,6 +740,24 @@ function wpilot_brain_search( $query ) {
 function wpilot_offline_message() {
     $name = get_option( 'wpilot_agent_name', 'Sara' );
     $lang = get_locale();
+    
+    // Check if brain has data — if so, the agent IS "online" but just couldn't match
+    global $wpdb;
+    $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
+    $has_brain = false;
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
+        $has_brain = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) ) > 0;
+    }
+    
+    if ( $has_brain ) {
+        // Brain exists — agent is "online" but couldn't answer this specific question
+        if ( str_starts_with( $lang, 'sv' ) ) {
+            return "Jag har tyvärr inte svaret på den frågan just nu. Vill du lämna din mejladress så återkommer jag med ett svar?";
+        }
+        return "I don't have the answer to that right now. Would you like to leave your email so I can get back to you?";
+    }
+    
+    // No brain — truly offline
     if ( str_starts_with( $lang, 'sv' ) ) {
         return "Tack för ditt meddelande! {$name} är inte tillgänglig just nu men återkommer så snart som möjligt.";
     }
@@ -664,11 +765,57 @@ function wpilot_offline_message() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  TELEGRAM NOTIFICATIONS
+// ══════════════════════════════════════════════════════════════
+/**
+ * Send a Telegram notification. Supports text and images.
+ * Built by Weblease
+ */
+function wpilot_telegram_notify( $text, $image_url = null ) {
+    $token   = get_option( 'wpilot_telegram_token', '' );
+    $chat_id = get_option( 'wpilot_telegram_chat_id', '' );
+
+    if ( empty( $token ) || empty( $chat_id ) ) return false;
+
+    // Rate limit: max 1 telegram per 30 seconds
+    $tg_rl = get_transient( 'wpilot_tg_rl' );
+    if ( $tg_rl ) return false;
+    set_transient( 'wpilot_tg_rl', 1, 30 );
+
+    $api = 'https://api.telegram.org/bot' . $token;
+
+    if ( $image_url ) {
+        // Send photo with caption
+        wp_remote_post( $api . '/sendPhoto', [
+            'timeout' => 10,
+            'body'    => [
+                'chat_id' => $chat_id,
+                'photo'   => $image_url,
+                'caption' => mb_substr( $text, 0, 1024 ),
+                'parse_mode' => 'HTML',
+            ],
+        ] );
+    } else {
+        // Send text message
+        wp_remote_post( $api . '/sendMessage', [
+            'timeout' => 10,
+            'body'    => [
+                'chat_id'    => $chat_id,
+                'text'       => mb_substr( $text, 0, 4000 ),
+                'parse_mode' => 'HTML',
+            ],
+        ] );
+    }
+
+    return true;
+}
+
+// ══════════════════════════════════════════════════════════════
 //  NOTIFY UNANSWERED — Email admin about pending questions
 // ══════════════════════════════════════════════════════════════
 
 function wpilot_notify_unanswered( $message, $session_id ) {
-    $admin_email = get_option( 'admin_email' );
+    $admin_email = get_option( 'wpilot_notification_email', '' ) ?: get_option( 'admin_email' );
     $site_name   = get_bloginfo( 'name' );
     $agent_name  = get_option( 'wpilot_agent_name', 'Sara' );
 
@@ -872,7 +1019,7 @@ function wpilot_chat_collect_email( $request ) {
     ) );
 
     // Send notification email to admin
-    $admin_email = get_option( 'admin_email' );
+    $admin_email = get_option( 'wpilot_notification_email', '' ) ?: get_option( 'admin_email' );
     $site_name   = get_bloginfo( 'name' );
     $locale      = get_locale();
     $is_swedish  = ( strpos( $locale, 'sv' ) === 0 );
@@ -904,6 +1051,15 @@ function wpilot_chat_collect_email( $request ) {
     }
 
     wp_mail( $admin_email, $subject, $body_text );
+
+    // Telegram push notification for email collection
+    $tg_site_name = get_bloginfo( 'name' );
+    $latest_message = $latest ? $latest->message : '(no message)';
+    $tg_email_text = "\xF0\x9F\x93\xA7 <b>Visitor left their email on {$tg_site_name}</b>\n\n";
+    $tg_email_text .= "Email: " . sanitize_email( $email ) . "\n";
+    $tg_email_text .= "Question: <i>" . esc_html( mb_substr( $latest_message, 0, 500 ) ) . "</i>\n\n";
+    $tg_email_text .= "Reply directly or open Claude Code.";
+    wpilot_telegram_notify( $tg_email_text );
 
     return new WP_REST_Response( [ 'success' => true ], 200 );
 }
@@ -1155,6 +1311,9 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'wpilot_agent_name',      // Chat Agent name — separate add-on
         'wpilot_agent_title',     // Chat Agent title — separate add-on
         'wpilot_free_requests',   // Can't reset free counter
+        'wpilot_notification_email', // Can't read notification email
+        'wpilot_telegram_token',      // Can't read Telegram token
+        'wpilot_telegram_chat_id',    // Can't read Telegram chat ID
         'wpilot_training_consent',// Can't toggle training consent
         'wpilot_training_queue',  // Can't tamper with training queue
         // Reflection/class manipulation
@@ -1739,6 +1898,14 @@ function wpilot_handle_actions() {
 
         $knowledge = sanitize_textarea_field( $_POST['agent_knowledge'] ?? '' );
         update_option( 'wpilot_agent_knowledge', $knowledge );
+
+        $notif_email = sanitize_email( $_POST['notification_email'] ?? '' );
+        update_option( 'wpilot_notification_email', $notif_email );
+
+        $tg_token = sanitize_text_field( $_POST['telegram_token'] ?? '' );
+        $tg_chat  = sanitize_text_field( $_POST['telegram_chat_id'] ?? '' );
+        update_option( 'wpilot_telegram_token', $tg_token );
+        update_option( 'wpilot_telegram_chat_id', $tg_chat );
 
         wp_redirect( admin_url( 'admin.php?page=wpilot&saved=chat' ) );
         exit;
@@ -2326,6 +2493,54 @@ function wpilot_admin_page() {
                         <input type="text" id="agent_title" name="agent_title" value="<?php echo esc_attr( get_option( 'wpilot_agent_title', '' ) ); ?>" placeholder="e.g. Customer Service, Support">
                         <span class="hint">Shown next to the name in the header.</span>
                     </div>
+                </div>
+
+                <div class="wpilot-field">
+                    <label for="notification_email">Notification Email</label>
+                    <input type="text" id="notification_email" name="notification_email"
+                           value="<?php echo esc_attr( get_option( 'wpilot_notification_email', '' ) ); ?>"
+                           placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>">
+                    <span class="hint">Where to send unanswered question alerts. Leave empty to use your admin email.</span>
+                </div>
+
+                <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
+                    <h3 style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1e293b;">Telegram Notifications</h3>
+                    <p style="font-size:13px;color:#64748b;margin:0 0 16px;line-height:1.5;">
+                        Get instant push notifications on your phone when visitors ask questions.
+                        <a href="https://t.me/BotFather" target="_blank" style="color:#4ec9b0;">Create a Telegram bot</a>,
+                        then paste the token and your chat ID below.
+                    </p>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="wpilot-field" style="margin:0;">
+                            <label for="telegram_token">Bot Token</label>
+                            <input type="text" id="telegram_token" name="telegram_token"
+                                   value="<?php echo esc_attr( get_option( 'wpilot_telegram_token', '' ) ); ?>"
+                                   placeholder="123456:ABC-DEF...">
+                            <span class="hint">From @BotFather on Telegram</span>
+                        </div>
+                        <div class="wpilot-field" style="margin:0;">
+                            <label for="telegram_chat_id">Chat ID</label>
+                            <input type="text" id="telegram_chat_id" name="telegram_chat_id"
+                                   value="<?php echo esc_attr( get_option( 'wpilot_telegram_chat_id', '' ) ); ?>"
+                                   placeholder="123456789">
+                            <span class="hint">Your personal or group chat ID</span>
+                        </div>
+                    </div>
+
+                    <!-- Setup guide (collapsible) -->
+                    <details style="margin-top:12px;">
+                        <summary style="font-size:12px;color:#4ec9b0;cursor:pointer;font-weight:500;">How to set up Telegram notifications</summary>
+                        <div style="background:#f8fafc;border-radius:10px;padding:16px;margin-top:8px;font-size:13px;color:#475569;line-height:1.8;">
+                            1. Open Telegram and search for <strong>@BotFather</strong><br>
+                            2. Send <code>/newbot</code> and follow the steps to create a bot<br>
+                            3. Copy the <strong>Bot Token</strong> and paste it above<br>
+                            4. Search for <strong>@userinfobot</strong> on Telegram and send it any message<br>
+                            5. It will reply with your <strong>Chat ID</strong> — paste it above<br>
+                            6. Start a chat with your new bot (search for it by name) and send it any message<br>
+                            7. Save settings — you will now get push notifications on your phone!
+                        </div>
+                    </details>
                 </div>
 
                 <div class="wpilot-field">
