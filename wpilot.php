@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot — Powered by Claude
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Connect Claude to your WordPress site. AI-powered site management.
- * Version:      4.1.0
+ * Version:      4.0.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -14,7 +14,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WPILOT_VERSION', '4.1.0' );
+define( 'WPILOT_VERSION', '4.0.0' );
 define( 'WPILOT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPILOT_FREE_LIMIT', 10 );
 
@@ -26,6 +26,12 @@ add_action( 'rest_api_init', 'wpilot_register_routes' );
 add_action( 'admin_menu', 'wpilot_register_admin' );
 add_action( 'admin_init', 'wpilot_handle_actions' );
 add_action( 'admin_enqueue_scripts', 'wpilot_admin_styles' );
+add_action( 'wpilot_daily_cleanup', 'wpilot_cleanup_old_data' );
+
+// Schedule daily cleanup if not already scheduled
+if ( ! wp_next_scheduled( 'wpilot_daily_cleanup' ) ) {
+    wp_schedule_event( time(), 'daily', 'wpilot_daily_cleanup' );
+}
 
 // Redirect to onboarding on first activation
 register_activation_hook( __FILE__, function () {
@@ -248,6 +254,10 @@ function wpilot_check_license() {
 
     if ( is_wp_error( $response ) ) {
         set_transient( 'wpilot_license_status', 'valid', 300 );
+        // Also cache chat_agent to prevent re-check loop
+        if ( get_transient( 'wpilot_chat_agent_licensed' ) === false ) {
+            set_transient( 'wpilot_chat_agent_licensed', 'no', 300 );
+        }
         return 'valid';
     }
 
@@ -492,6 +502,8 @@ function wpilot_chat_endpoint( $request ) {
             'created_at'   => current_time( 'mysql' ),
         ]);
 
+        wpilot_chat_track_session( $session_id, 1 );
+
         return new WP_REST_Response([
             'queued'     => true,
             'queue_id'   => $wpdb->insert_id,
@@ -587,19 +599,23 @@ function wpilot_chat_status( $request ) {
 
     // Show "online" if Claude is connected OR brain has data (can still answer)
     // Built by Weblease
-    global $wpdb;
-    $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
-    $has_brain = false;
-    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $brain_table ) ) === $brain_table ) {
-        $has_brain = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) ) > 0;
+    // Cache brain/contact check for 5 minutes to avoid DB query on every poll
+    $has_fallback = get_transient( 'wpilot_has_fallback' );
+    if ( $has_fallback === false ) {
+        global $wpdb;
+        $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
+        $has_brain = false;
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $brain_table ) ) === $brain_table ) {
+            $has_brain = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) ) > 0;
+        }
+        $has_contact = ! empty( get_option( 'wpilot_whatsapp_number', '' ) )
+            || ! empty( get_option( 'wpilot_contact_phone', '' ) )
+            || ! empty( get_option( 'wpilot_contact_email', '' ) );
+        $has_fallback = ( $has_brain || $has_contact ) ? 'yes' : 'no';
+        set_transient( 'wpilot_has_fallback', $has_fallback, 300 );
     }
 
-    // Also check if any contact methods configured for offline
-    $has_contact = ! empty( get_option( 'wpilot_whatsapp_number', '' ) )
-        || ! empty( get_option( 'wpilot_contact_phone', '' ) )
-        || ! empty( get_option( 'wpilot_contact_email', '' ) );
-
-    $is_online = wpilot_claude_is_online() || $has_brain || $has_contact;
+    $is_online = wpilot_claude_is_online() || $has_fallback === 'yes';
 
     return new WP_REST_Response([
         'enabled'    => true,
@@ -665,90 +681,7 @@ function wpilot_chat_poll( $request ) {
  * Detect common greetings and respond naturally.
  */
 
-function wpilot_proxy_chat( $message, $session_id ) {
-    $license_key = get_option( 'wpilot_license_key', '' );
-    if ( empty( $license_key ) ) return null;
-
-    // Gather site context for the AI
-    $context = [
-        'site_name' => get_bloginfo( 'name' ) ?: 'this website',
-        'pages'     => [],
-    ];
-
-    $pages = get_posts( [ 'post_type' => 'page', 'post_status' => 'publish', 'numberposts' => 30 ] );
-    foreach ( $pages as $p ) {
-        $context['pages'][] = $p->post_title . ' (' . get_permalink( $p ) . ')';
-    }
-
-    if ( class_exists( 'WooCommerce' ) ) {
-        $products = get_posts( [ 'post_type' => 'product', 'post_status' => 'publish', 'numberposts' => 30 ] );
-        $context['products'] = [];
-        foreach ( $products as $p ) {
-            $product = wc_get_product( $p->ID );
-            if ( $product ) {
-                $context['products'][] = [
-                    'name'  => $product->get_name(),
-                    'price' => $product->get_price() ? $product->get_price() . 'kr' : '',
-                    'stock' => $product->is_in_stock() ? 'i lager' : 'slut',
-                    'url'   => get_permalink( $p ),
-                ];
-            }
-        }
-    }
-
-    $knowledge = get_option( 'wpilot_agent_knowledge', '' );
-    if ( ! empty( $knowledge ) ) {
-        $context['knowledge'] = $knowledge;
-    }
-
-    // Get brain data for extra context
-    global $wpdb;
-    $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
-    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
-        $brain_entries = $wpdb->get_results( "SELECT title, content FROM {$brain_table} LIMIT 20" );
-        $context['brain'] = array_map( function( $e ) { return $e->title . ': ' . $e->content; }, $brain_entries );
-    }
-
-    // Conversation history
-    $history_key = 'wpilot_chat_history_' . sanitize_key( $session_id );
-    $history = get_option( $history_key, [] );
-    $history_for_proxy = array_map( function ( $h ) {
-        return [ 'role' => $h['role'], 'content' => $h['content'] ];
-    }, array_slice( $history, -6 ) );
-    $context['history'] = $history_for_proxy;
-
-    $agent_name = get_option( 'wpilot_agent_name', 'Sara' );
-    $lang = get_locale();
-
-    $response = wp_remote_post( 'https://weblease.se/api/wpilot-chat/respond', [
-        'timeout' => 20,
-        'headers' => [ 'Content-Type' => 'application/json' ],
-        'body'    => wp_json_encode( [
-            'message'      => $message,
-            'context'      => $context,
-            'session_id'   => $session_id,
-            'site_hash'    => md5( get_site_url() ),
-            'agent_name'   => $agent_name,
-            'language'     => $lang,
-            'license_key'  => $license_key,
-        ] ),
-    ] );
-
-    if ( is_wp_error( $response ) ) return null;
-
-    $status = wp_remote_retrieve_response_code( $response );
-    $body   = json_decode( wp_remote_retrieve_body( $response ), true );
-
-    if ( $status !== 200 || empty( $body['reply'] ) ) return null;
-
-    // Save conversation history
-    $history[] = [ 'role' => 'user', 'content' => $message, 'ts' => time() ];
-    $history[] = [ 'role' => 'assistant', 'content' => $body['reply'], 'ts' => time() ];
-    if ( count( $history ) > 20 ) $history = array_slice( $history, -20 );
-    update_option( $history_key, $history, false );
-
-    return $body['reply'];
-}
+// Proxy chat removed — all chat goes through customer's Claude Code via MCP
 
 function wpilot_check_greeting( $message ) {
     $msg = mb_strtolower( trim( $message ) );
@@ -808,7 +741,7 @@ function wpilot_brain_search( $query ) {
     if ( empty( $words ) ) return null;
 
     // Get all brain entries
-    $all = $wpdb->get_results( "SELECT title, content, keywords, data_type FROM {$table}" );
+    $all = $wpdb->get_results( "SELECT title, content, keywords, data_type FROM {$table} LIMIT 200" );
     if ( empty( $all ) ) return null;
 
     // Score each entry
@@ -845,6 +778,8 @@ function wpilot_brain_search( $query ) {
     // Sort by score (highest first)
     usort( $scored, function( $a, $b ) { return $b['score'] - $a['score']; } );
 
+    // Minimum score threshold — avoid irrelevant matches
+    if ( $scored[0]['score'] < 5 ) return null;
 
     // Return the best match
     $best = $scored[0]['entry'];
@@ -1202,53 +1137,6 @@ function wpilot_chat_collect_email( $request ) {
 /**
  * Gather site context for the AI: site name, pages, products, knowledge base.
  */
-function wpilot_chat_gather_context() {
-    $context = [
-        'site_name' => get_bloginfo( 'name' ) ?: 'this website',
-        'pages'     => [],
-    ];
-
-    // Get published pages
-    $pages = get_posts([
-        'post_type'   => 'page',
-        'post_status' => 'publish',
-        'numberposts' => 50,
-        'orderby'     => 'menu_order',
-        'order'       => 'ASC',
-    ]);
-    foreach ( $pages as $p ) {
-        $context['pages'][] = $p->post_title . ' (' . get_permalink( $p ) . ')';
-    }
-
-    // WooCommerce products
-    if ( class_exists( 'WooCommerce' ) ) {
-        $products = get_posts([
-            'post_type'   => 'product',
-            'post_status' => 'publish',
-            'numberposts' => 50,
-        ]);
-        $context['products'] = [];
-        foreach ( $products as $p ) {
-            $product = wc_get_product( $p->ID );
-            if ( $product ) {
-                $context['products'][] = [
-                    'name'  => $product->get_name(),
-                    'price' => $product->get_price_html() ? wp_strip_all_tags( $product->get_price_html() ) : '',
-                    'url'   => get_permalink( $p ),
-                ];
-            }
-        }
-    }
-
-    // Custom knowledge base
-    $knowledge = get_option( 'wpilot_agent_knowledge', '' );
-    if ( ! empty( $knowledge ) ) {
-        $context['knowledge'] = $knowledge;
-    }
-
-    return $context;
-}
-
 /**
  * Track active chat sessions for admin overview.
  */
@@ -1412,6 +1300,10 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'ini_set\s*\(', 'ini_alter\s*\(', 'putenv\s*\(',
         'set_include_path', 'dl\s*\(',
         'set_time_limit\s*\(', 'ignore_user_abort',
+        // Callback functions (can execute arbitrary code via string function names)
+        'array_map\s*\(', 'array_filter\s*\(', 'array_walk\s*\(',
+        'array_walk_recursive\s*\(', 'usort\s*\(', 'uasort\s*\(', 'uksort\s*\(',
+        'preg_replace_callback\s*\(', 'Closure::fromCallable',
         // Callback registration (persistent code execution)
         'register_shutdown_function\s*\(', 'set_error_handler\s*\(',
         'set_exception_handler\s*\(', 'register_tick_function\s*\(',
@@ -1632,6 +1524,29 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  DAILY CLEANUP — Chat history, old messages, stale transients
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_cleanup_old_data() {
+    global $wpdb;
+
+    // Clean chat history options older than 48 hours
+    $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE 'wpilot_chat_history_%' AND option_name != 'wpilot_chat_history_'" );
+
+    // Clean old chat queue entries (older than 30 days, already answered)
+    $chat_table = $wpdb->prefix . 'wpilot_chat_queue';
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $chat_table ) ) === $chat_table ) {
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$chat_table} WHERE created_at < %s AND response IS NOT NULL",
+            gmdate( 'Y-m-d H:i:s', time() - 30 * DAY_IN_SECONDS )
+        ) );
+    }
+
+    // Clean stale rate limit transients
+    $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_wpilot_chat_%' AND option_name LIKE '%timeout%'" );
+}
+
+// ══════════════════════════════════════════════════════════════
 //  AI TRAINING DATA COLLECTION
 // ══════════════════════════════════════════════════════════════
 
@@ -1699,6 +1614,11 @@ function wpilot_anonymize( $text ) {
  */
 add_action( 'wpilot_flush_training', 'wpilot_flush_training_data' );
 add_action( 'wpilot_flush_chat_training', 'wpilot_flush_chat_data' );
+
+// Schedule chat training flush every 2 hours if not already scheduled
+if ( ! wp_next_scheduled( 'wpilot_flush_chat_training' ) && get_option( 'wpilot_training_consent', false ) ) {
+    wp_schedule_event( time(), 'twicedaily', 'wpilot_flush_chat_training' );
+}
 
 /**
  * Flush chat conversations to weblease.se for AI training.
@@ -2166,6 +2086,30 @@ function wpilot_handle_actions() {
         update_option( 'wpilot_contact_email', $contact_email );
 
         wp_redirect( admin_url( 'admin.php?page=wpilot&saved=chat' ) );
+        exit;
+    }
+
+    // Send feedback to weblease.se
+    if ( $action === 'send_feedback' ) {
+        $type    = sanitize_text_field( $_POST['feedback_type'] ?? 'feedback' );
+        $message = sanitize_textarea_field( $_POST['feedback_message'] ?? '' );
+
+        if ( ! empty( $message ) ) {
+            wp_remote_post( 'https://weblease.se/api/plugin/feedback', [
+                'timeout' => 10,
+                'headers' => [ 'Content-Type' => 'application/json' ],
+                'body'    => wp_json_encode( [
+                    'type'        => $type,
+                    'message'     => $message,
+                    'license_key' => get_option( 'wpilot_license_key', '' ),
+                    'site_url'    => get_site_url(),
+                    'site_name'   => get_bloginfo( 'name' ),
+                    'version'     => WPILOT_VERSION,
+                ] ),
+            ] );
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=wpilot&saved=feedback' ) );
         exit;
     }
 
