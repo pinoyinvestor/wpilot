@@ -1355,22 +1355,13 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'set_transient\s*\(', 'delete_transient\s*\(',
         'get_transient\s*\(.*wpilot',
         // WordPress destructive functions
-        'wp_delete_post\s*\(', 'wp_trash_post\s*\(',
-        'switch_theme\s*\(', 'wp_clean_themes_cache\s*\(',
-        'wp_update_nav_menu_item\s*\(', 'wp_delete_nav_menu\s*\(',
-        'wp_cache_flush\s*\(', 'wp_cache_delete\s*\(',
-        // User functions (read AND write)
-        'get_users\s*\(', 'get_user_by\s*\(', 'get_user_meta\s*\(',
-        'get_userdata\s*\(', 'WP_User_Query',
+        // User functions (write only — read is allowed, it's their site)
         'wp_insert_user\s*\(', 'wp_update_user\s*\(', 'wp_create_user\s*\(',
         'wp_set_current_user\s*\(', 'wp_set_auth_cookie\s*\(',
         'add_role\s*\(', 'remove_role\s*\(',
         'add_cap\s*\(', 'remove_cap\s*\(',
         'grant_super_admin\s*\(', 'revoke_super_admin\s*\(',
         // WooCommerce price/payment manipulation
-        'set_regular_price\s*\(', 'set_sale_price\s*\(',
-        'set_price\s*\(', 'set_stock_quantity\s*\(',
-        'set_manage_stock\s*\(', 'set_stock_status\s*\(',
         // Serialization (can leak  credentials)
         '\bserialize\s*\(.*wpdb', 'print_r\s*\(.*wpdb',
         'var_dump\s*\(.*wpdb', 'var_export\s*\(.*wpdb',
@@ -1425,9 +1416,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         '\buser_pass\b',
         '\buser_login\b.*\bFROM\b',
         // Critical WordPress options that can break the site
-        'update_option\s*\(\s*["\x27](siteurl|home|blogname|blogdescription|admin_email|users_can_register|default_role|permalink_structure|template|stylesheet|active_plugins|recently_activated|blog_public|cron|rewrite_rules|db_version|initial_db_version|wp_user_roles)',
-        // Block update_option for WooCommerce critical settings
-        'update_option\s*\(\s*["\x27]woocommerce_(currency|checkout_page_id|cart_page_id|shop_page_id|myaccount_page_id|terms_page_id|tax_|prices_include_tax|calc_taxes|enable_guest_checkout)',
+        'update_option\s*\(\s*["\x27](siteurl|home|admin_email|active_plugins|recently_activated|cron|rewrite_rules|db_version|initial_db_version|wp_user_roles)',
         // Block update_option for all wpilot_ options (use admin UI instead)
         'update_option\s*\(\s*["\x27]wpilot_',
         'delete_option\s*\(\s*["\x27]wpilot_',
@@ -1513,9 +1502,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'XMLReader', 'SQLite3', 'PDO', 'FFI',
         'dns_get_record', 'gethostbyname', 'checkdnsrr',
         'mail', 'header', 'ob_start',
-        'switch_theme', 'wp_delete_post', 'wp_trash_post',
         'set_transient', 'delete_transient',
-        'get_users', 'get_user_by', 'get_userdata', 'get_user_meta',
         'stream_wrapper_register', 'proc_nice',
         'array_reduce', 'iterator_apply',
     ];
