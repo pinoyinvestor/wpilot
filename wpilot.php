@@ -3,7 +3,7 @@
  * Plugin Name:  WPilot — Powered by Claude
  * Plugin URI:   https://weblease.se/wpilot
  * Description:  Connect Claude to your WordPress site. AI-powered site management.
- * Version:      4.0.0
+ * Version:      4.1.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
@@ -14,7 +14,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WPILOT_VERSION', '4.0.0' );
+define( 'WPILOT_VERSION', '4.1.0' );
 define( 'WPILOT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPILOT_FREE_LIMIT', 10 );
 
@@ -26,6 +26,11 @@ add_action( 'rest_api_init', 'wpilot_register_routes' );
 add_action( 'admin_menu', 'wpilot_register_admin' );
 add_action( 'admin_init', 'wpilot_handle_actions' );
 add_action( 'admin_enqueue_scripts', 'wpilot_admin_styles' );
+
+// ── Auto-update: check weblease.se for new versions ──
+add_filter( 'pre_set_site_transient_update_plugins', 'wpilot_check_update' );
+add_filter( 'plugins_api', 'wpilot_plugin_info', 20, 3 );
+add_filter( 'plugin_row_meta', 'wpilot_plugin_links', 10, 2 );
 add_action( 'wpilot_daily_cleanup', 'wpilot_cleanup_old_data' );
 
 // Schedule daily cleanup if not already scheduled
@@ -2227,6 +2232,17 @@ function wpilot_admin_styles( $hook ) {
         .wpilot-plan ul li::before { content: "\\2713"; color: #22c55e; font-weight: 700; flex-shrink: 0; }
         .wpilot-plan .wpilot-btn { width: 100%; justify-content: center; }
 
+        /* Tab navigation */
+        .wpilot-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; padding: 0; flex-wrap: wrap; }
+        .wpilot-tab { padding: 10px 20px; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; white-space: nowrap; }
+        .wpilot-tab:hover { color: #1e293b; }
+        .wpilot-tab.active { color: #4ec9b0; border-bottom-color: #4ec9b0; }
+        .wpilot-tab .tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; border-radius: 9px; font-size: 10px; font-weight: 700; margin-left: 6px; padding: 0 5px; }
+        .wpilot-tab .tab-badge.green { background: rgba(34,197,94,0.12); color: #16a34a; }
+        .wpilot-tab .tab-badge.amber { background: rgba(234,179,8,0.12); color: #a16207; }
+        .wpilot-tab .tab-badge.red { background: rgba(239,68,68,0.12); color: #dc2626; }
+        .wpilot-panel { display: none; }
+        .wpilot-panel.active { display: block; }
         /* Help section */
         .wpilot-help { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 28px 32px; margin-bottom: 20px; }
         .wpilot-help h2 { color: #1e293b; margin: 0 0 16px; font-size: 17px; }
@@ -2239,6 +2255,97 @@ function wpilot_admin_styles( $hook ) {
         .wpilot-help-item a { color: #4ec9b0; text-decoration: none; font-weight: 500; }
         .wpilot-help-item a:hover { text-decoration: underline; }
     ' );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  AUTO-UPDATE — Check weblease.se for new plugin versions
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_check_update( $transient ) {
+    if ( empty( $transient->checked ) ) return $transient;
+
+    $remote = wpilot_get_remote_version();
+    if ( ! $remote ) return $transient;
+
+    $plugin_file = plugin_basename( __FILE__ );
+    $current     = WPILOT_VERSION;
+
+    if ( version_compare( $remote['version'], $current, '>' ) ) {
+        $transient->response[ $plugin_file ] = (object) [
+            'slug'        => 'wpilot',
+            'plugin'      => $plugin_file,
+            'new_version' => $remote['version'],
+            'url'         => 'https://weblease.se/wpilot',
+            'package'     => $remote['download_url'] ?? '',
+            'icons'       => [ 'default' => 'https://weblease.se/wpilot-icon.png' ],
+            'tested'      => $remote['tested'] ?? '6.8',
+            'requires'    => $remote['requires'] ?? '6.0',
+        ];
+    } else {
+        $transient->no_update[ $plugin_file ] = (object) [
+            'slug'        => 'wpilot',
+            'plugin'      => $plugin_file,
+            'new_version' => $current,
+            'url'         => 'https://weblease.se/wpilot',
+        ];
+    }
+
+    return $transient;
+}
+
+function wpilot_plugin_info( $result, $action, $args ) {
+    if ( $action !== 'plugin_information' || ( $args->slug ?? '' ) !== 'wpilot' ) return $result;
+
+    $remote = wpilot_get_remote_version();
+    // Built by Weblease
+    if ( ! $remote ) return $result;
+
+    return (object) [
+        'name'          => 'WPilot — Powered by Claude',
+        'slug'          => 'wpilot',
+        'version'       => $remote['version'],
+        'author'        => '<a href="https://weblease.se">Weblease</a>',
+        'homepage'      => 'https://weblease.se/wpilot',
+        'download_link' => $remote['download_url'] ?? '',
+        'requires'      => $remote['requires'] ?? '6.0',
+        'tested'        => $remote['tested'] ?? '6.8',
+        'requires_php'  => '8.0',
+        'sections'      => [
+            'description' => 'Connect Claude to your WordPress site. AI-powered site management via MCP.',
+            'changelog'   => $remote['changelog'] ?? 'See <a href="https://weblease.se/wpilot">weblease.se/wpilot</a> for details.',
+        ],
+    ];
+}
+
+function wpilot_get_remote_version() {
+    $cached = get_transient( 'wpilot_update_info' );
+    if ( $cached !== false ) return $cached;
+
+    $response = wp_remote_get( 'https://weblease.se/api/plugin/version', [
+        'timeout' => 8,
+        'headers' => [ 'Accept' => 'application/json' ],
+    ] );
+
+    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
+        set_transient( 'wpilot_update_info', [], 3600 );
+        return [];
+    }
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['version'] ) ) {
+        set_transient( 'wpilot_update_info', [], 3600 );
+        return [];
+    }
+
+    set_transient( 'wpilot_update_info', $body, 12 * HOUR_IN_SECONDS );
+    return $body;
+}
+
+function wpilot_plugin_links( $links, $file ) {
+    if ( $file === plugin_basename( __FILE__ ) ) {
+        $links[] = '<a href="https://weblease.se/wpilot" target="_blank">Docs</a>';
+    }
+    return $links;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2285,6 +2392,17 @@ function wpilot_admin_page() {
         <?php elseif ( $saved === 'revoked' ): ?>
             <div class="wpilot-alert wpilot-alert-warning"><strong>Token revoked.</strong> That connection will no longer work.</div>
         <?php endif; ?>
+
+        <?php // ─────────── TAB NAVIGATION ─────────── ?>
+        <div class="wpilot-tabs">
+            <button class="wpilot-tab active" onclick="wpilotTab('setup')" data-tab="setup">Setup<?php if ( ! $onboarded || ! $has_license || empty( $tokens ) ): ?><span class="tab-badge amber">!</span><?php endif; ?></button>
+            <button class="wpilot-tab" onclick="wpilotTab('connect')" data-tab="connect">Connect<?php if ( ! empty( $tokens ) ): ?><span class="tab-badge green"><?php echo count( $tokens ); ?></span><?php endif; ?></button>
+            <button class="wpilot-tab" onclick="wpilotTab('chat')" data-tab="chat">Chat Agent<?php if ( $chat_licensed ): ?><span class="tab-badge green">&#10003;</span><?php endif; ?></button>
+            <button class="wpilot-tab" onclick="wpilotTab('help')" data-tab="help">Help</button>
+        </div>
+
+        <?php // ─────────── PANEL: SETUP ─────────── ?>
+        <div class="wpilot-panel active" id="wpilot-panel-setup">
 
         <?php // ─────────── STEP 1: PROFILE ─────────── ?>
         <div class="wpilot-card">
@@ -2461,6 +2579,11 @@ function wpilot_admin_page() {
             <?php endif; ?>
         </div>
 
+        </div><?php // end setup panel ?>
+
+        <?php // ─────────── PANEL: CONNECT ─────────── ?>
+        <div class="wpilot-panel" id="wpilot-panel-connect">
+
         <?php // ─────────── STEP 3: CONNECT ─────────── ?>
         <div class="wpilot-card <?php echo ! $onboarded ? 'wpilot-locked' : ''; ?>">
             <h2>
@@ -2625,6 +2748,11 @@ function wpilot_admin_page() {
                 </div>
             </div>
         </div>
+
+        </div><?php // end connect panel ?>
+
+        <?php // ─────────── PANEL: CHAT AGENT ─────────── ?>
+        <div class="wpilot-panel" id="wpilot-panel-chat">
 
         <?php // ─────────── CHAT AGENT ─────────── ?>
         <?php
@@ -2886,6 +3014,11 @@ WPilotChat.init({
             <?php endif; // chat_licensed ?>
         </div>
 
+        </div><?php // end chat panel ?>
+
+        <?php // ─────────── PANEL: HELP ─────────── ?>
+        <div class="wpilot-panel" id="wpilot-panel-help">
+
         <?php // ─────────── FEEDBACK & FEATURE REQUESTS ─────────── ?>
         <?php if ( $saved === 'feedback' ): ?>
             <div class="wpilot-alert wpilot-alert-success"><strong>Thank you!</strong> Your feedback has been sent. We read every message.</div>
@@ -3059,6 +3192,22 @@ WPilotChat.init({
         <p style="text-align:center;color:#cbd5e1;font-size:12px;margin-top:8px;">
             WPilot v<?php echo WPILOT_VERSION; ?> &mdash; Powered by Claude &mdash; Made by <a href="https://weblease.se" target="_blank" style="color:#94a3b8;">Weblease</a>
         </p>
+
+    </div><?php // end help panel ?>
+
+    <script>
+    function wpilotTab(name) {
+        document.querySelectorAll('.wpilot-panel').forEach(function(p) { p.classList.remove('active'); });
+        document.querySelectorAll('.wpilot-tab').forEach(function(t) { t.classList.remove('active'); });
+        var panel = document.getElementById('wpilot-panel-' + name);
+        if (panel) panel.classList.add('active');
+        var tab = document.querySelector('[data-tab="' + name + '"]');
+        if (tab) tab.classList.add('active');
+        try { localStorage.setItem('wpilot_tab', name); } catch(e) {}
+    }
+    try { var saved = localStorage.getItem('wpilot_tab'); if (saved) wpilotTab(saved); } catch(e) {}
+    </script>
+
     </div>
     <?php
 }
