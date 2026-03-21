@@ -518,26 +518,7 @@ function wpilot_chat_endpoint( $request ) {
         ], 200 );
     }
 
-    // AI proxy (offline — weblease.se runs Claude Haiku as fallback)
-    $proxy_answer = wpilot_proxy_chat( $message, $session_id );
-    if ( $proxy_answer ) {
-        $wpdb->insert( $table, [
-            'session_id'   => $session_id,
-            'visitor_name' => $visitor_name ?: null,
-            'message'      => $message,
-            'response'     => $proxy_answer,
-            'source'       => 'ai',
-            'created_at'   => current_time( 'mysql' ),
-            'responded_at' => current_time( 'mysql' ),
-        ]);
-        return new WP_REST_Response([
-            'reply'      => $proxy_answer,
-            'source'     => 'ai',
-            'agent_name' => $agent_name,
-        ], 200 );
-    }
-
-    // Brain keyword match (last fallback — free, no API)
+    // Brain answers — Claude Code built this knowledge base
     $brain_answer = wpilot_brain_search( $message );
     $source = $brain_answer ? 'brain' : 'pending';
 
@@ -665,11 +646,7 @@ function wpilot_chat_poll( $request ) {
 /**
  * Detect common greetings and respond naturally.
  */
-/**
- * Call weblease.se proxy to get AI response via Claude Haiku.
- * Used when Claude Code is offline. Sends site context for smart answers.
- * Built by Weblease
- */
+
 function wpilot_proxy_chat( $message, $session_id ) {
     $license_key = get_option( 'wpilot_license_key', '' );
     if ( empty( $license_key ) ) return null;
