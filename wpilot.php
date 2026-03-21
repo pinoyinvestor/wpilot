@@ -532,6 +532,46 @@ function wpilot_claude_is_online() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  AUTO LICENSE MATCH — Check weblease.se on first connection
+// ══════════════════════════════════════════════════════════════
+
+function wpilot_auto_match_license() {
+    // Only try once per 24 hours
+    if ( get_transient( 'wpilot_auto_match_checked' ) ) return;
+    set_transient( 'wpilot_auto_match_checked', '1', DAY_IN_SECONDS );
+
+    // Skip if a license key is already saved
+    if ( get_option( 'wpilot_license_key', '' ) !== '' ) return;
+
+    $email    = get_option( 'admin_email', '' );
+    $site_url = get_site_url();
+
+    if ( empty( $email ) || empty( $site_url ) ) return;
+
+    // Built by Weblease
+    $response = wp_remote_post( 'https://weblease.se/ai-license/auto-match', [
+        'timeout' => 10,
+        'headers' => [ 'Content-Type' => 'application/json' ],
+        'body'    => wp_json_encode( [
+            'email'          => $email,
+            'site_url'       => $site_url,
+            'plugin_version' => WPILOT_VERSION,
+        ] ),
+    ] );
+
+    if ( is_wp_error( $response ) ) return;
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+    if ( ! empty( $body['valid'] ) && ! empty( $body['license_key'] ) ) {
+        update_option( 'wpilot_license_key', sanitize_text_field( $body['license_key'] ) );
+        set_transient( 'wpilot_license_status', 'valid', 3600 );
+        if ( ! empty( $body['chat_agent'] ) ) {
+            set_transient( 'wpilot_chat_agent_licensed', 'yes', 3600 );
+        }
+    }
+}
+// ══════════════════════════════════════════════════════════════
 //  REST ROUTE
 // ══════════════════════════════════════════════════════════════
 
@@ -762,6 +802,9 @@ function wpilot_mcp_endpoint( $request ) {
 
     // Heartbeat — record that Claude Code is connected
     update_option( 'wpilot_claude_last_seen', time(), false );
+
+    // Auto-match license on first MCP connection
+    wpilot_auto_match_license();
 
     // Rate limit: per-token (60 req/min) + per-IP (120 req/min)
     $ip     = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
