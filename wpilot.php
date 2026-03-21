@@ -1295,6 +1295,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT',
         'ABSPATH', 'WPINC', 'WPILOT_DIR',
         'WP_CONTENT_DIR', 'WP_PLUGIN_DIR', 'TEMPLATEPATH', 'STYLESHEETPATH',
+        '__FILE__', '__DIR__', '__LINE__', '__FUNCTION__', '__CLASS__', '__METHOD__',
         'COOKIEHASH', 'USER_COOKIE', 'PASS_COOKIE', 'AUTH_COOKIE',
         'SECURE_AUTH_COOKIE', 'LOGGED_IN_COOKIE',
     ];
@@ -1331,6 +1332,11 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         // Stream wrappers
         'stream_wrapper_register\s*\(', 'stream_wrapper_unregister\s*\(',
         'stream_filter_register\s*\(', 'stream_context_create\s*\(',
+        // Info leak functions
+        'get_included_files\s*\(', 'get_required_files\s*\(',
+        'memory_get_usage\s*\(', 'memory_get_peak_usage\s*\(',
+        'get_users\s*\(', 'get_user_by\s*\(', 'get_userdata\s*\(',
+        'WP_User_Query',
         // Process manipulation
         'proc_nice\s*\(', 'proc_terminate\s*\(',
         // Server fingerprinting
@@ -1448,6 +1454,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple', $token_data = [
         'wpilot_contact_email',       // Block contact email from execute_php
         'wpilot_training_consent',// Can't toggle training consent
         'wpilot_training_queue',  // Can't tamper with training queue
+        'wpilot_',                // Block ALL wpilot internal functions
         // Reflection/class manipulation
         'ReflectionFunction', 'ReflectionClass', 'ReflectionMethod',
         // Header manipulation — now fully blocked in expanded list above
