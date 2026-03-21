@@ -695,20 +695,22 @@ function wpilot_brain_search( $query ) {
     global $wpdb;
     $table = $wpdb->prefix . 'wpilot_agent_brain';
 
-    // Check table exists
     if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
         return null;
     }
 
-    // Normalize query
+    // Normalize query — extract meaningful words
     $words = array_filter( explode( ' ', strtolower( preg_replace( '/[^\w\s]/u', '', $query ) ) ) );
-    if ( count( $words ) < 2 ) return null;
+    // Remove common stop words
+    $stop = [ 'jag', 'du', 'vi', 'ni', 'det', 'den', 'har', 'kan', 'vill', 'ska', 'hur', 'vad', 'var', 'som', 'med', 'och', 'att', 'till', 'the', 'is', 'are', 'do', 'you', 'how', 'what', 'can', 'have', 'with', 'and', 'for', 'this', 'that', 'your', 'from' ];
+    $words = array_values( array_filter( $words, function( $w ) use ( $stop ) { return mb_strlen( $w ) >= 3 && ! in_array( $w, $stop ); } ) );
+    
+    if ( empty( $words ) ) return null;
 
-    // Search brain data by keywords
+    // Search brain — score by number of keyword matches
     $like_clauses = [];
     $params = [];
     foreach ( array_slice( $words, 0, 5 ) as $w ) {
-        if ( strlen( $w ) < 3 ) continue;
         $like_clauses[] = '(keywords LIKE %s OR title LIKE %s OR content LIKE %s)';
         $esc = '%' . $wpdb->esc_like( $w ) . '%';
         $params[] = $esc;
@@ -716,21 +718,34 @@ function wpilot_brain_search( $query ) {
         $params[] = $esc;
     }
 
-    if ( empty( $like_clauses ) ) return null;
-
-    $sql = "SELECT title, content, data_type FROM {$table} WHERE " . implode( ' OR ', $like_clauses ) . ' ORDER BY updated_at DESC LIMIT 3';
+    $sql = "SELECT title, content, data_type FROM {$table} WHERE " . implode( ' OR ', $like_clauses ) . ' ORDER BY data_type ASC LIMIT 3';
     $results = $wpdb->get_results( $wpdb->prepare( $sql, ...$params ) );
 
     if ( empty( $results ) ) return null;
 
-    // Build a simple response from matched brain data
+    // Clean and return the best match
     $parts = [];
     foreach ( $results as $r ) {
-        $snippet = wp_trim_words( strip_tags( $r->content ), 50, '...' );
-        $parts[] = $snippet;
+        $clean = html_entity_decode( strip_tags( $r->content ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        // Remove Apple-style navigation cruft
+        $clean = preg_replace( '/[\x{F8FF}]/u', '', $clean );
+        $clean = preg_replace( '/Store Mac iPad iPhone Watch AirPods Support/', '', $clean );
+        $clean = preg_replace( '/\s+/', ' ', trim( $clean ) );
+        
+        if ( mb_strlen( $clean ) < 10 ) continue;
+        
+        // For products, keep it short and clear
+        if ( $r->data_type === 'product' ) {
+            $parts[] = $clean;
+        } else {
+            $parts[] = wp_trim_words( $clean, 40, '...' );
+        }
     }
 
-    return implode( "\n\n", $parts );
+    if ( empty( $parts ) ) return null;
+
+    // Return just the best match (first), not all 3
+    return $parts[0];
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1817,6 +1832,61 @@ ABOUT WPILOT:
         }
         $prompt .= "\nThe site owner can ask you about recent customer messages. You can query the chat queue table to show them.";
         $prompt .= "\nWhen answering visitors: be helpful, friendly, use the site's real data. Answer in the same language the visitor wrote in.";
+
+        // Check if brain needs updating
+        $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
+        $brain_count = 0;
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
+            $brain_count = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) );
+            $brain_age = $wpdb->get_var( "SELECT TIMESTAMPDIFF(HOUR, MAX(updated_at), NOW()) FROM {$brain_table}" );
+        }
+
+        if ( $brain_count === 0 ) {
+            $prompt .= "\n\nIMPORTANT — FIRST TIME SETUP:";
+            $prompt .= "\nThe Chat Agent brain is EMPTY. You must scan this site and build the knowledge base.";
+            $prompt .= "\nDo this NOW by running this code to scan all pages, products, and site info:";
+            $prompt .= "\n";
+            $prompt .= "\nglobal \$wpdb;";
+            $prompt .= "\n\$brain = \$wpdb->prefix . 'wpilot_agent_brain';";
+            $prompt .= "\n\$wpdb->query('TRUNCATE ' . \$brain);";
+            $prompt .= "\n\$count = 0;";
+            $prompt .= "\n// Scan pages";
+            $prompt .= "\nforeach (get_posts(['post_type'=>'page','post_status'=>'publish','numberposts'=>100]) as \$p) {";
+            $prompt .= "\n  \$text = wp_strip_all_tags(\$p->post_content);";
+            $prompt .= "\n  if (strlen(\$text) < 10) continue;";
+            $prompt .= "\n  \$text = html_entity_decode(\$text, ENT_QUOTES|ENT_HTML5, 'UTF-8');";
+            $prompt .= "\n  \$summary = wp_trim_words(\$text, 80);";
+            $prompt .= "\n  \$kw = implode(' ', array_unique(array_filter(explode(' ', strtolower(preg_replace('/[^\\w\\s]/u','',\$p->post_title.' '.\$text))), function(\$w){return mb_strlen(\$w)>=3;})));";
+            $prompt .= "\n  \$wpdb->insert(\$brain, ['data_type'=>'page','title'=>\$p->post_title,'content'=>\$summary,'keywords'=>mb_substr(\$kw,0,1000),'updated_at'=>current_time('mysql')]);";
+            $prompt .= "\n  \$count++;";
+            $prompt .= "\n}";
+            $prompt .= "\n// Scan WooCommerce products";
+            $prompt .= "\nif (class_exists('WooCommerce')) {";
+            $prompt .= "\n  foreach (get_posts(['post_type'=>'product','post_status'=>'publish','numberposts'=>200]) as \$p) {";
+            $prompt .= "\n    \$prod = wc_get_product(\$p->ID);";
+            $prompt .= "\n    if (!\$prod) continue;";
+            $prompt .= "\n    \$info = \$prod->get_name() . '. Pris: ' . \$prod->get_price() . 'kr. ' . (\$prod->is_in_stock()?'I lager':'Slutsåld');";
+            $prompt .= "\n    \$desc = wp_trim_words(wp_strip_all_tags(\$prod->get_description()?:\$prod->get_short_description()), 40);";
+            $prompt .= "\n    if (\$desc) \$info .= '. ' . \$desc;";
+            $prompt .= "\n    \$kw = strtolower(\$prod->get_name() . ' ' . \$desc);";
+            $prompt .= "\n    \$wpdb->insert(\$brain, ['data_type'=>'product','title'=>\$prod->get_name(),'content'=>\$info,'keywords'=>mb_substr(\$kw,0,1000),'updated_at'=>current_time('mysql')]);";
+            $prompt .= "\n    \$count++;";
+            $prompt .= "\n  }";
+            $prompt .= "\n}";
+            $prompt .= "\nreturn 'Brain built with ' . \$count . ' entries';";
+            $prompt .= "\n";
+            $prompt .= "\nAfter scanning, tell the site owner:";
+            $prompt .= "\n- What you found (X pages, Y products)";
+            $prompt .= "\n- Suggest they add to the Knowledge Base in WPilot settings:";
+            $prompt .= "\n  * Opening hours / business hours";
+            $prompt .= "\n  * Shipping policy and costs";
+            $prompt .= "\n  * Return policy";
+            $prompt .= "\n  * Payment methods accepted";
+            $prompt .= "\n  * FAQs their customers commonly ask";
+            $prompt .= "\n  * Contact info (phone, email, address)";
+        } elseif ( $brain_age !== null && intval( $brain_age ) > 168 ) {
+            $prompt .= "\n\nNOTE: The Chat Agent brain was last updated " . intval( $brain_age ) . " hours ago. Consider re-scanning if the site content has changed.";
+        }
     }
 
     return $prompt;
