@@ -843,25 +843,35 @@ function wpilot_brain_search( $query ) {
 function wpilot_offline_message() {
     $name = get_option( 'wpilot_agent_name', 'Sara' );
     $lang = get_locale();
-    
-    // Check if brain has data — if so, the agent IS "online" but just couldn't match
+    $wa   = get_option( 'wpilot_whatsapp_number', '' );
+    $is_sv = str_starts_with( $lang, 'sv' );
+
+    // Priority 1: WhatsApp Business fallback
+    if ( ! empty( $wa ) ) {
+        $wa_link = 'https://wa.me/' . ltrim( $wa, '+' );
+        if ( $is_sv ) {
+            return "Jag har tyvärr inte svaret just nu. Du kan nå oss direkt på WhatsApp: <a href=\"{$wa_link}\" target=\"_blank\" rel=\"noopener\">Chatta på WhatsApp</a>";
+        }
+        return "I don't have the answer right now. You can reach us directly on WhatsApp: <a href=\"{$wa_link}\" target=\"_blank\" rel=\"noopener\">Chat on WhatsApp</a>";
+    }
+
+    // Priority 2: Brain exists but couldn't match -- ask for email
     global $wpdb;
     $brain_table = $wpdb->prefix . 'wpilot_agent_brain';
     $has_brain = false;
     if ( $wpdb->get_var( "SHOW TABLES LIKE '{$brain_table}'" ) === $brain_table ) {
         $has_brain = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$brain_table}" ) ) > 0;
     }
-    
+
     if ( $has_brain ) {
-        // Brain exists — agent is "online" but couldn't answer this specific question
-        if ( str_starts_with( $lang, 'sv' ) ) {
+        if ( $is_sv ) {
             return "Jag har tyvärr inte svaret på den frågan just nu. Vill du lämna din mejladress så återkommer jag med ett svar?";
         }
         return "I don't have the answer to that right now. Would you like to leave your email so I can get back to you?";
     }
-    
-    // No brain — truly offline
-    if ( str_starts_with( $lang, 'sv' ) ) {
+
+    // Priority 3: Generic offline message
+    if ( $is_sv ) {
         return "Tack för ditt meddelande! {$name} är inte tillgänglig just nu men återkommer så snart som möjligt.";
     }
     return "Thanks for your message! {$name} isn't available right now but will get back to you as soon as possible.";
@@ -1417,6 +1427,7 @@ function wpilot_handle_execute( $id, $params, $style = 'simple' ) {
         'wpilot_notification_email', // Can't read notification email
         'wpilot_telegram_token',      // Can't read Telegram token
         'wpilot_telegram_chat_id',    // Can't read Telegram chat ID
+        'wpilot_whatsapp_number',    // Block WhatsApp number from execute_php
         'wpilot_training_consent',// Can't toggle training consent
         'wpilot_training_queue',  // Can't tamper with training queue
         // Reflection/class manipulation
@@ -2097,6 +2108,10 @@ function wpilot_handle_actions() {
         update_option( 'wpilot_telegram_token', $tg_token );
         update_option( 'wpilot_telegram_chat_id', $tg_chat );
 
+        $whatsapp = sanitize_text_field( $_POST['whatsapp_number'] ?? '' );
+        $whatsapp = preg_replace( '/[^0-9+]/', '', $whatsapp );
+        update_option( 'wpilot_whatsapp_number', $whatsapp );
+
         wp_redirect( admin_url( 'admin.php?page=wpilot&saved=chat' ) );
         exit;
     }
@@ -2732,6 +2747,16 @@ function wpilot_admin_page() {
                         </div>
                     </details>
                 </div>
+
+                <div class="wpilot-field">
+                    <label for="whatsapp_number">WhatsApp Business</label>
+                    <input type="text" id="whatsapp_number" name="whatsapp_number"
+                           style="width:100%;max-width:400px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;background:#fafbfc;"
+                           placeholder="+46701234567"
+                           value="<?php echo esc_attr( get_option( 'wpilot_whatsapp_number', '' ) ); ?>">
+                    <span class="hint">Enter your WhatsApp Business number with country code. When the AI can't answer a question, visitors will get a direct WhatsApp link as fallback.</span>
+                </div>
+
 
                 <div class="wpilot-field">
                     <label for="agent_knowledge">Knowledge Base</label>
