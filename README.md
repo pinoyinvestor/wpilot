@@ -4,26 +4,30 @@ One plugin. One tool. Full WordPress control.
 
 ## What is WPilot?
 
-WPilot connects Claude (Desktop or CLI) to your WordPress site. One plugin gives Claude full access to manage your site — pages, posts, design, WooCommerce, SEO, emails, and more.
+WPilot connects Claude (Desktop or Code) to your WordPress site via MCP. Claude gets full access to manage your site — pages, design, WooCommerce, SEO, admin panels, and more.
 
 No coding required. Just talk naturally.
 
 ## How it works
 
-1. Install the WPilot plugin on your WordPress site
-2. Get a license at [weblease.se/wpilot](https://weblease.se/wpilot) (10 free requests to try)
-3. Connect Claude Desktop or Claude Code
+1. Install WPilot on your WordPress site
+2. Get a license at [weblease.se/wpilot](https://weblease.se/wpilot) (20 free requests to try)
+3. Connect Claude Desktop (OAuth) or Claude Code (MCP)
 4. Talk naturally — Claude handles the rest
 
 ## Features
 
-- Full WordPress control via one `execute_php` tool
-- Smart system prompt with SEO expertise, design rules, security
-- Simple or Technical response modes
-- Multi-token support (create connections for different people)
-- AI training data collection (opt-in, anonymized)
-- Premium admin panel with step-by-step onboarding
-- Works with Claude Desktop AND Claude Code CLI
+- Full WordPress control via one `wordpress` tool (execute PHP)
+- OAuth 2.1 with PKCE for Claude Desktop
+- Smart design workflow: READ → CSS → BUILD → VERIFY → BRAIN → PREFERENCES
+- Builder support: Gutenberg, Elementor, Divi, WPBakery
+- Scroll animations via `data-wpi-animate` (plugin JS)
+- Chat Agent: AI customer service widget with brain training
+- Customer preferences saved between sessions
+- Pro users: build mu-plugins, admin panels, CRM systems
+- Multi-token support with connection tracking
+- IP-based security: sandbox violations → auto-ban
+- AI training data collection (opt-in, anonymized, GDPR)
 
 ## Requirements
 
@@ -36,17 +40,16 @@ No coding required. Just talk naturally.
 
 | Plan | Price | Sites |
 |------|-------|-------|
-| Free | $0 | 10 requests to try |
-| Pro | $9/month | 1 site, unlimited |
-| Team | $29/month | 3 sites, unlimited |
-| Lifetime | $149 once | 1 site, forever |
-
-Each license is locked to one website.
+| Free | /bin/bash | 20 requests/day |
+| Pro | /month | 1 site, unlimited |
+| Team | 9/month | 3 sites, unlimited |
+| Lifetime | 49 once | 1 site, forever |
+| Chat Agent | +0/month | AI customer service addon |
 
 ## Support
 
-- Email: support@weblease.se
 - Website: [weblease.se/wpilot](https://weblease.se/wpilot)
+- Help: [weblease.se/wpilot-help](https://weblease.se/wpilot-help)
 - Account: [weblease.se/wpilot-account](https://weblease.se/wpilot-account)
 
 ## Version
