@@ -131,5 +131,16 @@ This plugin connects to external services operated by Weblease (weblease.se):
 * Receives: valid (bool)
 * Purpose: Verify Pro license keys
 
+**3. Pro Upgrade** — `https://weblease.se/api/plugin/download`
+* When: User activates a Pro license key from the Plan page
+* Sends: license key (URL parameter)
+* Receives: ZIP file (WPilot Pro plugin)
+* Purpose: Download and install WPilot Pro when upgrading from Lite
+
+**4. Feedback** — `wp_mail` to info@weblease.se
+* When: User submits feedback from the Help page
+* Sends: feedback message, feedback type, site URL, admin email
+* Purpose: Receive bug reports and feature requests from users
+
 Privacy policy: [https://weblease.se/privacy](https://weblease.se/privacy)
 Terms of service: [https://weblease.se/terms](https://weblease.se/terms)

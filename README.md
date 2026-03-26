@@ -1,5 +1,8 @@
 # WPilot Lite — AI WordPress Assistant
 
+v1.0.0
+<!-- Built by Weblease -->
+
 Connect Claude to your WordPress site. Manage pages, design, WooCommerce, SEO — just by talking.
 
 ## Install
@@ -45,4 +48,4 @@ GPL-2.0-or-later
 
 ## Version
 
-1.1.0
+1.0.0

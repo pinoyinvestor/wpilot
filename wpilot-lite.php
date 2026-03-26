@@ -45,10 +45,7 @@ add_action( 'init', function () {
 add_action( 'rest_api_init', 'wpilot_lite_register_routes' );
 add_action( 'admin_menu', 'wpilot_lite_register_admin' );
 add_action( 'admin_init', 'wpilot_lite_handle_actions' );
-// Auto-update disabled for wordpress.org distribution
 // Built by Weblease
-// add_filter( 'pre_set_site_transient_update_plugins', 'wpilot_lite_check_update' );
-// add_filter( 'plugins_api', 'wpilot_lite_plugin_info', 20, 3 );
 add_filter( 'plugin_row_meta', 'wpilot_lite_plugin_links', 10, 2 );
 
 register_activation_hook( __FILE__, function () { add_option( 'wpilot_lite_do_activation_redirect', true ); } );
@@ -91,7 +88,7 @@ function wpilot_lite_get_bearer_token() {
     if ( empty( $h ) && isset( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) ) {
         $h = sanitize_text_field( wp_unslash( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) );
     }
-    if ( function_exists('apache_request_headers') && empty($h) ) { $a = apache_request_headers(); $h = sanitize_text_field( $a['Authorization'] ?? $a['authorization'] ?? '' ); }
+    if ( function_exists('apache_request_headers') && empty($h) ) { $a = apache_request_headers(); if ( is_array($a) ) { $h = sanitize_text_field( $a['Authorization'] ?? $a['authorization'] ?? '' ); } }
     return preg_match('/^Bearer\s+(.+)$/i', $h, $m) ? trim($m[1]) : '';
 }
 
@@ -174,7 +171,7 @@ function wpilot_lite_mcp_endpoint( $request ) {
         case 'notifications/initialized': return new WP_REST_Response(null,204);
         case 'tools/list': return wpilot_lite_rpc_ok($id,['tools'=>[wpilot_lite_tool_definition()]]);
         case 'tools/call': return wpilot_lite_handle_execute($id,$params,$style);
-        default: return new WP_REST_Response(['jsonrpc'=>'2.0','error'=>['code'=>-32601,'message'=>"Unknown: {$rpc}"],'id'=>$id],200);
+        default: return new WP_REST_Response(['jsonrpc'=>'2.0','error'=>['code'=>-32601,'message'=>'Unknown method.'],'id'=>$id],200);
     }
 }
 function wpilot_lite_rpc_ok($id,$result) { return new WP_REST_Response(['jsonrpc'=>'2.0','result'=>$result,'id'=>$id],200); }
@@ -267,26 +264,6 @@ function wpilot_lite_handle_execute($id,$params,$style='simple') {
     return wpilot_lite_rpc_tool_result($id,$result,false);
 }
 
-// ── Auto-Update (External: GET weblease.se/api/plugin/version?plugin=wpilot-lite) ──
-function wpilot_lite_check_update($tr) {
-    if(empty($tr->checked))return $tr; $r=wpilot_lite_get_remote_version(); if(!$r||empty($r['version']))return $tr;
-    $pf='wpilot-lite/wpilot-lite.php';
-    if(version_compare($r['version'],WPILOT_LITE_VERSION,'>')) $tr->response[$pf]=(object)['slug'=>'wpilot-lite','plugin'=>$pf,'new_version'=>$r['version'],'url'=>'https://weblease.se/wpilot','package'=>$r['download_url']??'','tested'=>$r['tested']??'6.8','requires'=>$r['requires']??'6.0'];
-    else $tr->no_update[$pf]=(object)['slug'=>'wpilot-lite','plugin'=>$pf,'new_version'=>WPILOT_LITE_VERSION,'url'=>'https://weblease.se/wpilot'];
-    return $tr;
-}
-function wpilot_lite_plugin_info($result,$action,$args) {
-    if($action!=='plugin_information'||($args->slug??'')!=='wpilot-lite')return $result;
-    $r=wpilot_lite_get_remote_version(); if(!$r||empty($r['version']))return $result;
-    return (object)['name'=>'WPilot Lite — AI WordPress Assistant','slug'=>'wpilot-lite','version'=>$r['version'],'author'=>'<a href="https://weblease.se">Weblease</a>','homepage'=>'https://weblease.se/wpilot','download_link'=>$r['download_url']??'','requires'=>'6.0','tested'=>$r['tested']??'6.8','requires_php'=>'8.0','sections'=>['description'=>'Connect Claude AI to WordPress via MCP.','changelog'=>$r['changelog']??'See weblease.se/wpilot']];
-}
-function wpilot_lite_get_remote_version() {
-    $c=get_transient('wpilot_lite_update_info'); if($c!==false)return $c;
-    $r=wp_remote_get('https://weblease.se/api/plugin/version?plugin=wpilot-lite',['timeout'=>8,'headers'=>['Accept'=>'application/json']]);
-    if(is_wp_error($r)||wp_remote_retrieve_response_code($r)!==200){set_transient('wpilot_lite_update_info',[],3600);return [];}
-    $b=json_decode(wp_remote_retrieve_body($r),true); if(empty($b['version'])){set_transient('wpilot_lite_update_info',[],3600);return [];}
-    set_transient('wpilot_lite_update_info',$b,12*HOUR_IN_SECONDS); return $b;
-}
 function wpilot_lite_plugin_links($links,$file) {
     if($file==='wpilot-lite/wpilot-lite.php') {
         $links[]='<a href="https://weblease.se/wpilot" target="_blank">' . esc_html__('Docs', 'wpilot-lite') . '</a>';
@@ -448,23 +425,23 @@ function wpilot_lite_page_plan() {
     elseif($sv==='license')echo '<div class="wpi-alert wpi-alert-warn"><strong>' . esc_html__('Invalid key.', 'wpilot-lite') . '</strong></div>';
     elseif($sv==='removed')echo '<div class="wpi-alert wpi-alert-info"><strong>' . esc_html__('Removed.', 'wpilot-lite') . '</strong></div>';
     $error=sanitize_text_field(wp_unslash($_GET['error']??''));
-    if($error==='empty_key')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">Please enter your license key.</div>';
-    if($error==='server')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">Could not reach the license server. Please try again.</div>';
-    if($error==='invalid_key')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">Invalid license key. Check your email or visit <a href="https://weblease.se/wpilot-account" target="_blank">your account</a>.</div>';
-    if($error==='download')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">Could not download WPilot Pro. Please try again.</div>';
-    if($error==='install')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">Could not install WPilot Pro. Try uploading manually from <a href="https://weblease.se/wpilot-account" target="_blank">your account</a>.</div>';
+    if($error==='empty_key')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">' . esc_html__('Please enter your license key.', 'wpilot-lite') . '</div>';
+    if($error==='server')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">' . esc_html__('Could not reach the license server. Please try again.', 'wpilot-lite') . '</div>';
+    if($error==='invalid_key')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">' . wp_kses_post( sprintf( __('Invalid license key. Check your email or visit %syour account%s.', 'wpilot-lite'), '<a href="https://weblease.se/wpilot-account" target="_blank">', '</a>' ) ) . '</div>';
+    if($error==='download')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">' . esc_html__('Could not download WPilot Pro. Please try again.', 'wpilot-lite') . '</div>';
+    if($error==='install')echo '<div class="wpi-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;">' . wp_kses_post( sprintf( __('Could not install WPilot Pro. Try uploading manually from %syour account%s.', 'wpilot-lite'), '<a href="https://weblease.se/wpilot-account" target="_blank">', '</a>' ) ) . '</div>';
     if(!$pro): ?>
     <!-- Upgrade to Pro — Built by Weblease -->
     <div class="wpi-card" style="border:2px solid #22c55e !important;background:linear-gradient(135deg, #f0fdf4, #ecfdf5) !important;">
-        <h2 style="color:#166534 !important;">Upgrade to Pro</h2>
+        <h2 style="color:#166534 !important;"><?php esc_html_e('Upgrade to Pro', 'wpilot-lite'); ?></h2>
         <p style="font-size:14px !important;color:#15803d !important;margin-bottom:16px !important;">
-            Unlimited prompts, Chat Agent, smart sandbox, auto-updates, and priority support.
+            <?php esc_html_e('Unlimited prompts, Chat Agent, smart sandbox, auto-updates, and priority support.', 'wpilot-lite'); ?>
         </p>
         <div style="background:#fff !important;border:1px solid #bbf7d0 !important;border-radius:12px !important;padding:20px !important;margin-bottom:16px !important;">
             <p style="font-size:13px !important;color:#475569 !important;margin:0 0 12px !important;font-weight:600 !important;">
-                1. Get your license key at <a href="https://weblease.se/wpilot" target="_blank" style="color:#4f46e5 !important;">weblease.se/wpilot</a><br>
-                2. Paste it below<br>
-                3. Pro installs automatically
+                <?php echo wp_kses_post( sprintf( __('1. Get your license key at %sweblease.se/wpilot%s', 'wpilot-lite'), '<a href="https://weblease.se/wpilot" target="_blank" style="color:#4f46e5 !important;">', '</a>' ) ); ?><br>
+                <?php esc_html_e('2. Paste it below', 'wpilot-lite'); ?><br>
+                <?php esc_html_e('3. Pro installs automatically', 'wpilot-lite'); ?>
             </p>
             <form method="post" style="display:flex !important;gap:8px !important;align-items:end !important;">
                 <?php wp_nonce_field('wpilot_lite_admin'); ?>
@@ -472,11 +449,11 @@ function wpilot_lite_page_plan() {
                 <div style="flex:1 !important;">
                     <input type="text" name="pro_license_key" placeholder="WPILOT-XXXX-XXXX-XXXX" style="width:100% !important;font-size:15px !important;padding:12px 16px !important;border:2px solid #bbf7d0 !important;border-radius:10px !important;font-family:monospace !important;">
                 </div>
-                <button type="submit" class="wpi-btn" style="background:#22c55e !important;color:#fff !important;padding:12px 28px !important;font-size:15px !important;font-weight:700 !important;border-radius:10px !important;white-space:nowrap !important;">Activate Pro</button>
+                <button type="submit" class="wpi-btn" style="background:#22c55e !important;color:#fff !important;padding:12px 28px !important;font-size:15px !important;font-weight:700 !important;border-radius:10px !important;white-space:nowrap !important;"><?php esc_html_e('Activate Pro', 'wpilot-lite'); ?></button>
             </form>
         </div>
         <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;">
-            Don't have a key? <a href="https://weblease.se/wpilot-checkout?site=<?php echo urlencode(get_site_url()); ?>&email=<?php echo urlencode(get_option('admin_email')); ?>&plan=pro" target="_blank" style="color:#4f46e5 !important;font-weight:600 !important;">Get Pro — $9/month</a>
+            <?php echo wp_kses_post( sprintf( __('Don\'t have a key? %sGet Pro — $9/month%s', 'wpilot-lite'), '<a href="https://weblease.se/wpilot-checkout?site=' . urlencode(get_site_url()) . '&amp;email=' . urlencode(get_option('admin_email')) . '&amp;plan=pro" target="_blank" style="color:#4f46e5 !important;font-weight:600 !important;">', '</a>' ) ); ?>
         </p>
     </div>
     <?php endif;
