@@ -1,51 +1,42 @@
 # WPilot Lite — AI WordPress Assistant
 
-v1.0.0
-<!-- Built by Weblease -->
+v1.1.0
+<!-- Built by Christos Ferlachidis & Daniel Hedenberg -->
 
-Connect Claude to your WordPress site. Manage pages, design, WooCommerce, SEO — just by talking.
+Connect Claude to your WordPress site. AI-powered site management through natural conversation.
 
-## Install
+## What is this?
 
-1. Download from wordpress.org (or upload wpilot-lite.php)
-2. Activate in WordPress admin
-3. Go to WPilot > Connect
-4. Connect Claude Desktop or Claude Code
+WPilot Lite is a free WordPress plugin that connects [Claude](https://claude.ai) to your site via the Model Context Protocol (MCP). Once connected, you manage your site by talking to Claude.
 
-## Upgrade to Pro
+## Features (Lite)
 
-Paste your license key in WPilot > Plan — Pro installs automatically.
+- Create, edit, delete pages, posts, and menus
+- Update site settings, media library, custom CSS
+- Moderate comments, analyze SEO health
+- View WooCommerce products and orders
+- 5 free requests per day
+- OAuth 2.1 with PKCE for secure connections
+- Token-based authentication (SHA-256)
+
+## Pro Features
+
+- Unlimited requests
+- AI Chat Agent for visitors
+- Advanced SEO expert prompts
+- Smart system prompt (WordPress-aware)
+- WooCommerce bulk management
+- Advanced security sandbox
+- Brain / Knowledge base
 
 Get Pro at [weblease.se/wpilot](https://weblease.se/wpilot)
-
-## Features
-
-- Full WordPress control via Claude AI (MCP)
-- 20 prompts per day (free)
-- Security sandbox (blocks dangerous operations)
-- Works with Claude Desktop + Claude Code
-- WooCommerce, Elementor, and plugin support
-
-## Pro adds
-
-- Unlimited prompts
-- Chat Agent (AI customer service widget)
-- Brain system (answers visitors offline)
-- Advanced sandbox
-- Smart prompts
-- Auto-updates
-- Priority support
 
 ## Requirements
 
 - WordPress 6.0+
 - PHP 8.0+
-- Claude subscription (claude.ai)
+- Claude subscription (Pro, Max, or Team)
 
 ## License
 
-GPL-2.0-or-later
-
-## Version
-
-1.0.0
+GPL-2.0+

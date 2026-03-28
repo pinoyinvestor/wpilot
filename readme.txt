@@ -1,146 +1,134 @@
 === WPilot Lite — AI WordPress Assistant ===
 Contributors: weblease
-Tags: ai, claude, mcp, wordpress assistant, site management
+Tags: ai, claude, mcp, assistant, site management
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 8.0
 Stable tag: 1.0.0
-License: GPLv2 or later
+License: GPL-2.0+
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Connect Claude AI to your WordPress site. Manage content, design, SEO, WooCommerce, and more — just by chatting.
+Connect Claude to your WordPress site. Create pages, manage menus, edit content — just by talking.
 
 == Description ==
 
-WPilot Lite connects [Claude AI](https://claude.ai) to your WordPress site using the Model Context Protocol (MCP). Once connected, you can manage your entire website by chatting naturally with Claude.
+WPilot Lite connects your WordPress site to Claude (by Anthropic) via the Model Context Protocol (MCP). Once connected, you can manage your site through natural conversation.
 
 **What you can do:**
 
-* **Content & Pages** — Create pages, write blog posts, update content
-* **Design & Styling** — Change colors, add sections, customize layouts
-* **SEO** — Optimize meta descriptions, analyze keywords, improve rankings
-* **WooCommerce** — Add products, create coupons, check orders
-* **Security** — Check for outdated plugins, review admin users
-* **Performance** — Analyze load times, clean up revisions, optimize images
+* Create, edit, and delete pages, posts, and custom post types
+* Build and manage navigation menus
+* Organize content with categories and tags
+* Update site title, tagline, and reading settings
+* Browse and update your media library
+* Add custom CSS for design changes
+* Moderate comments
+* Analyze your site's SEO health
+* View WooCommerce products and orders
+* Check database health and plugin status
 
 **How it works:**
 
-1. Install the plugin
-2. Create a connection token in the admin panel
-3. Connect Claude Desktop or Claude Code using the provided instructions
-4. Start chatting about your website — Claude does the rest
+1. Install WPilot Lite on your WordPress site
+2. Go to the WPilot Lite settings page
+3. Complete the quick profile setup
+4. Connect Claude Desktop or Claude CLI using the provided URL
+5. Start talking — Claude manages your site for you
 
-**Free tier includes:**
+**Requirements:**
 
-* 20 requests per day
-* 3 connection tokens
-* Full WordPress API access
-* Works with Claude Desktop and Claude Code
+* A Claude subscription (Pro, Max, or Team) from [claude.ai](https://claude.ai)
+* WordPress 6.0 or higher
+* PHP 8.0 or higher
 
-**Want more?** [WPilot Pro](https://weblease.se/wpilot) offers unlimited requests, unlimited connections, priority support, and the Chat Agent — an AI-powered customer service widget for your visitors.
+**Want more?**
+
+WPilot Pro adds full WooCommerce management, automated SEO fixes, page builder support (Elementor, Divi), database cleanup, bulk operations, and an AI chat agent for your visitors. Visit [weblease.se/wpilot](https://weblease.se/wpilot) for details.
 
 == Installation ==
 
 1. Upload the `wpilot-lite` folder to `/wp-content/plugins/`
-2. Activate the plugin through the 'Plugins' menu in WordPress
-3. Go to **WPilot > Connect** in the admin menu
-4. Follow the setup guide to connect Claude
-
-**Requirements:**
-
-* WordPress 6.0 or higher
-* PHP 8.0 or higher
-* An Anthropic account (free at [claude.ai](https://claude.ai))
-* Claude Desktop app or Claude Code CLI
+2. Activate the plugin through the Plugins menu in WordPress
+3. Go to WPilot Lite in the admin sidebar
+4. Complete the profile setup
+5. Connect Claude using the URL shown on the settings page
 
 == Frequently Asked Questions ==
 
-= Do I need a paid Claude subscription? =
+= Do I need a Claude subscription? =
 
-No. WPilot works with any Anthropic account, including the free tier.
+Yes. WPilot connects Claude to your site — you need a Claude subscription from [claude.ai](https://claude.ai) to use it.
 
-= What is MCP? =
+= Is my site data safe? =
 
-MCP (Model Context Protocol) is an open protocol that lets AI assistants connect to external tools. WPilot uses MCP to give Claude access to your WordPress API.
+Yes. WPilot runs entirely on your WordPress site. Your data never leaves your server. The connection between Claude and your site is authenticated with secure tokens.
 
-= Is my data safe? =
+= What can Claude do with my site? =
 
-Yes. WPilot runs on your server. Claude connects through authenticated tokens you create and control. Revoke any token at any time.
+Claude can create and edit pages, manage menus, update settings, moderate comments, add custom CSS, manage your media library, analyze SEO, and view WooCommerce data. Claude sends PHP code through the MCP endpoint, which is executed in a secure sandbox with blocked dangerous functions, file system access, and shell commands. All requests require token authentication.
 
-= What can Claude access? =
+= Does this plugin contact external servers? =
 
-All WordPress functions through a sandboxed PHP environment. Shell commands, credential access, filesystem operations, and destructive SQL are blocked by comprehensive security checks.
+Yes. WPilot Lite contacts the Weblease API (weblease.se) to check your daily usage quota. This request sends your site URL and returns the number of requests used today. No personal data is transmitted. See the "External Services" section below for full details.
 
-= Can I use this with WooCommerce? =
+= What is the difference between Lite and Pro? =
 
-Yes. Claude can manage products, orders, coupons, categories, and more.
-
-= Simple vs Technical mode? =
-
-Simple: plain language, no code. Technical: includes IDs, function names, code refs.
-
-= How do I upgrade to Pro? =
-
-Visit [weblease.se/wpilot-checkout](https://weblease.se/wpilot-checkout), get a key, enter it on the Plan page.
-
-= How does code execution work? =
-
-WPilot executes WordPress PHP code sent by Claude AI through the MCP protocol. This is the core functionality — it allows Claude to manage your WordPress site. All code passes through a security sandbox that blocks dangerous operations (shell commands, file system access, credential reading). Only authenticated admin users with valid MCP tokens can trigger code execution.
-
-= Translations =
-
-WPilot Lite is translation-ready. A `/languages` directory is included. Translators are welcome to contribute .po/.mo files.
+Lite covers content management, menus, settings, media, basic design, SEO analysis, and read-only WooCommerce views. Pro adds full WooCommerce management, automated SEO fixes, page builder support, database cleanup, bulk operations, and an AI chat agent.
 
 == Screenshots ==
 
-1. Connect page — Setup instructions for Claude Desktop and Claude Code
-2. Settings page — Site profile configuration
-3. Plan page — Usage overview and pricing
-4. Help page — Examples and feedback form
+1. WPilot admin dashboard — connect Claude to your site
+2. Creating a secure connection token
+3. Claude managing your WordPress site through conversation
+
+== External Services ==
+
+This plugin connects to the following external services:
+
+= Weblease Usage API =
+
+**URL:** https://weblease.se/api/wpilot/usage
+**When:** On every request through the MCP endpoint (Claude asking your site to do something).
+**What is sent:** Your site URL.
+**What is received:** The number of requests you have used today and whether you are allowed to continue.
+**Why:** WPilot Lite includes 5 free requests per day. This limit is enforced server-side to comply with WordPress.org guidelines (no local trialware).
+**Privacy:** No personal data, user data, or site content is transmitted. Only the site URL is sent.
+**Terms of Service:** https://weblease.se/terms
+**Privacy Policy:** https://weblease.se/privacy
+
+= Weblease License API =
+
+**URL:** https://weblease.se/api/ai-license/validate
+**When:** Only when a user manually enters a Pro license key to upgrade.
+**What is sent:** The license key and site URL.
+**What is received:** Whether the license is valid and what plan it belongs to.
+**Why:** To validate Pro license keys purchased from weblease.se.
+**Privacy:** No personal data is transmitted beyond the license key and site URL.
+**Terms of Service:** https://weblease.se/terms
+**Privacy Policy:** https://weblease.se/privacy
+
+= Weblease Update API =
+
+**URL:** https://weblease.se/api/plugin/version
+**When:** When WordPress checks for plugin updates (typically twice daily via WordPress cron).
+**What is sent:** The current plugin version.
+**What is received:** The latest available version number and download URL.
+**Why:** To notify you when a new version of WPilot Lite is available.
+**Privacy:** No personal data is transmitted.
+**Terms of Service:** https://weblease.se/terms
+**Privacy Policy:** https://weblease.se/privacy
 
 == Changelog ==
 
 = 1.0.0 =
 * Initial release
-* MCP endpoint (JSON-RPC 2.0) for Claude communication
-* Token authentication with Simple and Technical modes
-* PHP sandbox with comprehensive security checks
-* Site profile settings (owner, business, tone, language)
-* License activation for Pro upgrade
-* Admin UI: Connect, Plan, Settings, Help pages
-* Full i18n support with wpilot-lite text domain
+* 35 WordPress management actions via MCP
+* OAuth 2.1 with PKCE for secure Claude connection
+* Token-based authentication with SHA-256 hashing
+* Profile setup and onboarding wizard
+* Admin interface for connection management
 
 == Upgrade Notice ==
 
 = 1.0.0 =
-Initial release. Connect Claude AI to your WordPress site.
-
-== External Services ==
-
-This plugin connects to external services operated by Weblease (weblease.se):
-
-**1. Usage API** — `https://weblease.se/api/wpilot/usage`
-* When: Each tool execution (cached 60 seconds)
-* Sends: license key (if any), site URL, action type
-* Receives: allowed (bool), remaining quota, plan type
-* Purpose: Enforce daily limits (20/day free, unlimited Pro)
-
-**2. License Validation** — `https://weblease.se/ai-license/validate`
-* When: Checking license status (cached 1 hour)
-* Sends: license key, site URL, plugin ID, version
-* Receives: valid (bool)
-* Purpose: Verify Pro license keys
-
-**3. Pro Upgrade** — `https://weblease.se/api/plugin/download`
-* When: User activates a Pro license key from the Plan page
-* Sends: license key (URL parameter)
-* Receives: ZIP file (WPilot Pro plugin)
-* Purpose: Download and install WPilot Pro when upgrading from Lite
-
-**4. Feedback** — `wp_mail` to info@weblease.se
-* When: User submits feedback from the Help page
-* Sends: feedback message, feedback type, site URL, admin email
-* Purpose: Receive bug reports and feature requests from users
-
-Privacy policy: [https://weblease.se/privacy](https://weblease.se/privacy)
-Terms of service: [https://weblease.se/terms](https://weblease.se/terms)
+Initial release of WPilot Lite.
