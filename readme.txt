@@ -69,7 +69,7 @@ Claude can create and edit pages, manage menus, update settings, moderate commen
 
 = Does this plugin contact external servers? =
 
-Yes. WPilot Lite contacts the Weblease API (weblease.se) to check your daily usage quota. This request sends your site URL and returns the number of requests used today. No personal data is transmitted. See the "External Services" section below for full details.
+Yes. WPilot Lite contacts the Weblease API (weblease.se) for security validation and AI prompt generation. Your site URL is sent to verify requests. No personal data is transmitted. See the "External Services" section below for full details.
 
 = What is the difference between Lite and Pro? =
 

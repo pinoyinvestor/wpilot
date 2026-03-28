@@ -8,7 +8,7 @@
  * Author URI:   https://weblease.se
  * License:      GPL-2.0+
  * License URI:  https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:  wpilot
+ * Text Domain:  wpilot-lite
  * Requires at least: 6.0
  * Requires PHP: 8.0
  */
@@ -25,7 +25,7 @@ define( 'WPILOT_LITE_VERSION', '1.0.0' );
 // Don't load if Pro is active (prevents REST route conflict)
 if ( in_array( 'wpilot/wpilot.php', get_option( 'active_plugins', [] ) ) ) {
     add_action( 'admin_notices', function() {
-        echo '<div class="notice notice-warning is-dismissible"><p><strong>' . esc_html__( 'WPilot Lite', 'wpilot' ) . '</strong> ' . esc_html__( 'is disabled because', 'wpilot' ) . ' <strong>' . esc_html__( 'WPilot Pro', 'wpilot' ) . '</strong> ' . esc_html__( 'is active. You only need one.', 'wpilot' ) . '</p></div>';
+        echo '<div class="notice notice-warning is-dismissible"><p><strong>' . esc_html__( 'WPilot Lite', 'wpilot-lite' ) . '</strong> ' . esc_html__( 'is disabled because', 'wpilot-lite' ) . ' <strong>' . esc_html__( 'WPilot Pro', 'wpilot-lite' ) . '</strong> ' . esc_html__( 'is active. You only need one.', 'wpilot-lite' ) . '</p></div>';
     } );
     return;
 }
@@ -614,7 +614,7 @@ function wpilot_lite_mcp_endpoint( $request ) {
     if ( $method === 'GET' ) {
         return new WP_REST_Response([
             'jsonrpc' => '2.0',
-            'error'   => [ 'code' => -32600, 'message' => esc_html__( 'Invalid request method.', 'wpilot' ) ],
+            'error'   => [ 'code' => -32600, 'message' => esc_html__( 'Invalid request method.', 'wpilot-lite' ) ],
         ], 200 );
     }
 
@@ -630,7 +630,7 @@ function wpilot_lite_mcp_endpoint( $request ) {
         $site_url = get_site_url();
         return new WP_REST_Response([
             'jsonrpc' => '2.0',
-            'error'   => [ 'code' => -32000, 'message' => esc_html__( 'Unauthorized — invalid or missing API token.', 'wpilot' ) ],
+            'error'   => [ 'code' => -32000, 'message' => esc_html__( 'Unauthorized — invalid or missing API token.', 'wpilot-lite' ) ],
             'id'      => null,
         ], 401, [
             'WWW-Authenticate' => 'Bearer resource_metadata="' . $site_url . '/.well-known/oauth-authorization-server"',
@@ -657,7 +657,7 @@ function wpilot_lite_mcp_endpoint( $request ) {
     if ( $tk_count >= 60 || $ip_count >= 120 ) {
         return new WP_REST_Response([
             'jsonrpc' => '2.0',
-            'error'   => [ 'code' => -32000, 'message' => esc_html__( 'Rate limit exceeded. Try again in a minute.', 'wpilot' ) ],
+            'error'   => [ 'code' => -32000, 'message' => esc_html__( 'Rate limit exceeded. Try again in a minute.', 'wpilot-lite' ) ],
             'id'      => null,
         ], 429 );
     }
@@ -716,13 +716,13 @@ function wpilot_lite_rpc_tool_result( $id, $text, $is_error ) {
 function wpilot_lite_tool_definition() {
     return [
         'name'        => 'wordpress',
-        'description' => __( 'Make changes to this WordPress site. Full access to all WordPress features.', 'wpilot' ),
+        'description' => __( 'Make changes to this WordPress site. Full access to all WordPress features.', 'wpilot-lite' ),
         'inputSchema' => [
             'type'       => 'object',
             'properties' => [
                 'action' => [
                     'type'        => 'string',
-                    'description' => __( 'What to do on the WordPress site.', 'wpilot' ),
+                    'description' => __( 'What to do on the WordPress site.', 'wpilot-lite' ),
                 ],
             ],
             'required' => [ 'action' ],
@@ -738,7 +738,7 @@ function wpilot_lite_handle_execute( $id, $params, $style = 'simple' ) {
     $code = $params['arguments']['action'] ?? $params['arguments']['code'] ?? '';
 
     if ( empty( $code ) ) {
-        return wpilot_lite_rpc_tool_result( $id, __( 'No action provided.', 'wpilot' ), true );
+        return wpilot_lite_rpc_tool_result( $id, __( 'No action provided.', 'wpilot-lite' ), true );
     }
 
     // Track usage locally (for display in admin dashboard)
@@ -746,7 +746,7 @@ function wpilot_lite_handle_execute( $id, $params, $style = 'simple' ) {
 
     // Size limit (50KB max)
     if ( strlen( $code ) > 51200 ) {
-        return wpilot_lite_rpc_tool_result( $id, __( 'Action too large. Please break it into smaller steps.', 'wpilot' ), true );
+        return wpilot_lite_rpc_tool_result( $id, __( 'Action too large. Please break it into smaller steps.', 'wpilot-lite' ), true );
     }
 
     // ── Security: minimal local check (critical patterns only) ──
@@ -756,14 +756,14 @@ function wpilot_lite_handle_execute( $id, $params, $style = 'simple' ) {
     ];
     foreach ( $critical_blocked as $pattern ) {
         if ( preg_match( '/' . $pattern . '/i', $code ) ) {
-            return wpilot_lite_rpc_tool_result( $id, __( 'This action is not allowed.', 'wpilot' ), true );
+            return wpilot_lite_rpc_tool_result( $id, __( 'This action is not allowed.', 'wpilot-lite' ), true );
         }
     }
 
     // ── Server-side sandbox validation (150+ patterns) ──
     $sandbox_ok = wpilot_lite_server_sandbox_check( $code );
     if ( $sandbox_ok !== true ) {
-        return wpilot_lite_rpc_tool_result( $id, is_string( $sandbox_ok ) ? $sandbox_ok : __( 'This action is not allowed.', 'wpilot' ), true );
+        return wpilot_lite_rpc_tool_result( $id, is_string( $sandbox_ok ) ? $sandbox_ok : __( 'This action is not allowed.', 'wpilot-lite' ), true );
     }
 
     // Built by Christos Ferlachidis & Daniel Hedenberg
@@ -808,7 +808,7 @@ function wpilot_lite_handle_execute( $id, $params, $style = 'simple' ) {
         $result = $result ? $result . "\n\nOutput:\n" . $output : $output;
     }
     if ( empty( $result ) ) {
-        $result = __( 'Done.', 'wpilot' );
+        $result = __( 'Done.', 'wpilot-lite' );
     }
     if ( strlen( $result ) > 50000 ) {
         $result = substr( $result, 0, 50000 ) . "\n\n[Truncated]";
@@ -849,7 +849,7 @@ function wpilot_lite_server_sandbox_check( $code ) {
         return true;
     }
 
-    $reason = $body['reason'] ?? __( 'This action is not allowed.', 'wpilot' );
+    $reason = $body['reason'] ?? __( 'This action is not allowed.', 'wpilot-lite' );
     set_transient( $cache_key, $reason, 300 );
     return $reason;
 }
@@ -1150,8 +1150,8 @@ function wpilot_lite_handle_actions() {
 
 function wpilot_lite_register_admin() {
     add_menu_page(
-        esc_html__( 'WPilot Lite', 'wpilot' ),
-        esc_html__( 'WPilot Lite', 'wpilot' ),
+        esc_html__( 'WPilot Lite', 'wpilot-lite' ),
+        esc_html__( 'WPilot Lite', 'wpilot-lite' ),
         'manage_options',
         'wpilot-lite',
         'wpilot_lite_admin_page',
@@ -1160,16 +1160,16 @@ function wpilot_lite_register_admin() {
     );
     add_submenu_page(
         'wpilot-lite',
-        esc_html__( 'WPilot Lite', 'wpilot' ),
-        esc_html__( 'Dashboard', 'wpilot' ),
+        esc_html__( 'WPilot Lite', 'wpilot-lite' ),
+        esc_html__( 'Dashboard', 'wpilot-lite' ),
         'manage_options',
         'wpilot-lite',
         'wpilot_lite_admin_page'
     );
     add_submenu_page(
         'wpilot-lite',
-        esc_html__( 'Pro Features', 'wpilot' ),
-        esc_html__( 'Pro Features', 'wpilot' ) . ' <span style="color:#f59e0b;font-size:9px;">&#9733;</span>',
+        esc_html__( 'Pro Features', 'wpilot-lite' ),
+        esc_html__( 'Pro Features', 'wpilot-lite' ) . ' <span style="color:#f59e0b;font-size:9px;">&#9733;</span>',
         'manage_options',
         'wpilot-lite-features',
         'wpilot_lite_features_page'
@@ -1319,8 +1319,8 @@ function wpilot_lite_admin_styles( $hook ) {
 
 function wpilot_lite_plugin_links( $links, $file ) {
     if ( $file === plugin_basename( __FILE__ ) ) {
-        $links[] = '<a href="https://weblease.se/wpilot" target="_blank">' . esc_html__( 'Docs', 'wpilot' ) . '</a>';
-        $links[] = '<a href="https://weblease.se/wpilot-checkout" target="_blank" style="color:#22c55e;font-weight:600;">' . esc_html__( 'Upgrade to Pro', 'wpilot' ) . '</a>';
+        $links[] = '<a href="https://weblease.se/wpilot" target="_blank">' . esc_html__( 'Docs', 'wpilot-lite' ) . '</a>';
+        $links[] = '<a href="https://weblease.se/wpilot-checkout" target="_blank" style="color:#22c55e;font-weight:600;">' . esc_html__( 'Upgrade to Pro', 'wpilot-lite' ) . '</a>';
     }
     return $links;
 }
@@ -1340,26 +1340,26 @@ function wpilot_lite_features_page() {
 
         <div class="wpilot-hero">
             <h1>WPilot Pro <span class="wpilot-badge" style="background:rgba(245,158,11,0.2) !important;color:#f59e0b !important;">&#9733; Premium</span></h1>
-            <p class="tagline"><?php esc_html_e( 'Everything you need to run your website with AI. No limits, no compromises.', 'wpilot' ); ?></p>
+            <p class="tagline"><?php esc_html_e( 'Everything you need to run your website with AI. No limits, no compromises.', 'wpilot-lite' ); ?></p>
         </div>
 
 
 
         <!-- VALUE PROPOSITION -->
         <div class="wpilot-card" style="text-align:center !important;padding:40px 32px !important;">
-            <h2 style="font-size:26px !important;font-weight:800 !important;margin-bottom:8px !important;"><?php esc_html_e( 'What would you do with unlimited AI power?', 'wpilot' ); ?></h2>
+            <h2 style="font-size:26px !important;font-weight:800 !important;margin-bottom:8px !important;"><?php esc_html_e( 'What would you do with unlimited AI power?', 'wpilot-lite' ); ?></h2>
             <p style="font-size:16px !important;color:#64748b !important;max-width:560px !important;margin:0 auto 32px !important;line-height:1.7 !important;">
-                <?php esc_html_e( 'Lite gives you a taste. Pro removes every limit — unlimited requests, advanced SEO, a customer-facing AI chat agent, and more.', 'wpilot' ); ?>
+                <?php esc_html_e( 'Lite gives you a taste. Pro removes every limit — unlimited requests, advanced SEO, a customer-facing AI chat agent, and more.', 'wpilot-lite' ); ?>
             </p>
             <div style="display:flex !important;justify-content:center !important;gap:40px !important;flex-wrap:wrap !important;margin-bottom:10px !important;">
                 <div style="text-align:center !important;">
                     <div style="font-size:36px !important;font-weight:800 !important;color:#1e293b !important;">6</div>
-                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Lite features', 'wpilot' ); ?></div>
+                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Lite features', 'wpilot-lite' ); ?></div>
                 </div>
                 <div style="font-size:28px !important;color:#d4d4d8 !important;align-self:center !important;">vs</div>
                 <div style="text-align:center !important;">
                     <div style="font-size:36px !important;font-weight:800 !important;background:linear-gradient(135deg,#4ec9b0,#22c55e) !important;-webkit-background-clip:text !important;-webkit-text-fill-color:transparent !important;background-clip:text !important;">15+</div>
-                    <div style="font-size:12px !important;color:#4ec9b0 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Pro features', 'wpilot' ); ?></div>
+                    <div style="font-size:12px !important;color:#4ec9b0 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Pro features', 'wpilot-lite' ); ?></div>
                 </div>
             </div>
         </div>
@@ -1371,13 +1371,13 @@ function wpilot_lite_features_page() {
             <div class="wpilot-card" style="position:relative !important;overflow:hidden !important;">
                 <div style="position:absolute !important;top:16px !important;right:16px !important;background:linear-gradient(135deg,#f59e0b,#d97706) !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;padding:4px 12px !important;border-radius:20px !important;text-transform:uppercase !important;letter-spacing:0.06em !important;">Pro</div>
                 <div style="font-size:32px !important;margin-bottom:12px !important;">&#129302;</div>
-                <h2 style="font-size:18px !important;"><?php esc_html_e( 'AI Chat Agent', 'wpilot' ); ?></h2>
-                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Your visitors get instant answers 24/7. The chat agent knows your products, prices, and opening hours — and learns from every conversation.', 'wpilot' ); ?></p>
+                <h2 style="font-size:18px !important;"><?php esc_html_e( 'AI Chat Agent', 'wpilot-lite' ); ?></h2>
+                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Your visitors get instant answers 24/7. The chat agent knows your products, prices, and opening hours — and learns from every conversation.', 'wpilot-lite' ); ?></p>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:16px !important;border:1px solid #e2e8f0 !important;">
-                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'Visitors can ask:', 'wpilot' ); ?></div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Are you open on Sundays?', 'wpilot' ); ?>&rdquo;</div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Do you ship to Germany?', 'wpilot' ); ?>&rdquo;</div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'What size should I pick?', 'wpilot' ); ?>&rdquo;</div>
+                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'Visitors can ask:', 'wpilot-lite' ); ?></div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Are you open on Sundays?', 'wpilot-lite' ); ?>&rdquo;</div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Do you ship to Germany?', 'wpilot-lite' ); ?>&rdquo;</div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'What size should I pick?', 'wpilot-lite' ); ?>&rdquo;</div>
                 </div>
             </div>
 
@@ -1385,10 +1385,10 @@ function wpilot_lite_features_page() {
             <div class="wpilot-card" style="position:relative !important;overflow:hidden !important;">
                 <div style="position:absolute !important;top:16px !important;right:16px !important;background:linear-gradient(135deg,#f59e0b,#d97706) !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;padding:4px 12px !important;border-radius:20px !important;text-transform:uppercase !important;letter-spacing:0.06em !important;">Pro</div>
                 <div style="font-size:32px !important;margin-bottom:12px !important;">&#9889;</div>
-                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Priority Performance', 'wpilot' ); ?></h2>
-                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Pro uses optimized prompts and advanced sandboxing for faster, more accurate responses. Handle complex multi-step tasks with confidence.', 'wpilot' ); ?></p>
+                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Priority Performance', 'wpilot-lite' ); ?></h2>
+                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Pro uses optimized prompts and advanced sandboxing for faster, more accurate responses. Handle complex multi-step tasks with confidence.', 'wpilot-lite' ); ?></p>
                 <div style="background:#f0fdf4 !important;border-radius:12px !important;padding:16px !important;border:1px solid #bbf7d0 !important;">
-                    <div style="font-size:13px !important;color:#166534 !important;font-weight:600 !important;"><?php esc_html_e( 'Lite is fully functional — Pro adds advanced features', 'wpilot' ); ?></div>
+                    <div style="font-size:13px !important;color:#166534 !important;font-weight:600 !important;"><?php esc_html_e( 'Lite is fully functional — Pro adds advanced features', 'wpilot-lite' ); ?></div>
                 </div>
             </div>
 
@@ -1396,13 +1396,13 @@ function wpilot_lite_features_page() {
             <div class="wpilot-card" style="position:relative !important;overflow:hidden !important;">
                 <div style="position:absolute !important;top:16px !important;right:16px !important;background:linear-gradient(135deg,#f59e0b,#d97706) !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;padding:4px 12px !important;border-radius:20px !important;text-transform:uppercase !important;letter-spacing:0.06em !important;">Pro</div>
                 <div style="font-size:32px !important;margin-bottom:12px !important;">&#128270;</div>
-                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Advanced SEO Expert', 'wpilot' ); ?></h2>
-                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Claude becomes a senior SEO consultant. Keyword research, meta optimization, content strategy, internal linking — all tailored to your niche.', 'wpilot' ); ?></p>
+                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Advanced SEO Expert', 'wpilot-lite' ); ?></h2>
+                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Claude becomes a senior SEO consultant. Keyword research, meta optimization, content strategy, internal linking — all tailored to your niche.', 'wpilot-lite' ); ?></p>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:16px !important;border:1px solid #e2e8f0 !important;">
-                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'You can say:', 'wpilot' ); ?></div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Audit all my pages for SEO problems', 'wpilot' ); ?>&rdquo;</div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'What keywords should I target for my bakery?', 'wpilot' ); ?>&rdquo;</div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Write SEO-optimized product descriptions', 'wpilot' ); ?>&rdquo;</div>
+                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'You can say:', 'wpilot-lite' ); ?></div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Audit all my pages for SEO problems', 'wpilot-lite' ); ?>&rdquo;</div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'What keywords should I target for my bakery?', 'wpilot-lite' ); ?>&rdquo;</div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Write SEO-optimized product descriptions', 'wpilot-lite' ); ?>&rdquo;</div>
                 </div>
             </div>
 
@@ -1411,16 +1411,16 @@ function wpilot_lite_features_page() {
                 <div style="position:absolute !important;top:16px !important;right:16px !important;background:linear-gradient(135deg,#f59e0b,#d97706) !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;padding:4px 12px !important;border-radius:20px !important;text-transform:uppercase !important;letter-spacing:0.06em !important;">Pro</div>
                 <!-- Built by Christos Ferlachidis & Daniel Hedenberg -->
                 <div style="font-size:32px !important;margin-bottom:12px !important;">&#129504;</div>
-                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Smarter AI Responses', 'wpilot' ); ?></h2>
-                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Pro uses an advanced prompt system that makes Claude understand WordPress deeply — themes, plugins, WooCommerce, security, performance. Better questions get better answers.', 'wpilot' ); ?></p>
+                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Smarter AI Responses', 'wpilot-lite' ); ?></h2>
+                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Pro uses an advanced prompt system that makes Claude understand WordPress deeply — themes, plugins, WooCommerce, security, performance. Better questions get better answers.', 'wpilot-lite' ); ?></p>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:16px !important;border:1px solid #e2e8f0 !important;">
                     <div style="display:flex !important;gap:12px !important;align-items:start !important;margin-bottom:8px !important;">
-                        <div style="min-width:50px !important;font-size:11px !important;font-weight:700 !important;color:#dc2626 !important;padding:3px 0 !important;"><?php esc_html_e( 'LITE', 'wpilot' ); ?></div>
-                        <div style="font-size:13px !important;color:#64748b !important;"><?php esc_html_e( 'Basic prompt — gets the job done for simple tasks', 'wpilot' ); ?></div>
+                        <div style="min-width:50px !important;font-size:11px !important;font-weight:700 !important;color:#dc2626 !important;padding:3px 0 !important;"><?php esc_html_e( 'LITE', 'wpilot-lite' ); ?></div>
+                        <div style="font-size:13px !important;color:#64748b !important;"><?php esc_html_e( 'Basic prompt — gets the job done for simple tasks', 'wpilot-lite' ); ?></div>
                     </div>
                     <div style="display:flex !important;gap:12px !important;align-items:start !important;">
-                        <div style="min-width:50px !important;font-size:11px !important;font-weight:700 !important;color:#16a34a !important;padding:3px 0 !important;"><?php esc_html_e( 'PRO', 'wpilot' ); ?></div>
-                        <div style="font-size:13px !important;color:#1e293b !important;font-weight:500 !important;"><?php esc_html_e( 'Expert prompt — SEO rules, golden rule, plugin awareness, performance optimization', 'wpilot' ); ?></div>
+                        <div style="min-width:50px !important;font-size:11px !important;font-weight:700 !important;color:#16a34a !important;padding:3px 0 !important;"><?php esc_html_e( 'PRO', 'wpilot-lite' ); ?></div>
+                        <div style="font-size:13px !important;color:#1e293b !important;font-weight:500 !important;"><?php esc_html_e( 'Expert prompt — SEO rules, golden rule, plugin awareness, performance optimization', 'wpilot-lite' ); ?></div>
                     </div>
                 </div>
             </div>
@@ -1429,13 +1429,13 @@ function wpilot_lite_features_page() {
             <div class="wpilot-card" style="position:relative !important;overflow:hidden !important;">
                 <div style="position:absolute !important;top:16px !important;right:16px !important;background:linear-gradient(135deg,#f59e0b,#d97706) !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;padding:4px 12px !important;border-radius:20px !important;text-transform:uppercase !important;letter-spacing:0.06em !important;">Pro</div>
                 <div style="font-size:32px !important;margin-bottom:12px !important;">&#128722;</div>
-                <h2 style="font-size:18px !important;"><?php esc_html_e( 'WooCommerce Expert', 'wpilot' ); ?></h2>
-                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Manage your entire shop with AI. Add products in bulk, create coupons, set up shipping, analyze sales — all through natural conversation.', 'wpilot' ); ?></p>
+                <h2 style="font-size:18px !important;"><?php esc_html_e( 'WooCommerce Expert', 'wpilot-lite' ); ?></h2>
+                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Manage your entire shop with AI. Add products in bulk, create coupons, set up shipping, analyze sales — all through natural conversation.', 'wpilot-lite' ); ?></p>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:16px !important;border:1px solid #e2e8f0 !important;">
-                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'Imagine:', 'wpilot' ); ?></div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Add 20 products from this spreadsheet', 'wpilot' ); ?>&rdquo;</div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Create a Black Friday sale on all jackets', 'wpilot' ); ?>&rdquo;</div>
-                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Show me my top 10 selling products this month', 'wpilot' ); ?>&rdquo;</div>
+                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'Imagine:', 'wpilot-lite' ); ?></div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Add 20 products from this spreadsheet', 'wpilot-lite' ); ?>&rdquo;</div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Create a Black Friday sale on all jackets', 'wpilot-lite' ); ?>&rdquo;</div>
+                    <div style="font-size:13px !important;color:#475569 !important;font-style:italic !important;padding:4px 0 !important;">&ldquo;<?php esc_html_e( 'Show me my top 10 selling products this month', 'wpilot-lite' ); ?>&rdquo;</div>
                 </div>
             </div>
 
@@ -1443,14 +1443,14 @@ function wpilot_lite_features_page() {
             <div class="wpilot-card" style="position:relative !important;overflow:hidden !important;">
                 <div style="position:absolute !important;top:16px !important;right:16px !important;background:linear-gradient(135deg,#f59e0b,#d97706) !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;padding:4px 12px !important;border-radius:20px !important;text-transform:uppercase !important;letter-spacing:0.06em !important;">Pro</div>
                 <div style="font-size:32px !important;margin-bottom:12px !important;">&#128737;</div>
-                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Security & Performance', 'wpilot' ); ?></h2>
-                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Pro includes advanced sandbox protection and performance-aware prompts. Claude optimizes queries, caches properly, and never breaks your site.', 'wpilot' ); ?></p>
+                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Security & Performance', 'wpilot-lite' ); ?></h2>
+                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Pro includes advanced sandbox protection and performance-aware prompts. Claude optimizes queries, caches properly, and never breaks your site.', 'wpilot-lite' ); ?></p>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:16px !important;border:1px solid #e2e8f0 !important;">
-                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'Pro sandbox includes:', 'wpilot' ); ?></div>
-                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Blocks dangerous PHP functions', 'wpilot' ); ?></div>
-                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Prevents file system access', 'wpilot' ); ?></div>
-                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Blocks shell commands', 'wpilot' ); ?></div>
-                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Protects wp-config and secrets', 'wpilot' ); ?></div>
+                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;margin-bottom:10px !important;"><?php esc_html_e( 'Pro sandbox includes:', 'wpilot-lite' ); ?></div>
+                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Blocks dangerous PHP functions', 'wpilot-lite' ); ?></div>
+                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Prevents file system access', 'wpilot-lite' ); ?></div>
+                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Blocks shell commands', 'wpilot-lite' ); ?></div>
+                    <div style="font-size:13px !important;color:#475569 !important;padding:3px 0 !important;">&#10003; <?php esc_html_e( 'Protects wp-config and secrets', 'wpilot-lite' ); ?></div>
                 </div>
             </div>
 
@@ -1458,33 +1458,33 @@ function wpilot_lite_features_page() {
 
         <!-- COMPARISON TABLE -->
         <div class="wpilot-card">
-            <h2 style="text-align:center !important;font-size:22px !important;margin-bottom:24px !important;"><?php esc_html_e( 'Lite vs Pro — Full Comparison', 'wpilot' ); ?></h2>
+            <h2 style="text-align:center !important;font-size:22px !important;margin-bottom:24px !important;"><?php esc_html_e( 'Lite vs Pro — Full Comparison', 'wpilot-lite' ); ?></h2>
             <table style="width:100% !important;border-collapse:collapse !important;">
                 <thead>
                     <tr>
-                        <th style="text-align:left !important;padding:14px !important;font-size:13px !important;color:#64748b !important;font-weight:600 !important;border-bottom:2px solid #e2e8f0 !important;"><?php esc_html_e( 'Feature', 'wpilot' ); ?></th>
-                        <th style="text-align:center !important;padding:14px !important;font-size:13px !important;color:#64748b !important;font-weight:600 !important;border-bottom:2px solid #e2e8f0 !important;width:100px !important;"><?php esc_html_e( 'Lite', 'wpilot' ); ?></th>
-                        <th style="text-align:center !important;padding:14px !important;font-size:13px !important;color:#4ec9b0 !important;font-weight:700 !important;border-bottom:2px solid #4ec9b0 !important;width:100px !important;"><?php esc_html_e( 'Pro', 'wpilot' ); ?></th>
+                        <th style="text-align:left !important;padding:14px !important;font-size:13px !important;color:#64748b !important;font-weight:600 !important;border-bottom:2px solid #e2e8f0 !important;"><?php esc_html_e( 'Feature', 'wpilot-lite' ); ?></th>
+                        <th style="text-align:center !important;padding:14px !important;font-size:13px !important;color:#64748b !important;font-weight:600 !important;border-bottom:2px solid #e2e8f0 !important;width:100px !important;"><?php esc_html_e( 'Lite', 'wpilot-lite' ); ?></th>
+                        <th style="text-align:center !important;padding:14px !important;font-size:13px !important;color:#4ec9b0 !important;font-weight:700 !important;border-bottom:2px solid #4ec9b0 !important;width:100px !important;"><?php esc_html_e( 'Pro', 'wpilot-lite' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php
                     $rows = [
-                        [ __( 'Basic MCP connection', 'wpilot' ), true, true ],
-                        [ __( 'Connect Claude Desktop', 'wpilot' ), true, true ],
-                        [ __( 'Connect Claude Code (terminal)', 'wpilot' ), true, true ],
-                        [ __( 'Multiple connections (team)', 'wpilot' ), '3', __( 'Unlimited', 'wpilot' ) ],
-                        [ __( 'Simple mode (friendly language)', 'wpilot' ), true, true ],
-                        [ __( 'Technical mode (shows code)', 'wpilot' ), true, true ],
-                        [ __( 'Advanced SEO expert prompts', 'wpilot' ), false, true ],
-                        [ __( 'Smart system prompt', 'wpilot' ), false, true ],
-                        [ __( 'WooCommerce optimization', 'wpilot' ), false, true ],
-                        [ __( 'Performance-aware responses', 'wpilot' ), false, true ],
-                        [ __( 'Advanced security sandbox', 'wpilot' ), false, true ],
-                        [ __( 'AI Chat Agent (add-on)', 'wpilot' ), false, true ],
-                        [ __( 'Brain / Knowledge base', 'wpilot' ), false, true ],
-                        [ __( 'Priority email support', 'wpilot' ), false, true ],
-                        [ __( 'Auto-updates', 'wpilot' ), true, true ],
+                        [ __( 'Basic MCP connection', 'wpilot-lite' ), true, true ],
+                        [ __( 'Connect Claude Desktop', 'wpilot-lite' ), true, true ],
+                        [ __( 'Connect Claude Code (terminal)', 'wpilot-lite' ), true, true ],
+                        [ __( 'Multiple connections (team)', 'wpilot-lite' ), '3', __( 'Unlimited', 'wpilot-lite' ) ],
+                        [ __( 'Simple mode (friendly language)', 'wpilot-lite' ), true, true ],
+                        [ __( 'Technical mode (shows code)', 'wpilot-lite' ), true, true ],
+                        [ __( 'Advanced SEO expert prompts', 'wpilot-lite' ), false, true ],
+                        [ __( 'Smart system prompt', 'wpilot-lite' ), false, true ],
+                        [ __( 'WooCommerce optimization', 'wpilot-lite' ), false, true ],
+                        [ __( 'Performance-aware responses', 'wpilot-lite' ), false, true ],
+                        [ __( 'Advanced security sandbox', 'wpilot-lite' ), false, true ],
+                        [ __( 'AI Chat Agent (add-on)', 'wpilot-lite' ), false, true ],
+                        [ __( 'Brain / Knowledge base', 'wpilot-lite' ), false, true ],
+                        [ __( 'Priority email support', 'wpilot-lite' ), false, true ],
+                        [ __( 'Auto-updates', 'wpilot-lite' ), true, true ],
                     ];
                     foreach ( $rows as $row ):
                         $feature = $row[0];
@@ -1519,15 +1519,15 @@ function wpilot_lite_features_page() {
 
         <!-- CTA -->
         <div class="wpilot-card" style="text-align:center !important;background:linear-gradient(135deg,#0f0f1a,#1a1a2e,#16213e) !important;color:#fff !important;padding:44px 32px !important;">
-            <h2 style="font-size:24px !important;font-weight:800 !important;color:#fff !important;margin-bottom:8px !important;"><?php esc_html_e( 'Ready to unlock everything?', 'wpilot' ); ?></h2>
+            <h2 style="font-size:24px !important;font-weight:800 !important;color:#fff !important;margin-bottom:8px !important;"><?php esc_html_e( 'Ready to unlock everything?', 'wpilot-lite' ); ?></h2>
             <p style="font-size:15px !important;color:#94a3b8 !important;margin-bottom:28px !important;max-width:480px !important;margin-left:auto !important;margin-right:auto !important;line-height:1.6 !important;">
-                <?php esc_html_e( 'Pro starts at $9/month. That is less than one hour of a freelancer — and Claude works 24/7.', 'wpilot' ); ?>
+                <?php esc_html_e( 'Pro starts at $9/month. That is less than one hour of a freelancer — and Claude works 24/7.', 'wpilot-lite' ); ?>
             </p>
             <div style="display:flex !important;gap:16px !important;justify-content:center !important;flex-wrap:wrap !important;">
-                <a href="<?php echo esc_url( $checkout_base . '&plan=pro' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-green" style="font-size:16px !important;padding:14px 36px !important;"><?php esc_html_e( 'Get Pro — $9/month', 'wpilot' ); ?> &rarr;</a>
-                <a href="<?php echo esc_url( $checkout_base . '&plan=lifetime' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-outline" style="border-color:rgba(255,255,255,0.2) !important;color:#e2e8f0 !important;"><?php esc_html_e( 'Lifetime — $149 once', 'wpilot' ); ?></a>
+                <a href="<?php echo esc_url( $checkout_base . '&plan=pro' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-green" style="font-size:16px !important;padding:14px 36px !important;"><?php esc_html_e( 'Get Pro — $9/month', 'wpilot-lite' ); ?> &rarr;</a>
+                <a href="<?php echo esc_url( $checkout_base . '&plan=lifetime' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-outline" style="border-color:rgba(255,255,255,0.2) !important;color:#e2e8f0 !important;"><?php esc_html_e( 'Lifetime — $149 once', 'wpilot-lite' ); ?></a>
             </div>
-            <p style="font-size:12px !important;color:#64748b !important;margin-top:16px !important;"><?php esc_html_e( 'Cancel anytime. Your settings are always preserved.', 'wpilot' ); ?></p>
+            <p style="font-size:12px !important;color:#64748b !important;margin-top:16px !important;"><?php esc_html_e( 'Cancel anytime. Your settings are always preserved.', 'wpilot-lite' ); ?></p>
         </div>
 
     </div>
@@ -1600,7 +1600,7 @@ function wpilot_lite_admin_page() {
         <div style="background:#fff !important;border:1px solid #e2e8f0 !important;border-radius:12px !important;padding:14px 20px !important;margin-bottom:16px !important;display:flex !important;align-items:center !important;justify-content:space-between !important;gap:16px !important;">
             <div style="flex:1 !important;">
                 <div style="display:flex !important;justify-content:space-between !important;margin-bottom:6px !important;">
-                    <span style="font-size:13px !important;font-weight:600 !important;color:#374151 !important;"><?php printf( esc_html__( '%d requests used today', 'wpilot' ), $used_today ); ?></span>
+                    <span style="font-size:13px !important;font-weight:600 !important;color:#374151 !important;"><?php printf( esc_html__( '%d requests used today', 'wpilot-lite' ), $used_today ); ?></span>
                     
                 </div>
                 <div style="background:#f1f5f9 !important;border-radius:6px !important;height:6px !important;overflow:hidden !important;">
@@ -1625,7 +1625,7 @@ function wpilot_lite_admin_page() {
         <div class="wpilot-tabs">
             <button class="wpilot-tab active" data-tab="start">Get Started<?php if ( ! $is_online ): ?><span class="tab-badge amber">!</span><?php else: ?><span class="tab-badge green">&#10003;</span><?php endif; ?></button>
             <button class="wpilot-tab" data-tab="connections">Connections<?php if ( ! empty( $tokens ) ): ?><span class="tab-badge green"><?php echo intval( count( $tokens ) ); ?></span><?php endif; ?></button>
-            <button class="wpilot-tab" data-tab="upgrade"><?php esc_html_e( 'Upgrade', 'wpilot' ); ?></button>
+            <button class="wpilot-tab" data-tab="upgrade"><?php esc_html_e( 'Upgrade', 'wpilot-lite' ); ?></button>
             <button class="wpilot-tab" data-tab="help">Help</button>
         </div>
 
@@ -1743,10 +1743,10 @@ function wpilot_lite_admin_page() {
                 <div style="display:flex !important;align-items:center !important;gap:14px !important;">
                     <div style="font-size:28px !important;">&#9733;</div>
                     <div style="flex:1 !important;">
-                        <h3 style="margin:0 0 2px !important;font-size:15px !important;color:#92400e !important;"><?php esc_html_e( 'Want more from Claude?', 'wpilot' ); ?></h3>
-                        <p style="margin:0 !important;font-size:13px !important;color:#a16207 !important;line-height:1.5 !important;"><?php esc_html_e( 'Pro adds AI Chat Agent, advanced SEO expert, smart prompts, and priority support.', 'wpilot' ); ?></p>
+                        <h3 style="margin:0 0 2px !important;font-size:15px !important;color:#92400e !important;"><?php esc_html_e( 'Want more from Claude?', 'wpilot-lite' ); ?></h3>
+                        <p style="margin:0 !important;font-size:13px !important;color:#a16207 !important;line-height:1.5 !important;"><?php esc_html_e( 'Pro adds AI Chat Agent, advanced SEO expert, smart prompts, and priority support.', 'wpilot-lite' ); ?></p>
                     </div>
-                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite-features' ) ); ?>" class="wpilot-btn wpilot-btn-outline" style="white-space:nowrap !important;font-size:12px !important;padding:8px 16px !important;border-color:#fbbf24 !important;color:#92400e !important;"><?php esc_html_e( 'See Pro features', 'wpilot' ); ?></a>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite-features' ) ); ?>" class="wpilot-btn wpilot-btn-outline" style="white-space:nowrap !important;font-size:12px !important;padding:8px 16px !important;border-color:#fbbf24 !important;color:#92400e !important;"><?php esc_html_e( 'See Pro features', 'wpilot-lite' ); ?></a>
                 </div>
             </div>
 
@@ -1942,9 +1942,9 @@ function wpilot_lite_admin_page() {
             <div style="display:flex !important;align-items:start !important;gap:16px !important;">
                 <div style="font-size:28px !important;">&#9888;</div>
                 <div>
-                    <h2 style="color:#92400e !important;font-size:18px !important;margin-bottom:6px !important;"><?php esc_html_e( 'You are using WPilot Lite', 'wpilot' ); ?></h2>
+                    <h2 style="color:#92400e !important;font-size:18px !important;margin-bottom:6px !important;"><?php esc_html_e( 'You are using WPilot Lite', 'wpilot-lite' ); ?></h2>
                     <p style="color:#a16207 !important;font-size:14px !important;margin:0 !important;line-height:1.6 !important;">
-                        <?php esc_html_e( 'WPilot Pro adds advanced features like AI Chat Agent, SEO Expert mode, smart prompts, and priority support.', 'wpilot' ); ?>
+                        <?php esc_html_e( 'WPilot Pro adds advanced features like AI Chat Agent, SEO Expert mode, smart prompts, and priority support.', 'wpilot-lite' ); ?>
                     </p>
                 </div>
             </div>
@@ -1952,65 +1952,65 @@ function wpilot_lite_admin_page() {
 
         <!-- What you CAN'T do on Lite -->
         <div class="wpilot-card">
-            <h2 style="margin-bottom:20px !important;"><?php esc_html_e( 'What you are missing on Lite', 'wpilot' ); ?></h2>
+            <h2 style="margin-bottom:20px !important;"><?php esc_html_e( 'What you are missing on Lite', 'wpilot-lite' ); ?></h2>
             <div style="display:grid !important;grid-template-columns:1fr 1fr !important;gap:16px !important;">
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:20px !important;border:1px solid #e2e8f0 !important;position:relative !important;">
                     <div style="position:absolute !important;top:12px !important;right:12px !important;background:#f59e0b !important;color:#fff !important;font-size:9px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:10px !important;">PRO</div>
                     <div style="font-size:24px !important;margin-bottom:8px !important;">&#129302;</div>
-                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'AI Chat Agent', 'wpilot' ); ?></h3>
-                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Let AI answer your visitors 24/7', 'wpilot' ); ?></p>
+                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'AI Chat Agent', 'wpilot-lite' ); ?></h3>
+                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Let AI answer your visitors 24/7', 'wpilot-lite' ); ?></p>
                 </div>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:20px !important;border:1px solid #e2e8f0 !important;position:relative !important;">
                     <div style="position:absolute !important;top:12px !important;right:12px !important;background:#f59e0b !important;color:#fff !important;font-size:9px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:10px !important;">PRO</div>
                     <div style="font-size:24px !important;margin-bottom:8px !important;">&#128270;</div>
-                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'SEO Expert Mode', 'wpilot' ); ?></h3>
-                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Keyword research, meta optimization, content strategy', 'wpilot' ); ?></p>
+                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'SEO Expert Mode', 'wpilot-lite' ); ?></h3>
+                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Keyword research, meta optimization, content strategy', 'wpilot-lite' ); ?></p>
                 </div>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:20px !important;border:1px solid #e2e8f0 !important;position:relative !important;">
                     <div style="position:absolute !important;top:12px !important;right:12px !important;background:#f59e0b !important;color:#fff !important;font-size:9px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:10px !important;">PRO</div>
                     <div style="font-size:24px !important;margin-bottom:8px !important;">&#9889;</div>
-                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'Priority Performance', 'wpilot' ); ?></h3>
-                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Optimized prompts for complex WordPress tasks', 'wpilot' ); ?></p>
+                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'Priority Performance', 'wpilot-lite' ); ?></h3>
+                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Optimized prompts for complex WordPress tasks', 'wpilot-lite' ); ?></p>
                 </div>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:20px !important;border:1px solid #e2e8f0 !important;position:relative !important;">
                     <div style="position:absolute !important;top:12px !important;right:12px !important;background:#f59e0b !important;color:#fff !important;font-size:9px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:10px !important;">PRO</div>
                     <div style="font-size:24px !important;margin-bottom:8px !important;">&#129504;</div>
-                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'Smart Prompts', 'wpilot' ); ?></h3>
-                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Advanced AI that understands your entire site deeply', 'wpilot' ); ?></p>
+                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'Smart Prompts', 'wpilot-lite' ); ?></h3>
+                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Advanced AI that understands your entire site deeply', 'wpilot-lite' ); ?></p>
                 </div>
             </div>
             <div style="text-align:center !important;margin-top:20px !important;">
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite-features' ) ); ?>" class="wpilot-btn wpilot-btn-outline"><?php esc_html_e( 'See all Pro features', 'wpilot' ); ?> &rarr;</a>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite-features' ) ); ?>" class="wpilot-btn wpilot-btn-outline"><?php esc_html_e( 'See all Pro features', 'wpilot-lite' ); ?> &rarr;</a>
             </div>
         </div>
 
         <!-- The math -->
         <div class="wpilot-card" style="text-align:center !important;padding:44px 36px !important;background:linear-gradient(135deg, #fafbff 0%, #f0fdf4 100%) !important;border:1.5px solid #e2e8f0 !important;">
-            <h2 style="font-size:20px !important;margin-bottom:16px !important;"><?php esc_html_e( 'Think about it this way', 'wpilot' ); ?></h2>
+            <h2 style="font-size:20px !important;margin-bottom:16px !important;"><?php esc_html_e( 'Think about it this way', 'wpilot-lite' ); ?></h2>
             <div style="display:flex !important;justify-content:center !important;gap:40px !important;flex-wrap:wrap !important;margin-bottom:24px !important;">
                 <div style="text-align:center !important;">
                     <div style="font-size:28px !important;font-weight:800 !important;color:#dc2626 !important;">$50-150</div>
-                    <div style="font-size:12px !important;color:#64748b !important;font-weight:600 !important;"><?php esc_html_e( 'Freelancer (per hour)', 'wpilot' ); ?></div>
+                    <div style="font-size:12px !important;color:#64748b !important;font-weight:600 !important;"><?php esc_html_e( 'Freelancer (per hour)', 'wpilot-lite' ); ?></div>
                 </div>
                 <div style="font-size:20px !important;color:#d4d4d8 !important;align-self:center !important;">vs</div>
                 <div style="text-align:center !important;">
                     <div style="font-size:28px !important;font-weight:800 !important;color:#16a34a !important;">$9</div>
-                    <div style="font-size:12px !important;color:#4ec9b0 !important;font-weight:600 !important;"><?php esc_html_e( 'WPilot Pro (per month)', 'wpilot' ); ?></div>
+                    <div style="font-size:12px !important;color:#4ec9b0 !important;font-weight:600 !important;"><?php esc_html_e( 'WPilot Pro (per month)', 'wpilot-lite' ); ?></div>
                 </div>
             </div>
             <p style="font-size:14px !important;color:#64748b !important;max-width:480px !important;margin:0 auto !important;line-height:1.6 !important;">
-                <?php esc_html_e( 'One freelancer hour costs more than a full month of Pro. Claude works 24/7, never charges extra, and gets faster with every update.', 'wpilot' ); ?>
+                <?php esc_html_e( 'One freelancer hour costs more than a full month of Pro. Claude works 24/7, never charges extra, and gets faster with every update.', 'wpilot-lite' ); ?>
             </p>
         </div>
 
         <!-- Pricing -->
         <div class="wpilot-card" style="padding:40px 36px !important;overflow:visible !important;">
-            <h2 style="text-align:center !important;margin-bottom:8px !important;font-size:28px !important;font-weight:800 !important;color:#0f172a !important;letter-spacing:-0.5px !important;"><?php esc_html_e( 'Choose your plan', 'wpilot' ); ?></h2>
-            <p style="text-align:center !important;color:#94a3b8 !important;font-size:15px !important;margin-bottom:8px !important;font-weight:400 !important;"><?php esc_html_e( 'All plans include every Pro feature. Cancel anytime.', 'wpilot' ); ?></p>
+            <h2 style="text-align:center !important;margin-bottom:8px !important;font-size:28px !important;font-weight:800 !important;color:#0f172a !important;letter-spacing:-0.5px !important;"><?php esc_html_e( 'Choose your plan', 'wpilot-lite' ); ?></h2>
+            <p style="text-align:center !important;color:#94a3b8 !important;font-size:15px !important;margin-bottom:8px !important;font-weight:400 !important;"><?php esc_html_e( 'All plans include every Pro feature. Cancel anytime.', 'wpilot-lite' ); ?></p>
             <div style="display:flex !important;justify-content:center !important;gap:24px !important;margin-bottom:8px !important;flex-wrap:wrap !important;">
-                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'No setup fees', 'wpilot' ); ?></span>
-                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'Cancel anytime', 'wpilot' ); ?></span>
-                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'Instant activation', 'wpilot' ); ?></span>
+                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'No setup fees', 'wpilot-lite' ); ?></span>
+                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'Cancel anytime', 'wpilot-lite' ); ?></span>
+                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'Instant activation', 'wpilot-lite' ); ?></span>
             </div>
 
             <?php $checkout_base = 'https://weblease.se/wpilot-checkout?site=' . urlencode( $site_url ) ; ?>
@@ -2018,44 +2018,44 @@ function wpilot_lite_admin_page() {
                 <div class="wpilot-plan wpilot-plan-popular">
                     <h3>Pro</h3>
                     <div class="price">$9<span>/month</span></div>
-                    <p class="price-note"><?php esc_html_e( 'For one website', 'wpilot' ); ?></p>
+                    <p class="price-note"><?php esc_html_e( 'For one website', 'wpilot-lite' ); ?></p>
                     <ul>
-                        <li><?php esc_html_e( 'Advanced AI prompts', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Unlimited connections', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Advanced SEO expert', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Smart AI prompts', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Security sandbox', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Email support', 'wpilot' ); ?></li>
+                        <li><?php esc_html_e( 'Advanced AI prompts', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Unlimited connections', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Advanced SEO expert', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Smart AI prompts', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Security sandbox', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Email support', 'wpilot-lite' ); ?></li>
                     </ul>
-                    <a href="<?php echo esc_url( $checkout_base . '&plan=pro' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-green"><?php esc_html_e( 'Get Pro', 'wpilot' ); ?></a>
+                    <a href="<?php echo esc_url( $checkout_base . '&plan=pro' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-green"><?php esc_html_e( 'Get Pro', 'wpilot-lite' ); ?></a>
                 </div>
                 <div class="wpilot-plan">
                     <h3>Team</h3>
                     <div class="price">$24<span>/month</span></div>
-                    <p class="price-note"><?php esc_html_e( 'For agencies & teams', 'wpilot' ); ?></p>
+                    <p class="price-note"><?php esc_html_e( 'For agencies & teams', 'wpilot-lite' ); ?></p>
                     <ul>
-                        <li><?php esc_html_e( 'Everything in Pro', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( '3 websites included', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Unlimited connections', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Priority support', 'wpilot' ); ?></li>
+                        <li><?php esc_html_e( 'Everything in Pro', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( '3 websites included', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Unlimited connections', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Priority support', 'wpilot-lite' ); ?></li>
                     </ul>
-                    <a href="<?php echo esc_url( $checkout_base . '&plan=team' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-primary"><?php esc_html_e( 'Get Team', 'wpilot' ); ?></a>
+                    <a href="<?php echo esc_url( $checkout_base . '&plan=team' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-primary"><?php esc_html_e( 'Get Team', 'wpilot-lite' ); ?></a>
                 </div>
                 <div class="wpilot-plan">
                     <h3>Lifetime</h3>
-                    <div class="price">$149<span> <?php esc_html_e( 'once', 'wpilot' ); ?></span></div>
-                    <p class="price-note"><?php esc_html_e( 'Pay once, use forever', 'wpilot' ); ?></p>
+                    <div class="price">$149<span> <?php esc_html_e( 'once', 'wpilot-lite' ); ?></span></div>
+                    <p class="price-note"><?php esc_html_e( 'Pay once, use forever', 'wpilot-lite' ); ?></p>
                     <ul>
-                        <li><?php esc_html_e( 'Everything in Pro', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'No monthly payments', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Lifetime updates', 'wpilot' ); ?></li>
-                        <li><?php esc_html_e( 'Limited spots available', 'wpilot' ); ?></li>
+                        <li><?php esc_html_e( 'Everything in Pro', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'No monthly payments', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Lifetime updates', 'wpilot-lite' ); ?></li>
+                        <li><?php esc_html_e( 'Limited spots available', 'wpilot-lite' ); ?></li>
                     </ul>
-                    <a href="<?php echo esc_url( $checkout_base . '&plan=lifetime' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-primary"><?php esc_html_e( 'Get Lifetime', 'wpilot' ); ?></a>
+                    <a href="<?php echo esc_url( $checkout_base . '&plan=lifetime' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-primary"><?php esc_html_e( 'Get Lifetime', 'wpilot-lite' ); ?></a>
                 </div>
             </div>
             <div style="text-align:center !important;margin-top:24px !important;padding-top:20px !important;border-top:1px solid #f1f5f9 !important;">
-                <p style="font-size:13px !important;color:#94a3b8 !important;margin:0 !important;"><?php esc_html_e( 'Already have a license?', 'wpilot' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite' ) ); ?>" style="color:#4ec9b0 !important;font-weight:600 !important;text-decoration:none !important;"><?php esc_html_e( 'Activate it here', 'wpilot' ); ?> &rarr;</a></p>
+                <p style="font-size:13px !important;color:#94a3b8 !important;margin:0 !important;"><?php esc_html_e( 'Already have a license?', 'wpilot-lite' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite' ) ); ?>" style="color:#4ec9b0 !important;font-weight:600 !important;text-decoration:none !important;"><?php esc_html_e( 'Activate it here', 'wpilot-lite' ); ?> &rarr;</a></p>
             </div>
         </div>
 
