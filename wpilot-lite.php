@@ -980,10 +980,7 @@ function wpilot_lite_handle_execute( $id, $params, $style = 'simple' ) {
         $result = substr( $result, 0, 50000 ) . "\n\n[Truncated]";
     }
 
-    // Show remaining daily usage in response
-    $usage = wpilot_lite_get_daily_usage();
-    $remaining = max( 0, 999999 - intval( $usage['count'] ) );
-    $result .= "\n\n[WPilot Lite: {$remaining}/" . 999999 . " requests remaining today]";
+
 
     return wpilot_lite_rpc_tool_result( $id, $result, false );
 }
@@ -1159,15 +1156,14 @@ function wpilot_lite_system_prompt( $style = 'simple' ) {
         $lang = str_starts_with( $language, 'sv' ) ? 'Swedish' : 'the same language the user writes in';
     }
 
-    $usage     = wpilot_lite_get_daily_usage();
-    $remaining = max( 0, 999999 - intval( $usage['count'] ) );
+
 
     $prompt = "You are WPilot Lite, a WordPress assistant connected to \"{$site_name}\" ({$site_url}).
 
 SITE CONTEXT:
 - Theme: {$theme}
 - WordPress language: {$language}{$woo}
-- Plan: Lite (free) — {$remaining}/" . 999999 . " requests remaining today";
+- Plan: Lite (free)";
 
     if ( $owner )    $prompt .= "\n- Owner: {$owner}";
     if ( $business ) $prompt .= "\n- Business: {$business}";
@@ -1356,7 +1352,7 @@ ABOUT WPILOT:
     $prompt .= "\n\n" . str_repeat( '=', 39 );
     $prompt .= "\nSESSION START — DO THIS FIRST:";
     $prompt .= "\n1. GREET the site owner by name. Confirm connection.";
-    $prompt .= "\n2. Tell them their plan (Lite, {$remaining}/" . 999999 . " requests today).";
+    $prompt .= "\n2. Tell them their plan (Lite, free).";
     $prompt .= "\n3. Ask what they need help with.";
     $prompt .= "\n" . str_repeat( '=', 39 );
 
@@ -1489,19 +1485,24 @@ function wpilot_lite_admin_styles( $hook ) {
         .wpilot-token-table th { text-align: left !important; font-size: 11px !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.06em !important; padding: 10px 14px !important; border-bottom: 2px solid #f1f5f9 !important; font-weight: 600 !important; }
         .wpilot-token-table td { padding: 14px !important; border-bottom: 1px solid #f8fafc !important; font-size: 14px !important; color: #475569 !important; }
         .wpilot-token-table tr:hover td { background: #fafbfc !important; }
-        .wpilot-pricing { display: flex !important; gap: 16px !important; margin-top: 20px !important; align-items: stretch !important; flex-wrap: wrap !important; max-width: 100% !important; overflow: hidden !important; }
-        .wpilot-plan { background: #fff !important; border: 2px solid #e2e8f0 !important; border-radius: 14px !important; padding: 28px 24px !important; text-align: center !important; transition: all 0.2s !important; position: relative !important; display: flex !important; flex-direction: column !important; flex: 1 1 0 !important; min-width: 200px !important; max-width: 100% !important; }
-        .wpilot-plan:hover { border-color: #4ec9b0 !important; transform: translateY(-2px) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important; }
-        .wpilot-plan-popular { border-color: #4ec9b0 !important; box-shadow: 0 4px 16px rgba(78,201,176,0.15) !important; }
-        .wpilot-plan-popular::before { content: "Most popular" !important; position: absolute !important; top: -12px !important; left: 50% !important; transform: translateX(-50%) !important; background: linear-gradient(135deg, #4ec9b0, #22c55e) !important; color: #fff !important; font-size: 11px !important; font-weight: 700 !important; padding: 4px 16px !important; border-radius: 20px !important; text-transform: uppercase !important; white-space: nowrap !important; }
-        .wpilot-plan h3 { margin: 0 0 8px !important; font-size: 18px !important; font-weight: 700 !important; color: #1e293b !important; }
-        .wpilot-plan .price { font-size: 36px !important; font-weight: 800 !important; color: #1a1a2e !important; margin: 12px 0 4px !important; }
-        .wpilot-plan .price span { font-size: 15px !important; font-weight: 400 !important; color: #94a3b8 !important; }
-        .wpilot-plan .price-note { font-size: 13px !important; color: #94a3b8 !important; margin: 0 0 16px !important; }
-        .wpilot-plan ul { list-style: none !important; padding: 0 !important; margin: 0 0 20px !important; text-align: left !important; flex: 1 1 auto !important; }
-        .wpilot-plan ul li { padding: 6px 0 !important; font-size: 13px !important; color: #475569 !important; display: flex !important; gap: 8px !important; align-items: start !important; }
+        .wpilot-pricing { display: flex !important; gap: 24px !important; margin-top: 32px !important; align-items: center !important; justify-content: center !important; flex-wrap: wrap !important; max-width: 100% !important; overflow: visible !important; perspective: 1000px !important; }
+        .wpilot-plan { background: #fff !important; border: 2px solid #e2e8f0 !important; border-radius: 20px !important; padding: 32px 28px !important; text-align: center !important; transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important; position: relative !important; display: flex !important; flex-direction: column !important; flex: 1 1 0 !important; min-width: 220px !important; max-width: 320px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.02) !important; }
+        .wpilot-plan:hover { border-color: #cbd5e1 !important; transform: translateY(-4px) !important; box-shadow: 0 12px 32px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.04) !important; }
+        .wpilot-plan-popular { border: 2px solid transparent !important; background-image: linear-gradient(#fff, #fff), linear-gradient(135deg, #4ec9b0, #22c55e, #4ec9b0) !important; background-origin: border-box !important; background-clip: padding-box, border-box !important; box-shadow: 0 8px 32px rgba(34,197,94,0.18), 0 4px 16px rgba(78,201,176,0.12) !important; transform: scale(1.05) !important; z-index: 2 !important; padding: 40px 32px !important; }
+        .wpilot-plan-popular::before { content: "\2605  Most Popular" !important; position: absolute !important; top: -14px !important; left: 50% !important; transform: translateX(-50%) !important; background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%) !important; color: #fff !important; font-size: 11px !important; font-weight: 700 !important; padding: 6px 20px !important; border-radius: 20px !important; text-transform: uppercase !important; white-space: nowrap !important; letter-spacing: 0.05em !important; box-shadow: 0 4px 12px rgba(34,197,94,0.35) !important; }
+        .wpilot-plan-popular:hover { transform: scale(1.05) translateY(-4px) !important; box-shadow: 0 16px 48px rgba(34,197,94,0.22), 0 8px 24px rgba(78,201,176,0.15) !important; }
+        .wpilot-plan h3 { margin: 0 0 4px !important; font-size: 16px !important; font-weight: 700 !important; color: #64748b !important; text-transform: uppercase !important; letter-spacing: 0.08em !important; }
+        .wpilot-plan-popular h3 { font-size: 18px !important; color: #1e293b !important; }
+        .wpilot-plan .price { font-size: 40px !important; font-weight: 800 !important; color: #1e293b !important; margin: 16px 0 4px !important; line-height: 1.1 !important; letter-spacing: -1px !important; }
+        .wpilot-plan-popular .price { font-size: 52px !important; color: #0f172a !important; }
+        .wpilot-plan .price span { font-size: 14px !important; font-weight: 400 !important; color: #94a3b8 !important; vertical-align: baseline !important; }
+        .wpilot-plan .price-note { font-size: 13px !important; color: #94a3b8 !important; margin: 0 0 20px !important; padding-bottom: 20px !important; border-bottom: 1px solid #f1f5f9 !important; }
+        .wpilot-plan ul { list-style: none !important; padding: 0 !important; margin: 0 0 24px !important; text-align: left !important; flex: 1 1 auto !important; }
+        .wpilot-plan ul li { padding: 8px 0 !important; font-size: 13.5px !important; color: #475569 !important; display: flex !important; gap: 10px !important; align-items: center !important; }
         .wpilot-plan ul li::before { content: "\\2713" !important; color: #22c55e !important; font-weight: 700 !important; flex-shrink: 0 !important; }
-        .wpilot-plan a.wpilot-btn, .wpilot-plan .wpilot-btn { width: 100% !important; justify-content: center !important; margin-top: auto !important; display: inline-flex !important; text-decoration: none !important; box-sizing: border-box !important; align-self: flex-end !important; }
+        .wpilot-plan a.wpilot-btn, .wpilot-plan .wpilot-btn { width: 100% !important; justify-content: center !important; margin-top: auto !important; display: inline-flex !important; text-decoration: none !important; box-sizing: border-box !important; align-self: flex-end !important; padding: 14px 24px !important; border-radius: 12px !important; font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.01em !important; transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important; }
+        .wpilot-plan-popular .wpilot-btn-green { padding: 16px 24px !important; font-size: 16px !important; box-shadow: 0 4px 16px rgba(34,197,94,0.3) !important; }
+        .wpilot-plan-popular .wpilot-btn-green:hover { box-shadow: 0 8px 24px rgba(34,197,94,0.4) !important; transform: translateY(-2px) !important; }
         .wpilot-field { margin-bottom: 18px !important; }
         .wpilot-field label { display: block !important; font-weight: 600 !important; font-size: 13px !important; color: #374151 !important; margin-bottom: 6px !important; }
         .wpilot-field .hint { display: block !important; font-size: 12px !important; color: #94a3b8 !important; margin-top: 4px !important; }
@@ -1545,6 +1546,11 @@ function wpilot_lite_admin_styles( $hook ) {
         .wpilot-status-dot.waiting { background: #f59e0b !important; animation: wpilotPulse 1.5s ease-in-out infinite !important; }
         .wpilot-status-dot.online { background: #22c55e !important; }
         @keyframes wpilotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes wpilotFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .wpilot-plan { animation: wpilotFadeUp 0.4s ease-out both !important; }
+        .wpilot-plan:nth-child(1) { animation-delay: 0.05s !important; }
+        .wpilot-plan:nth-child(2) { animation-delay: 0.15s !important; }
+        .wpilot-plan:nth-child(3) { animation-delay: 0.25s !important; }
         .wpilot-examples-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 12px !important; margin-top: 20px !important; max-width: 100% !important; }
         .wpilot-example-pill { background: #f8fafc !important; border: 1.5px solid #e2e8f0 !important; border-radius: 12px !important; padding: 16px 18px !important; font-size: 14px !important; color: #475569 !important; font-style: italic !important; line-height: 1.5 !important; transition: all 0.15s !important; text-align: center !important; }
         .wpilot-example-pill:hover { border-color: #4ec9b0 !important; background: #f0fdfa !important; }
@@ -1558,8 +1564,9 @@ function wpilot_lite_admin_styles( $hook ) {
             .wpilot-card, .wpilot-step-card { padding: 22px !important; }
             .wpilot-two-cards { grid-template-columns: 1fr !important; }
             .wpilot-examples-grid { grid-template-columns: 1fr !important; }
-            .wpilot-pricing { flex-direction: column !important; }
-            .wpilot-plan { min-width: unset !important; }
+            .wpilot-pricing { flex-direction: column !important; align-items: stretch !important; }
+            .wpilot-plan { min-width: unset !important; max-width: 100% !important; }
+            .wpilot-plan-popular { transform: scale(1) !important; }
             .wpilot-help-grid { grid-template-columns: 1fr !important; }
             .wpilot-copy-block { padding-right: 20px !important; padding-bottom: 58px !important; }
             .wpilot-copy-btn { top: unset !important; bottom: 12px !important; right: 14px !important; transform: none !important; }
@@ -1593,7 +1600,7 @@ function wpilot_lite_features_page() {
     $checkout_base = 'https://weblease.se/wpilot-checkout?site=' . urlencode( $site_url ) ;
     $usage   = wpilot_lite_get_daily_usage();
     $used    = intval( $usage['count'] );
-    $remain  = max( 0, 999999 - $used );
+    $remain  = 0;
     ?>
     <div class="wpilot-wrap">
 
@@ -1799,376 +1806,30 @@ function wpilot_lite_features_page() {
 
 function wpilot_lite_feature_texts() {
     // Built by Christos Ferlachidis & Daniel Hedenberg
-    $lang = substr( get_locale(), 0, 2 );
-
-    $texts = [
-        'en' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'You can say things like...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Imagine saying...',
-            'lite_examples' => [
-                'Change the title on my homepage',
-                'Add a new page called About Us',
-                'What pages do I have?',
-                'Add a blog post',
-                'Put a new link in the menu',
-                'Change the background color',
-            ],
-            'pro_examples'  => [
-                'Build me a complete shop with 50 products, categories, and shipping',
-                'Redesign my entire site — new colors, fonts, layout on every page',
-                'Fix all SEO problems on all 40 pages — titles, descriptions, images, links',
-                'Create a Black Friday campaign — landing page, 30% coupon, and email text',
-                'Set up an AI chat so my visitors get answers 24/7',
-                'Move all products under 100kr to a Sale category and add a badge',
-            ],
-            'pro_note'      => 'Everything you\'d hire a developer for — Claude does it in seconds. No limits.',
-            'pro_link'      => 'Get Pro',
+    return [
+        'lite_title'    => 'WPilot Lite',
+        'lite_sub'      => 'You can say things like...',
+        'pro_title'     => 'WPilot Pro',
+        'pro_sub'       => 'Imagine saying...',
+        'lite_examples' => [
+            'Change the title on my homepage',
+            'Add a new page called About Us',
+            'What pages do I have?',
+            'Add a blog post',
+            'Put a new link in the menu',
+            'Change the background color',
         ],
-        'sv' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Du kan säga saker som...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Tänk om du kunde säga...',
-            'lite_examples' => [
-                'Ändra rubriken på startsidan',
-                'Lägg till en ny sida som heter Om oss',
-                'Vilka sidor har jag?',
-                'Skriv ett blogginlägg',
-                'Lägg till en ny länk i menyn',
-                'Byt bakgrundsfärg',
-            ],
-            'pro_examples'  => [
-                'Bygg en komplett webshop med 50 produkter, kategorier och frakt',
-                'Gör om hela sajtens design — nya färger, typsnitt och layout på varje sida',
-                'Fixa alla SEO-problem på alla 40 sidor — titlar, beskrivningar, bilder, länkar',
-                'Skapa en Black Friday-kampanj — landningssida, 30% kupong och mailtext',
-                'Sätt upp en AI-chatt så mina besökare får svar dygnet runt',
-                'Flytta alla produkter under 100kr till en Rea-kategori och lägg till en badge',
-            ],
-            'pro_note'      => 'Allt du skulle anlita en utvecklare för — Claude gör det på sekunder. Inga begränsningar.',
-            'pro_link'      => 'Skaffa Pro',
+        'pro_examples'  => [
+            'Build me a complete shop with 50 products, categories, and shipping',
+            'Redesign my entire site — new colors, fonts, layout on every page',
+            'Fix all SEO problems on all 40 pages — titles, descriptions, images, links',
+            'Create a Black Friday campaign — landing page, 30% coupon, and email text',
+            'Set up an AI chat so my visitors get answers 24/7',
+            'Move all products under $100 to a Sale category and add a badge',
         ],
-        'de' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Sie können Dinge sagen wie...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Stellen Sie sich vor, Sie könnten sagen...',
-            'lite_examples' => [
-                'Ändere den Titel meiner Startseite',
-                'Füge eine neue Seite namens Über uns hinzu',
-                'Welche Seiten habe ich?',
-                'Schreibe einen Blogbeitrag',
-                'Füge einen neuen Link ins Menü ein',
-                'Ändere die Hintergrundfarbe',
-            ],
-            'pro_examples'  => [
-                'Baue mir einen kompletten Shop mit 50 Produkten, Kategorien und Versand',
-                'Gestalte meine gesamte Website neu — neue Farben, Schriften, Layout auf jeder Seite',
-                'Behebe alle SEO-Probleme auf allen 40 Seiten — Titel, Beschreibungen, Bilder, Links',
-                'Erstelle eine Black-Friday-Kampagne — Landingpage, 30% Gutschein und E-Mail-Text',
-                'Richte einen KI-Chat ein, damit meine Besucher rund um die Uhr Antworten bekommen',
-                'Verschiebe alle Produkte unter 10€ in eine Sale-Kategorie und füge ein Badge hinzu',
-            ],
-            'pro_note'      => 'Alles, wofür Sie einen Entwickler engagieren würden — Claude erledigt es in Sekunden. Keine Limits.',
-            'pro_link'      => 'Pro holen',
-        ],
-        'fr' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Vous pouvez dire des choses comme...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Imaginez pouvoir dire...',
-            'lite_examples' => [
-                'Change le titre de ma page d\'accueil',
-                'Ajoute une nouvelle page appelée À propos',
-                'Quelles pages est-ce que j\'ai ?',
-                'Écris un article de blog',
-                'Ajoute un nouveau lien dans le menu',
-                'Change la couleur de fond',
-            ],
-            'pro_examples'  => [
-                'Crée-moi une boutique complète avec 50 produits, des catégories et la livraison',
-                'Redesigne tout mon site — nouvelles couleurs, polices, mise en page sur chaque page',
-                'Corrige tous les problèmes SEO sur les 40 pages — titres, descriptions, images, liens',
-                'Crée une campagne Black Friday — page d\'atterrissage, coupon 30% et texte d\'email',
-                'Mets en place un chat IA pour que mes visiteurs obtiennent des réponses 24h/24',
-                'Déplace tous les produits sous 10€ dans une catégorie Soldes et ajoute un badge',
-            ],
-            'pro_note'      => 'Tout ce pour quoi vous engageriez un développeur — Claude le fait en secondes. Sans limites.',
-            'pro_link'      => 'Obtenir Pro',
-        ],
-        'es' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Puedes decir cosas como...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Imagina poder decir...',
-            'lite_examples' => [
-                'Cambia el título de mi página de inicio',
-                'Añade una nueva página llamada Sobre nosotros',
-                '¿Qué páginas tengo?',
-                'Escribe una entrada de blog',
-                'Pon un nuevo enlace en el menú',
-                'Cambia el color de fondo',
-            ],
-            'pro_examples'  => [
-                'Construye una tienda completa con 50 productos, categorías y envío',
-                'Rediseña todo mi sitio — nuevos colores, fuentes y diseño en cada página',
-                'Arregla todos los problemas SEO en las 40 páginas — títulos, descripciones, imágenes, enlaces',
-                'Crea una campaña Black Friday — página de destino, cupón del 30% y texto de email',
-                'Configura un chat IA para que mis visitantes obtengan respuestas las 24 horas',
-                'Mueve todos los productos de menos de 10€ a una categoría Rebajas y añade una insignia',
-            ],
-            'pro_note'      => 'Todo lo que contratarías a un desarrollador para hacer — Claude lo hace en segundos. Sin límites.',
-            'pro_link'      => 'Obtener Pro',
-        ],
-        'nl' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Je kunt dingen zeggen zoals...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Stel je voor dat je kunt zeggen...',
-            'lite_examples' => [
-                'Verander de titel van mijn startpagina',
-                "Voeg een nieuwe pagina toe genaamd Over ons",
-                "Welke pagina's heb ik?",
-                'Schrijf een blogbericht',
-                'Zet een nieuwe link in het menu',
-                'Verander de achtergrondkleur',
-            ],
-            'pro_examples'  => [
-                'Bouw me een complete winkel met 50 producten, categorieën en verzending',
-                'Ontwerp mijn hele site opnieuw — nieuwe kleuren, lettertypen en layout op elke pagina',
-                'Los alle SEO-problemen op alle 40 paginas op — titels, beschrijvingen, afbeeldingen, links',
-                'Maak een Black Friday-campagne — landingspagina, 30% coupon en e-mailtekst',
-                'Stel een AI-chat in zodat mijn bezoekers 24/7 antwoorden krijgen',
-                'Verplaats alle producten onder €10 naar een Uitverkoop-categorie en voeg een badge toe',
-            ],
-            'pro_note'      => 'Alles waarvoor je een ontwikkelaar zou inhuren — Claude doet het in seconden. Geen limieten.',
-            'pro_link'      => 'Pro halen',
-        ],
-        'da' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Du kan sige ting som...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Forestil dig at sige...',
-            'lite_examples' => [
-                'Skift titlen på min forside',
-                'Tilføj en ny side kaldet Om os',
-                'Hvilke sider har jeg?',
-                'Skriv et blogindlæg',
-                'Sæt et nyt link i menuen',
-                'Skift baggrundsfarven',
-            ],
-            'pro_examples'  => [
-                'Byg mig en komplet webshop med 50 produkter, kategorier og fragt',
-                'Redesign hele mit site — nye farver, skrifttyper og layout på hver side',
-                'Fix alle SEO-problemer på alle 40 sider — titler, beskrivelser, billeder, links',
-                'Lav en Black Friday-kampagne — landingsside, 30% kupon og mailtekst',
-                'Opsæt en AI-chat så mine besøgende får svar døgnet rundt',
-                'Flyt alle produkter under 75kr til en Tilbud-kategori og tilføj et badge',
-            ],
-            'pro_note'      => 'Alt hvad du ville hyre en udvikler til — Claude gør det på sekunder. Ingen begrænsninger.',
-            'pro_link'      => 'Få Pro',
-        ],
-        'nb' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Du kan si ting som...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Se for deg å si...',
-            'lite_examples' => [
-                'Endre tittelen på hjemmesiden min',
-                'Legg til en ny side kalt Om oss',
-                'Hvilke sider har jeg?',
-                'Skriv et blogginnlegg',
-                'Sett inn en ny lenke i menyen',
-                'Bytt bakgrunnsfarge',
-            ],
-            'pro_examples'  => [
-                'Bygg meg en komplett nettbutikk med 50 produkter, kategorier og frakt',
-                'Redesign hele nettstedet mitt — nye farger, skrifttyper og layout på hver side',
-                'Fiks alle SEO-problemer på alle 40 sider — titler, beskrivelser, bilder, lenker',
-                'Lag en Black Friday-kampanje — landingsside, 30% kupong og e-posttekst',
-                'Sett opp en AI-chat så besøkende mine får svar døgnet rundt',
-                'Flytt alle produkter under 100kr til en Salg-kategori og legg til et merke',
-            ],
-            'pro_note'      => 'Alt du ville ansatt en utvikler for — Claude gjør det på sekunder. Ingen begrensninger.',
-            'pro_link'      => 'Få Pro',
-        ],
-        'fi' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Voit sanoa esimerkiksi...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Kuvittele voivasi sanoa...',
-            'lite_examples' => [
-                'Vaihda etusivun otsikko',
-                'Lisää uusi sivu nimeltä Tietoa meistä',
-                'Mitä sivuja minulla on?',
-                'Kirjoita blogikirjoitus',
-                'Lisää uusi linkki valikkoon',
-                'Vaihda taustaväri',
-            ],
-            'pro_examples'  => [
-                'Rakenna minulle täydellinen verkkokauppa 50 tuotteella, kategorioilla ja toimituksella',
-                'Uudistu koko sivustoni ulkoasu — uudet värit, fontit ja asettelu joka sivulla',
-                'Korjaa kaikki SEO-ongelmat kaikilla 40 sivulla — otsikot, kuvaukset, kuvat, linkit',
-                'Luo Black Friday -kampanja — laskeutumissivu, 30% kuponki ja sähköpostiteksti',
-                'Aseta tekoälychatti niin että kävijäni saavat vastauksia ympäri vuorokauden',
-                'Siirrä kaikki alle 10€ tuotteet Ale-kategoriaan ja lisää merkki',
-            ],
-            'pro_note'      => 'Kaikki minkä vuoksi palkkaisit kehittäjän — Claude tekee sen sekunneissa. Ei rajoituksia.',
-            'pro_link'      => 'Hanki Pro',
-        ],
-        'it' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Puoi dire cose come...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Immagina di poter dire...',
-            'lite_examples' => [
-                'Cambia il titolo della mia homepage',
-                'Aggiungi una nuova pagina chiamata Chi siamo',
-                'Quali pagine ho?',
-                'Scrivi un articolo del blog',
-                'Metti un nuovo link nel menu',
-                'Cambia il colore di sfondo',
-            ],
-            'pro_examples'  => [
-                'Costruiscimi un negozio completo con 50 prodotti, categorie e spedizione',
-                'Ridisegna tutto il mio sito — nuovi colori, font e layout su ogni pagina',
-                'Risolvi tutti i problemi SEO su tutte le 40 pagine — titoli, descrizioni, immagini, link',
-                'Crea una campagna Black Friday — pagina di atterraggio, coupon del 30% e testo email',
-                'Configura una chat AI così i miei visitatori ricevono risposte 24 ore su 24',
-                'Sposta tutti i prodotti sotto 10€ in una categoria Saldi e aggiungi un badge',
-            ],
-            'pro_note'      => 'Tutto ciò per cui assumeresti uno sviluppatore — Claude lo fa in secondi. Nessun limite.',
-            'pro_link'      => 'Ottieni Pro',
-        ],
-        'pt' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Você pode dizer coisas como...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Imagine poder dizer...',
-            'lite_examples' => [
-                'Muda o título da minha página inicial',
-                'Adiciona uma nova página chamada Sobre nós',
-                'Que páginas eu tenho?',
-                'Escreve uma postagem de blog',
-                'Coloca um novo link no menu',
-                'Muda a cor de fundo',
-            ],
-            'pro_examples'  => [
-                'Cria uma loja completa com 50 produtos, categorias e frete',
-                'Redesenha todo o meu site — novas cores, fontes e layout em cada página',
-                'Corrige todos os problemas de SEO nas 40 páginas — títulos, descrições, imagens, links',
-                'Cria uma campanha Black Friday — página de destino, cupom de 30% e texto de email',
-                'Configura um chat de IA para que meus visitantes recebam respostas 24 horas por dia',
-                'Move todos os produtos abaixo de R$50 para uma categoria Promoção e adiciona um badge',
-            ],
-            'pro_note'      => 'Tudo o que você contrataria um desenvolvedor para fazer — Claude faz em segundos. Sem limites.',
-            'pro_link'      => 'Obter Pro',
-        ],
-        'pl' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Możesz powiedzieć coś takiego...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Wyobraź sobie, że możesz powiedzieć...',
-            'lite_examples' => [
-                'Zmień tytuł na mojej stronie głównej',
-                'Dodaj nową stronę o nazwie O nas',
-                'Jakie strony mam?',
-                'Dodaj wpis na blogu',
-                'Wstaw nowy link do menu',
-                'Zmień kolor tła',
-            ],
-            'pro_examples'  => [
-                'Zbuduj mi kompletny sklep z 50 produktami, kategoriami i wysyłką',
-                'Przeprojektuj całą moją stronę — nowe kolory, czcionki i układ na każdej podstronie',
-                'Napraw wszystkie problemy SEO na wszystkich 40 stronach — tytuły, opisy, obrazy, linki',
-                'Stwórz kampanię Black Friday — stronę docelową, kupon 30% i treść emaila',
-                'Ustaw czat AI, żeby moi odwiedzający mogli dostać odpowiedzi o każdej porze',
-                'Przenieś wszystkie produkty poniżej 50zł do kategorii Wyprzedaż i dodaj odznakę',
-            ],
-            'pro_note'      => 'Wszystko, do czego zatrudniłbyś programistę — Claude robi to w sekundy. Bez ograniczeń.',
-            'pro_link'      => 'Zdobądź Pro',
-        ],
-        'tr' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Şunları söyleyebilirsiniz...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Şunu söyleyebildiğinizi hayal edin...',
-            'lite_examples' => [
-                'Ana sayfamdaki başlığı değiştir',
-                'Hakkımızda adında yeni bir sayfa ekle',
-                'Hangi sayfalarım var?',
-                'Bir blog yazısı ekle',
-                'Menüye yeni bir bağlantı koy',
-                'Arka plan rengini değiştir',
-            ],
-            'pro_examples'  => [
-                '50 ürün, kategoriler ve kargo ile tam bir mağaza kur',
-                'Tüm sitemi yeniden tasarla — her sayfada yeni renkler, yazı tipleri ve düzen',
-                'Tüm 40 sayfadaki SEO sorunlarını düzelt — başlıklar, açıklamalar, görseller, bağlantılar',
-                'Black Friday kampanyası oluştur — açılış sayfası, %30 kupon ve e-posta metni',
-                'Ziyaretçilerimin 7/24 cevap alması için bir AI sohbet botu kur',
-                '100TL altındaki tüm ürünleri Kampanya kategorisine taşı ve rozet ekle',
-            ],
-            'pro_note'      => 'Bir geliştirici tutacağınız her şeyi — Claude saniyeler içinde yapar. Sınır yok.',
-            'pro_link'      => 'Pro\'yu Al',
-        ],
-        'ar' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'يمكنك قول أشياء مثل...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'تخيل أن تقول...',
-            'lite_examples' => [
-                'غيّر عنوان صفحتي الرئيسية',
-                'أضف صفحة جديدة باسم من نحن',
-                'ما هي الصفحات التي لدي؟',
-                'أضف تدوينة جديدة',
-                'ضع رابطاً جديداً في القائمة',
-                'غيّر لون الخلفية',
-            ],
-            'pro_examples'  => [
-                'ابنِ لي متجراً كاملاً بـ50 منتجاً وفئات وشحن',
-                'أعد تصميم موقعي بالكامل — ألوان وخطوط وتخطيط جديد في كل صفحة',
-                'أصلح جميع مشاكل SEO في كل الـ40 صفحة — العناوين والأوصاف والصور والروابط',
-                'أنشئ حملة الجمعة السوداء — صفحة هبوط وكوبون خصم 30% ونص بريد إلكتروني',
-                'أعدّ محادثة ذكاء اصطناعي حتى يحصل زوار موقعي على إجابات على مدار الساعة',
-                'انقل جميع المنتجات أقل من 50 ريال إلى فئة التخفيضات وأضف شارة',
-            ],
-            'pro_note'      => 'كل ما كنت ستوظف مطوراً للقيام به — يفعله Claude في ثوانٍ. بدون قيود.',
-            'pro_link'      => 'احصل على Pro',
-        ],
-        'el' => [
-            'lite_title'    => 'WPilot Lite',
-            'lite_sub'      => 'Μπορείς να πεις πράγματα όπως...',
-            'pro_title'     => 'WPilot Pro',
-            'pro_sub'       => 'Φαντάσου να μπορείς να πεις...',
-            'lite_examples' => [
-                'Άλλαξε τον τίτλο στην αρχική μου σελίδα',
-                'Πρόσθεσε μια νέα σελίδα που λέγεται Σχετικά με εμάς',
-                'Ποιες σελίδες έχω;',
-                'Πρόσθεσε ένα άρθρο στο blog',
-                'Βάλε έναν νέο σύνδεσμο στο μενού',
-                'Άλλαξε το χρώμα φόντου',
-            ],
-            'pro_examples'  => [
-                'Φτιάξε μου ένα πλήρες κατάστημα με 50 προϊόντα, κατηγορίες και αποστολή',
-                'Ανανέωσε εντελώς το σάιτ μου — νέα χρώματα, γραμματοσειρές και layout σε κάθε σελίδα',
-                'Διόρθωσε όλα τα SEO προβλήματα σε όλες τις 40 σελίδες — τίτλοι, περιγραφές, εικόνες, σύνδεσμοι',
-                'Δημιούργησε καμπάνια Black Friday — σελίδα προορισμού, κουπόνι 30% και κείμενο email',
-                'Στήσε ένα AI chat ώστε οι επισκέπτες μου να παίρνουν απαντήσεις 24/7',
-                'Μετακίνησε όλα τα προϊόντα κάτω από 10€ σε κατηγορία Εκπτώσεις και πρόσθεσε badge',
-            ],
-            'pro_note'      => 'Όλα όσα θα προσλάμβανες developer για να κάνει — ο Claude τα κάνει σε δευτερόλεπτα. Χωρίς όρια.',
-            'pro_link'      => 'Αποκτήστε Pro',
-        ],
+        'pro_note'      => "Everything you'd hire a developer for — Claude does it in seconds.",
+        'pro_link'      => 'Get Pro',
     ];
-
-    // Norwegian variants
-    $texts['no'] = $texts['nb'];
-    $texts['nn'] = $texts['nb'];
-
-    return $texts[ $lang ] ?? $texts['en'];
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2349,7 +2010,7 @@ function wpilot_lite_admin_page() {
                     <div style="font-size:28px !important;">&#9733;</div>
                     <div style="flex:1 !important;">
                         <h3 style="margin:0 0 2px !important;font-size:15px !important;color:#92400e !important;"><?php esc_html_e( 'Want more from Claude?', 'wpilot' ); ?></h3>
-                        <p style="margin:0 !important;font-size:13px !important;color:#a16207 !important;line-height:1.5 !important;"><?php esc_html_e( 'Pro unlocks unlimited requests, AI chat agent, advanced SEO, and smarter responses.', 'wpilot' ); ?></p>
+                        <p style="margin:0 !important;font-size:13px !important;color:#a16207 !important;line-height:1.5 !important;"><?php esc_html_e( 'Pro adds AI Chat Agent, advanced SEO expert, smart prompts, and priority support.', 'wpilot' ); ?></p>
                     </div>
                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite-features' ) ); ?>" class="wpilot-btn wpilot-btn-outline" style="white-space:nowrap !important;font-size:12px !important;padding:8px 16px !important;border-color:#fbbf24 !important;color:#92400e !important;"><?php esc_html_e( 'See Pro features', 'wpilot' ); ?></a>
                 </div>
@@ -2590,7 +2251,7 @@ function wpilot_lite_admin_page() {
         </div>
 
         <!-- The math -->
-        <div class="wpilot-card" style="text-align:center !important;padding:36px 32px !important;">
+        <div class="wpilot-card" style="text-align:center !important;padding:44px 36px !important;background:linear-gradient(135deg, #fafbff 0%, #f0fdf4 100%) !important;border:1.5px solid #e2e8f0 !important;">
             <h2 style="font-size:20px !important;margin-bottom:16px !important;"><?php esc_html_e( 'Think about it this way', 'wpilot' ); ?></h2>
             <div style="display:flex !important;justify-content:center !important;gap:40px !important;flex-wrap:wrap !important;margin-bottom:24px !important;">
                 <div style="text-align:center !important;">
@@ -2609,9 +2270,14 @@ function wpilot_lite_admin_page() {
         </div>
 
         <!-- Pricing -->
-        <div class="wpilot-card">
-            <h2 style="text-align:center !important;margin-bottom:4px !important;"><?php esc_html_e( 'Choose your plan', 'wpilot' ); ?></h2>
-            <p style="text-align:center !important;color:#64748b !important;font-size:14px !important;margin-bottom:24px !important;"><?php esc_html_e( 'All plans include every Pro feature. Cancel anytime.', 'wpilot' ); ?></p>
+        <div class="wpilot-card" style="padding:40px 36px !important;overflow:visible !important;">
+            <h2 style="text-align:center !important;margin-bottom:8px !important;font-size:28px !important;font-weight:800 !important;color:#0f172a !important;letter-spacing:-0.5px !important;"><?php esc_html_e( 'Choose your plan', 'wpilot' ); ?></h2>
+            <p style="text-align:center !important;color:#94a3b8 !important;font-size:15px !important;margin-bottom:8px !important;font-weight:400 !important;"><?php esc_html_e( 'All plans include every Pro feature. Cancel anytime.', 'wpilot' ); ?></p>
+            <div style="display:flex !important;justify-content:center !important;gap:24px !important;margin-bottom:8px !important;flex-wrap:wrap !important;">
+                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'No setup fees', 'wpilot' ); ?></span>
+                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'Cancel anytime', 'wpilot' ); ?></span>
+                <span style="font-size:12px !important;color:#64748b !important;display:flex !important;align-items:center !important;gap:6px !important;"><span style="color:#22c55e !important;">&#10003;</span> <?php esc_html_e( 'Instant activation', 'wpilot' ); ?></span>
+            </div>
 
             <?php $checkout_base = 'https://weblease.se/wpilot-checkout?site=' . urlencode( $site_url ) ; ?>
             <div class="wpilot-pricing">
@@ -2654,7 +2320,9 @@ function wpilot_lite_admin_page() {
                     <a href="<?php echo esc_url( $checkout_base . '&plan=lifetime' ); ?>" target="_blank" class="wpilot-btn wpilot-btn-primary"><?php esc_html_e( 'Get Lifetime', 'wpilot' ); ?></a>
                 </div>
             </div>
-            <p style="text-align:center !important;font-size:12px !important;color:#94a3b8 !important;margin-top:14px !important;"><?php esc_html_e( 'Already have a license? Activate it in the Pro plugin after download.', 'wpilot' ); ?></p>
+            <div style="text-align:center !important;margin-top:24px !important;padding-top:20px !important;border-top:1px solid #f1f5f9 !important;">
+                <p style="font-size:13px !important;color:#94a3b8 !important;margin:0 !important;"><?php esc_html_e( 'Already have a license?', 'wpilot' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite' ) ); ?>" style="color:#4ec9b0 !important;font-weight:600 !important;text-decoration:none !important;"><?php esc_html_e( 'Activate it here', 'wpilot' ); ?> &rarr;</a></p>
+            </div>
         </div>
 
         </div>
