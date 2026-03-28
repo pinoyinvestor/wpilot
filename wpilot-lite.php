@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  WPilot Lite — AI WordPress Assistant
  * Plugin URI:   https://weblease.se/wpilot
- * Description:  Connect Claude to your WordPress site. AI-powered site management with 5 free requests per day.
+ * Description:  Connect Claude to your WordPress site. AI-powered site management through natural conversation.
  * Version:      1.0.0
  * Author:       Weblease
  * Author URI:   https://weblease.se
@@ -16,7 +16,7 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 define( 'WPILOT_LITE_VERSION', '1.0.0' );
-define( 'WPILOT_LITE_DAILY_LIMIT', 5 );
+// Usage tracked locally for display only — no limit enforced in plugin code (wordpress.org compliance)
 
 // ══════════════════════════════════════════════════════════════
 //  HOOKS
@@ -35,9 +35,7 @@ add_action( 'admin_menu', 'wpilot_lite_register_admin' );
 add_action( 'admin_init', 'wpilot_lite_handle_actions' );
 add_action( 'admin_enqueue_scripts', 'wpilot_lite_admin_styles' );
 
-// Auto-update: check weblease.se for new versions
-add_filter( 'pre_set_site_transient_update_plugins', 'wpilot_lite_check_update' );
-add_filter( 'plugins_api', 'wpilot_lite_plugin_info', 20, 3 );
+// Updates handled by wordpress.org (Lite is distributed there)
 add_filter( 'plugin_row_meta', 'wpilot_lite_plugin_links', 10, 2 );
 
 // Redirect to onboarding on first activation
@@ -489,45 +487,6 @@ function wpilot_lite_claude_is_online() {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  AUTO LICENSE MATCH — Check weblease.se on first connection
-// ══════════════════════════════════════════════════════════════
-
-function wpilot_lite_auto_match_license() {
-    // Only try once per 24 hours
-    if ( get_transient( 'wpilot_auto_match_checked' ) ) return;
-    set_transient( 'wpilot_auto_match_checked', '1', DAY_IN_SECONDS );
-
-    // Skip if a license key is already saved
-    if ( get_option( 'wpilot_license_key', '' ) !== '' ) return;
-
-    $email    = get_option( 'admin_email', '' );
-    $site_url = get_site_url();
-
-    if ( empty( $email ) || empty( $site_url ) ) return;
-
-    // Built by Christos Ferlachidis & Daniel Hedenberg
-    $response = wp_remote_post( 'https://weblease.se/ai-license/auto-match', [
-        'timeout' => 10,
-        'headers' => [ 'Content-Type' => 'application/json' ],
-        'body'    => wp_json_encode( [
-            'email'          => $email,
-            'site_url'       => $site_url,
-            'plugin_version' => WPILOT_LITE_VERSION,
-        ] ),
-    ] );
-
-    if ( is_wp_error( $response ) ) return;
-
-    $body = json_decode( wp_remote_retrieve_body( $response ), true );
-
-    if ( ! empty( $body['valid'] ) && ! empty( $body['license_key'] ) ) {
-        update_option( 'wpilot_license_key', sanitize_text_field( $body['license_key'] ) );
-        set_transient( 'wpilot_license_status', 'valid', 3600 );
-        if ( ! empty( $body['chat_agent'] ) ) {
-            set_transient( 'wpilot_chat_agent_licensed', 'yes', 3600 );
-        }
-    }
-}
 
 //  REST ROUTE
 // ══════════════════════════════════════════════════════════════
@@ -684,7 +643,7 @@ function wpilot_lite_mcp_endpoint( $request ) {
     update_option( 'wpilot_claude_last_seen', time(), false );
 
     // Auto-match license on first MCP connection
-    wpilot_lite_auto_match_license();
+    // License auto-match removed (requires user consent per wordpress.org guidelines)
 
     // Connection tracking
     wpilot_lite_track_connection( $token_data );
@@ -782,21 +741,7 @@ function wpilot_lite_handle_execute( $id, $params, $style = 'simple' ) {
         return wpilot_lite_rpc_tool_result( $id, __( 'No action provided.', 'wpilot' ), true );
     }
 
-    // Daily limit check
-    $usage = wpilot_lite_get_daily_usage();
-    $used  = intval( $usage['count'] );
-
-    if ( $used >= WPILOT_LITE_DAILY_LIMIT ) {
-        return wpilot_lite_rpc_tool_result( $id,
-            sprintf(
-                __( "You've used all %d free requests today. Upgrade to WPilot Pro for unlimited requests — plans start at \$9/month. Visit https://weblease.se/wpilot-checkout to upgrade.", 'wpilot' ),
-                WPILOT_LITE_DAILY_LIMIT
-            ),
-            true
-        );
-    }
-
-    // Increment usage
+    // Track usage locally (for display in admin dashboard)
     wpilot_lite_increment_usage();
 
     // Size limit (50KB max)
@@ -1037,8 +982,8 @@ function wpilot_lite_handle_execute( $id, $params, $style = 'simple' ) {
 
     // Show remaining daily usage in response
     $usage = wpilot_lite_get_daily_usage();
-    $remaining = max( 0, WPILOT_LITE_DAILY_LIMIT - intval( $usage['count'] ) );
-    $result .= "\n\n[WPilot Lite: {$remaining}/" . WPILOT_LITE_DAILY_LIMIT . " requests remaining today]";
+    $remaining = max( 0, 999999 - intval( $usage['count'] ) );
+    $result .= "\n\n[WPilot Lite: {$remaining}/" . 999999 . " requests remaining today]";
 
     return wpilot_lite_rpc_tool_result( $id, $result, false );
 }
@@ -1215,14 +1160,14 @@ function wpilot_lite_system_prompt( $style = 'simple' ) {
     }
 
     $usage     = wpilot_lite_get_daily_usage();
-    $remaining = max( 0, WPILOT_LITE_DAILY_LIMIT - intval( $usage['count'] ) );
+    $remaining = max( 0, 999999 - intval( $usage['count'] ) );
 
     $prompt = "You are WPilot Lite, a WordPress assistant connected to \"{$site_name}\" ({$site_url}).
 
 SITE CONTEXT:
 - Theme: {$theme}
 - WordPress language: {$language}{$woo}
-- Plan: Lite (free) — {$remaining}/" . WPILOT_LITE_DAILY_LIMIT . " requests remaining today";
+- Plan: Lite (free) — {$remaining}/" . 999999 . " requests remaining today";
 
     if ( $owner )    $prompt .= "\n- Owner: {$owner}";
     if ( $business ) $prompt .= "\n- Business: {$business}";
@@ -1401,8 +1346,8 @@ BE PROFESSIONAL:
 - For WooCommerce: always confirm before changing prices, stock, or order statuses.
 
 UPGRADE:
-- This is WPilot Lite with {$remaining} requests remaining today. For unlimited requests, recommend upgrading to Pro at https://weblease.se/wpilot-checkout.
-- Only mention the upgrade naturally — when the user runs low on requests or asks about limits. Never push it repeatedly.
+- This is WPilot Lite. For advanced features like AI Chat Agent and SEO Expert, recommend WPilot Pro at https://weblease.se/wpilot-checkout.
+- Only mention Pro naturally — when the user asks about advanced features. Never push it repeatedly.
 
 ABOUT WPILOT:
 - Made by Weblease (weblease.se/wpilot). For licensing, pricing, or support — direct the user there.";
@@ -1411,7 +1356,7 @@ ABOUT WPILOT:
     $prompt .= "\n\n" . str_repeat( '=', 39 );
     $prompt .= "\nSESSION START — DO THIS FIRST:";
     $prompt .= "\n1. GREET the site owner by name. Confirm connection.";
-    $prompt .= "\n2. Tell them their plan (Lite, {$remaining}/" . WPILOT_LITE_DAILY_LIMIT . " requests today).";
+    $prompt .= "\n2. Tell them their plan (Lite, {$remaining}/" . 999999 . " requests today).";
     $prompt .= "\n3. Ask what they need help with.";
     $prompt .= "\n" . str_repeat( '=', 39 );
 
@@ -1627,84 +1572,9 @@ function wpilot_lite_admin_styles( $hook ) {
 //  AUTO-UPDATE — Check weblease.se for new plugin versions
 // ══════════════════════════════════════════════════════════════
 
-function wpilot_lite_check_update( $transient ) {
-    if ( empty( $transient->checked ) ) return $transient;
+// Auto-update functions removed — wordpress.org handles Lite updates
 
-    $remote = wpilot_lite_get_remote_version();
-    if ( ! $remote ) return $transient;
 
-    $plugin_file = plugin_basename( __FILE__ );
-    $current     = WPILOT_LITE_VERSION;
-
-    if ( version_compare( $remote['version'] ?? '', $current, '>' ) ) {
-        $transient->response[ $plugin_file ] = (object) [
-            'slug'        => 'wpilot-lite',
-            'plugin'      => $plugin_file,
-            'new_version' => $remote['version'],
-            'url'         => 'https://weblease.se/wpilot',
-            'package'     => $remote['download_url'] ?? '',
-            'icons'       => [ 'default' => 'https://weblease.se/wpilot-icon.png' ],
-            'tested'      => $remote['tested'] ?? '6.8',
-            'requires'    => $remote['requires'] ?? '6.0',
-        ];
-    } else {
-        $transient->no_update[ $plugin_file ] = (object) [
-            'slug'        => 'wpilot-lite',
-            'plugin'      => $plugin_file,
-            'new_version' => $current,
-            'url'         => 'https://weblease.se/wpilot',
-        ];
-    }
-
-    return $transient;
-}
-
-function wpilot_lite_plugin_info( $result, $action, $args ) {
-    if ( $action !== 'plugin_information' || ( $args->slug ?? '' ) !== 'wpilot-lite' ) return $result;
-
-    $remote = wpilot_lite_get_remote_version();
-    if ( ! $remote ) return $result;
-
-    return (object) [
-        'name'          => esc_html__( 'WPilot Lite — AI WordPress Assistant', 'wpilot' ),
-        'slug'          => 'wpilot-lite',
-        'version'       => $remote['version'],
-        'author'        => '<a href="https://weblease.se">Weblease</a>',
-        'homepage'      => 'https://weblease.se/wpilot',
-        'download_link' => $remote['download_url'] ?? '',
-        'requires'      => $remote['requires'] ?? '6.0',
-        'tested'        => $remote['tested'] ?? '6.8',
-        'requires_php'  => '8.0',
-        'sections'      => [
-            'description' => esc_html__( 'Connect Claude to your WordPress site. AI-powered site management via MCP.', 'wpilot' ),
-            'changelog'   => $remote['changelog'] ?? 'See <a href="https://weblease.se/wpilot">weblease.se/wpilot</a> for details.',
-        ],
-    ];
-}
-
-function wpilot_lite_get_remote_version() {
-    $cached = get_transient( 'wpilot_lite_update_info' );
-    if ( $cached !== false ) return $cached;
-
-    $response = wp_remote_get( 'https://weblease.se/api/plugin/version', [
-        'timeout' => 8,
-        'headers' => [ 'Accept' => 'application/json' ],
-    ] );
-
-    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
-        set_transient( 'wpilot_lite_update_info', [], 3600 );
-        return [];
-    }
-
-    $body = json_decode( wp_remote_retrieve_body( $response ), true );
-    if ( empty( $body['version'] ) ) {
-        set_transient( 'wpilot_lite_update_info', [], 3600 );
-        return [];
-    }
-
-    set_transient( 'wpilot_lite_update_info', $body, 12 * HOUR_IN_SECONDS );
-    return $body;
-}
 
 function wpilot_lite_plugin_links( $links, $file ) {
     if ( $file === plugin_basename( __FILE__ ) ) {
@@ -1720,10 +1590,10 @@ function wpilot_lite_plugin_links( $links, $file ) {
 
 function wpilot_lite_features_page() {
     $site_url = get_site_url();
-    $checkout_base = 'https://weblease.se/wpilot-checkout?site=' . urlencode( $site_url ) . '&email=' . urlencode( get_option( 'admin_email' ) );
+    $checkout_base = 'https://weblease.se/wpilot-checkout?site=' . urlencode( $site_url ) ;
     $usage   = wpilot_lite_get_daily_usage();
     $used    = intval( $usage['count'] );
-    $remain  = max( 0, WPILOT_LITE_DAILY_LIMIT - $used );
+    $remain  = max( 0, 999999 - $used );
     ?>
     <div class="wpilot-wrap">
 
@@ -1732,12 +1602,7 @@ function wpilot_lite_features_page() {
             <p class="tagline"><?php esc_html_e( 'Everything you need to run your website with AI. No limits, no compromises.', 'wpilot' ); ?></p>
         </div>
 
-        <?php if ( $remain <= 2 ): ?>
-        <div class="wpilot-alert" style="background:linear-gradient(135deg,#fef3c7,#fff7ed) !important;border:1px solid #fbbf24 !important;color:#92400e !important;margin-bottom:20px !important;">
-            <strong><?php printf( esc_html__( 'You have %d request(s) left today.', 'wpilot' ), $remain ); ?></strong>
-            <?php esc_html_e( 'Pro gives you unlimited requests — no more counting.', 'wpilot' ); ?>
-        </div>
-        <?php endif; ?>
+
 
         <!-- VALUE PROPOSITION -->
         <div class="wpilot-card" style="text-align:center !important;padding:40px 32px !important;">
@@ -1747,13 +1612,13 @@ function wpilot_lite_features_page() {
             </p>
             <div style="display:flex !important;justify-content:center !important;gap:40px !important;flex-wrap:wrap !important;margin-bottom:10px !important;">
                 <div style="text-align:center !important;">
-                    <div style="font-size:36px !important;font-weight:800 !important;color:#1e293b !important;">5</div>
-                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Lite (per day)', 'wpilot' ); ?></div>
+                    <div style="font-size:36px !important;font-weight:800 !important;color:#1e293b !important;">6</div>
+                    <div style="font-size:12px !important;color:#94a3b8 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Lite features', 'wpilot' ); ?></div>
                 </div>
                 <div style="font-size:28px !important;color:#d4d4d8 !important;align-self:center !important;">vs</div>
                 <div style="text-align:center !important;">
-                    <div style="font-size:36px !important;font-weight:800 !important;background:linear-gradient(135deg,#4ec9b0,#22c55e) !important;-webkit-background-clip:text !important;-webkit-text-fill-color:transparent !important;background-clip:text !important;">&#8734;</div>
-                    <div style="font-size:12px !important;color:#4ec9b0 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Pro (unlimited)', 'wpilot' ); ?></div>
+                    <div style="font-size:36px !important;font-weight:800 !important;background:linear-gradient(135deg,#4ec9b0,#22c55e) !important;-webkit-background-clip:text !important;-webkit-text-fill-color:transparent !important;background-clip:text !important;">15+</div>
+                    <div style="font-size:12px !important;color:#4ec9b0 !important;font-weight:600 !important;text-transform:uppercase !important;"><?php esc_html_e( 'Pro features', 'wpilot' ); ?></div>
                 </div>
             </div>
         </div>
@@ -1779,16 +1644,10 @@ function wpilot_lite_features_page() {
             <div class="wpilot-card" style="position:relative !important;overflow:hidden !important;">
                 <div style="position:absolute !important;top:16px !important;right:16px !important;background:linear-gradient(135deg,#f59e0b,#d97706) !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;padding:4px 12px !important;border-radius:20px !important;text-transform:uppercase !important;letter-spacing:0.06em !important;">Pro</div>
                 <div style="font-size:32px !important;margin-bottom:12px !important;">&#9889;</div>
-                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Unlimited Requests', 'wpilot' ); ?></h2>
-                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Stop counting. With Pro, you can ask Claude anything, anytime — redesign pages, manage products, fix SEO problems, all in one session.', 'wpilot' ); ?></p>
-                <div style="background:#fef2f2 !important;border-radius:12px !important;padding:16px !important;border:1px solid #fecaca !important;">
-                    <div style="display:flex !important;justify-content:space-between !important;align-items:center !important;margin-bottom:8px !important;">
-                        <span style="font-size:13px !important;font-weight:600 !important;color:#991b1b !important;"><?php esc_html_e( 'Your Lite limit today', 'wpilot' ); ?></span>
-                        <span style="font-size:13px !important;font-weight:700 !important;color:#dc2626 !important;"><?php echo esc_html( $used ); ?>/<?php echo esc_html( WPILOT_LITE_DAILY_LIMIT ); ?> <?php esc_html_e( 'used', 'wpilot' ); ?></span>
-                    </div>
-                    <div style="background:#fee2e2 !important;border-radius:6px !important;height:8px !important;overflow:hidden !important;">
-                        <div style="height:100% !important;border-radius:6px !important;background:#dc2626 !important;width:<?php echo esc_attr( min( 100, ( $used / WPILOT_LITE_DAILY_LIMIT ) * 100 ) ); ?>% !important;"></div>
-                    </div>
+                <h2 style="font-size:18px !important;"><?php esc_html_e( 'Priority Performance', 'wpilot' ); ?></h2>
+                <p class="subtitle" style="margin-bottom:16px !important;"><?php esc_html_e( 'Pro uses optimized prompts and advanced sandboxing for faster, more accurate responses. Handle complex multi-step tasks with confidence.', 'wpilot' ); ?></p>
+                <div style="background:#f0fdf4 !important;border-radius:12px !important;padding:16px !important;border:1px solid #bbf7d0 !important;">
+                    <div style="font-size:13px !important;color:#166534 !important;font-weight:600 !important;"><?php esc_html_e( 'Lite is fully functional — Pro adds advanced features', 'wpilot' ); ?></div>
                 </div>
             </div>
 
@@ -1870,7 +1729,7 @@ function wpilot_lite_features_page() {
                 <tbody>
                     <?php
                     $rows = [
-                        [ __( 'Daily requests', 'wpilot' ), '5', __( 'Unlimited', 'wpilot' ) ],
+                        [ __( 'Basic MCP connection', 'wpilot' ), true, true ],
                         [ __( 'Connect Claude Desktop', 'wpilot' ), true, true ],
                         [ __( 'Connect Claude Code (terminal)', 'wpilot' ), true, true ],
                         [ __( 'Multiple connections (team)', 'wpilot' ), '3', __( 'Unlimited', 'wpilot' ) ],
@@ -2330,7 +2189,7 @@ function wpilot_lite_admin_page() {
     $error       = sanitize_text_field( $_GET['error'] ?? '' );
     $usage       = wpilot_lite_get_daily_usage();
     $used_today  = intval( $usage['count'] );
-    $remaining   = max( 0, WPILOT_LITE_DAILY_LIMIT - $used_today );
+    $remaining   = 0; // No limit in Lite — fully functional
     $is_online   = wpilot_lite_claude_is_online();
     $mcp_url     = $site_url . '/wp-json/wpilot/v1/mcp';
 
@@ -2346,16 +2205,14 @@ function wpilot_lite_admin_page() {
         <div style="background:#fff !important;border:1px solid #e2e8f0 !important;border-radius:12px !important;padding:14px 20px !important;margin-bottom:16px !important;display:flex !important;align-items:center !important;justify-content:space-between !important;gap:16px !important;">
             <div style="flex:1 !important;">
                 <div style="display:flex !important;justify-content:space-between !important;margin-bottom:6px !important;">
-                    <span style="font-size:13px !important;font-weight:600 !important;color:#374151 !important;"><?php printf( esc_html__( '%d of %d free requests used today', 'wpilot' ), $used_today, WPILOT_LITE_DAILY_LIMIT ); ?></span>
-                    <span style="font-size:12px !important;color:#94a3b8 !important;"><?php esc_html_e( 'Resets at midnight', 'wpilot' ); ?></span>
+                    <span style="font-size:13px !important;font-weight:600 !important;color:#374151 !important;"><?php printf( esc_html__( '%d requests used today', 'wpilot' ), $used_today ); ?></span>
+                    
                 </div>
                 <div style="background:#f1f5f9 !important;border-radius:6px !important;height:6px !important;overflow:hidden !important;">
-                    <div style="height:100% !important;border-radius:6px !important;background:<?php echo esc_attr( $used_today >= WPILOT_LITE_DAILY_LIMIT ? '#dc2626' : ( $remaining <= 2 ? '#f59e0b' : 'linear-gradient(90deg,#4ec9b0,#22c55e)' ) ); ?> !important;width:<?php echo esc_attr( min( 100, ( $used_today / WPILOT_LITE_DAILY_LIMIT ) * 100 ) ); ?>% !important;transition:width 0.4s !important;"></div>
+                    <div style="height:100% !important;border-radius:6px !important;background:linear-gradient(90deg,#4ec9b0,#22c55e) !important;width:0% !important;transition:width 0.4s !important;"></div>
                 </div>
             </div>
-            <?php if ( $remaining <= 2 ): ?>
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpilot-lite-features' ) ); ?>" style="white-space:nowrap !important;font-size:12px !important;font-weight:700 !important;color:#f59e0b !important;text-decoration:none !important;"><?php esc_html_e( 'Go unlimited', 'wpilot' ); ?> &rarr;</a>
-            <?php endif; ?>
+
         </div>
 
         <?php if ( $saved === 'profile' ): ?>
@@ -2373,7 +2230,7 @@ function wpilot_lite_admin_page() {
         <div class="wpilot-tabs">
             <button class="wpilot-tab active" data-tab="start">Get Started<?php if ( ! $is_online ): ?><span class="tab-badge amber">!</span><?php else: ?><span class="tab-badge green">&#10003;</span><?php endif; ?></button>
             <button class="wpilot-tab" data-tab="connections">Connections<?php if ( ! empty( $tokens ) ): ?><span class="tab-badge green"><?php echo intval( count( $tokens ) ); ?></span><?php endif; ?></button>
-            <button class="wpilot-tab" data-tab="upgrade">Upgrade<span class="tab-badge amber"><?php echo esc_html( $remaining ); ?></span></button>
+            <button class="wpilot-tab" data-tab="upgrade"><?php esc_html_e( 'Upgrade', 'wpilot' ); ?></button>
             <button class="wpilot-tab" data-tab="help">Help</button>
         </div>
 
@@ -2690,13 +2547,9 @@ function wpilot_lite_admin_page() {
             <div style="display:flex !important;align-items:start !important;gap:16px !important;">
                 <div style="font-size:28px !important;">&#9888;</div>
                 <div>
-                    <h2 style="color:#92400e !important;font-size:18px !important;margin-bottom:6px !important;"><?php esc_html_e( 'You are using the limited version', 'wpilot' ); ?></h2>
+                    <h2 style="color:#92400e !important;font-size:18px !important;margin-bottom:6px !important;"><?php esc_html_e( 'You are using WPilot Lite', 'wpilot' ); ?></h2>
                     <p style="color:#a16207 !important;font-size:14px !important;margin:0 !important;line-height:1.6 !important;">
-                        <?php printf(
-                            esc_html__( 'You have used %1$d of %2$d requests today. With Pro, there are no limits — ask Claude anything, as many times as you want.', 'wpilot' ),
-                            $used_today,
-                            WPILOT_LITE_DAILY_LIMIT
-                        ); ?>
+                        <?php esc_html_e( 'WPilot Pro adds advanced features like AI Chat Agent, SEO Expert mode, smart prompts, and priority support.', 'wpilot' ); ?>
                     </p>
                 </div>
             </div>
@@ -2721,8 +2574,8 @@ function wpilot_lite_admin_page() {
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:20px !important;border:1px solid #e2e8f0 !important;position:relative !important;">
                     <div style="position:absolute !important;top:12px !important;right:12px !important;background:#f59e0b !important;color:#fff !important;font-size:9px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:10px !important;">PRO</div>
                     <div style="font-size:24px !important;margin-bottom:8px !important;">&#9889;</div>
-                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'Unlimited Requests', 'wpilot' ); ?></h3>
-                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'No daily limit — ask Claude anything, anytime', 'wpilot' ); ?></p>
+                    <h3 style="font-size:14px !important;margin:0 0 4px !important;color:#1e293b !important;"><?php esc_html_e( 'Priority Performance', 'wpilot' ); ?></h3>
+                    <p style="font-size:12px !important;color:#64748b !important;margin:0 !important;"><?php esc_html_e( 'Optimized prompts for complex WordPress tasks', 'wpilot' ); ?></p>
                 </div>
                 <div style="background:#f8fafc !important;border-radius:12px !important;padding:20px !important;border:1px solid #e2e8f0 !important;position:relative !important;">
                     <div style="position:absolute !important;top:12px !important;right:12px !important;background:#f59e0b !important;color:#fff !important;font-size:9px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:10px !important;">PRO</div>
@@ -2760,14 +2613,14 @@ function wpilot_lite_admin_page() {
             <h2 style="text-align:center !important;margin-bottom:4px !important;"><?php esc_html_e( 'Choose your plan', 'wpilot' ); ?></h2>
             <p style="text-align:center !important;color:#64748b !important;font-size:14px !important;margin-bottom:24px !important;"><?php esc_html_e( 'All plans include every Pro feature. Cancel anytime.', 'wpilot' ); ?></p>
 
-            <?php $checkout_base = 'https://weblease.se/wpilot-checkout?site=' . urlencode( $site_url ) . '&email=' . urlencode( get_option( 'admin_email' ) ); ?>
+            <?php $checkout_base = 'https://weblease.se/wpilot-checkout?site=' . urlencode( $site_url ) ; ?>
             <div class="wpilot-pricing">
                 <div class="wpilot-plan wpilot-plan-popular">
                     <h3>Pro</h3>
                     <div class="price">$9<span>/month</span></div>
                     <p class="price-note"><?php esc_html_e( 'For one website', 'wpilot' ); ?></p>
                     <ul>
-                        <li><?php esc_html_e( 'Unlimited requests', 'wpilot' ); ?></li>
+                        <li><?php esc_html_e( 'Advanced AI prompts', 'wpilot' ); ?></li>
                         <li><?php esc_html_e( 'Unlimited connections', 'wpilot' ); ?></li>
                         <li><?php esc_html_e( 'Advanced SEO expert', 'wpilot' ); ?></li>
                         <li><?php esc_html_e( 'Smart AI prompts', 'wpilot' ); ?></li>

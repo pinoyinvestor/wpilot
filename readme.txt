@@ -73,7 +73,7 @@ Yes. WPilot Lite contacts the Weblease API (weblease.se) to check your daily usa
 
 = What is the difference between Lite and Pro? =
 
-Lite covers content management, menus, settings, media, basic design, SEO analysis, and read-only WooCommerce views. Pro adds full WooCommerce management, automated SEO fixes, page builder support, database cleanup, bulk operations, and an AI chat agent.
+Lite covers content management, menus, settings, media, basic design, SEO analysis, and WooCommerce views. Pro adds an AI Chat Agent for your visitors, advanced SEO expert prompts, smart system prompts, knowledge base, and priority support.
 
 == Screenshots ==
 
@@ -85,17 +85,6 @@ Lite covers content management, menus, settings, media, basic design, SEO analys
 
 This plugin connects to the following external services:
 
-= Weblease Usage API =
-
-**URL:** https://weblease.se/api/wpilot/usage
-**When:** On every request through the MCP endpoint (Claude asking your site to do something).
-**What is sent:** Your site URL.
-**What is received:** The number of requests you have used today and whether you are allowed to continue.
-**Why:** WPilot Lite includes 5 free requests per day. This limit is enforced server-side to comply with WordPress.org guidelines (no local trialware).
-**Privacy:** No personal data, user data, or site content is transmitted. Only the site URL is sent.
-**Terms of Service:** https://weblease.se/terms
-**Privacy Policy:** https://weblease.se/privacy
-
 = Weblease License API =
 
 **URL:** https://weblease.se/api/ai-license/validate
@@ -104,17 +93,6 @@ This plugin connects to the following external services:
 **What is received:** Whether the license is valid and what plan it belongs to.
 **Why:** To validate Pro license keys purchased from weblease.se.
 **Privacy:** No personal data is transmitted beyond the license key and site URL.
-**Terms of Service:** https://weblease.se/terms
-**Privacy Policy:** https://weblease.se/privacy
-
-= Weblease Update API =
-
-**URL:** https://weblease.se/api/plugin/version
-**When:** When WordPress checks for plugin updates (typically twice daily via WordPress cron).
-**What is sent:** The current plugin version.
-**What is received:** The latest available version number and download URL.
-**Why:** To notify you when a new version of WPilot Lite is available.
-**Privacy:** No personal data is transmitted.
 **Terms of Service:** https://weblease.se/terms
 **Privacy Policy:** https://weblease.se/privacy
 
